@@ -9,6 +9,8 @@ Indicadores suportados:
 - RSI(14)
 - Volume SMA(20)
 - ATR(14)
+- ATR Percentile (rank dos últimos 100 candles — filtro de volatilidade)
+- Bollinger Bandwidth (detecção de squeeze)
 
 Todos os cálculos operam sobre um DataFrame pandas com colunas
 OCHLV padrão (Open, High, Low, Close, Volume).
@@ -81,6 +83,20 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # ATR 14
     out["atr"] = ta.atr(out["high"], out["low"], out["close"], length=14)
 
+    # ATR Percentile — ranking do ATR atual entre os últimos 100 candles
+    # Valor entre 0.0 e 1.0. Usado como filtro de volatilidade:
+    #   - Baixo (< 0.20): mercado lateral/morto → evitar
+    #   - Normal (0.20 - 0.80): condições favoráveis → operar
+    #   - Alto (> 0.80): caos/evento extremo → evitar
+    ATR_LOOKBACK = 100
+    out["atr_percentile"] = out["atr"].rolling(ATR_LOOKBACK).apply(
+        lambda x: (x.iloc[-1] > x).sum() / max(len(x) - 1, 1), raw=False
+    )
+
+    # Bollinger Bandwidth — largura relativa das bandas (squeeze detection)
+    # BW = (upper - lower) / middle * 100
+    out["bb_width"] = ((out["bb_upper"] - out["bb_lower"]) / out["bb_middle"]) * 100
+
     return out
 
 
@@ -94,7 +110,7 @@ def get_latest_signal_row(df_ind: pd.DataFrame) -> Optional[pd.Series]:
         return None
 
     last = df_ind.iloc[-1]
-    critical = ["ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr"]
+    critical = ["ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"]
     missing = [c for c in critical if pd.isna(last.get(c))]
     if missing:
         logger.warning(

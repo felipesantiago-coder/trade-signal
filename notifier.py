@@ -53,12 +53,14 @@ def _format_signal_message(signal: Signal, symbol: str) -> str:
         f"• EMA200: `{signal.ema200:.2f}`\n"
         f"• RSI(14): `{signal.rsi:.2f}`\n"
         f"• ATR(14): `{signal.atr:.2f}`\n"
+        f"• ATR Percentile: `{signal.atr_percentile:.0%}`\n"
+        f"• BB Width: `{signal.bb_width:.2f}%`\n"
         f"• Volume: `{signal.volume:,.0f}`\n"
         f"• Vol SMA20: `{signal.volume_sma20:,.0f}`\n"
         f"• BB Lower: `{signal.bb_lower:.2f}`\n"
         f"• BB Upper: `{signal.bb_upper:.2f}`\n"
         f"\n"
-        f"_Estratégia CTEV — Confluência de Tendência e Exaustão Volumétrica_"
+        f"_Estratégia CTEV v2.0 — Risk Manager ativo_"
     )
     return msg
 

@@ -5,6 +5,8 @@ Lógica de validação das condições de entrada CTEV para LONG e SHORT,
 incluindo cálculo de Stop Loss e Take Profit baseados em ATR(14).
 
 Estratégia CTEV = Confluência de Tendência e Exaustão Volumétrica.
+
+Inclui filtro de volatilidade (ATR percentile) e controle de cooldown.
 """
 
 from __future__ import annotations
@@ -38,6 +40,8 @@ class Signal:
     bb_upper: float
     volume: float
     volume_sma20: float
+    atr_percentile: float
+    bb_width: float
     timestamp: pd.Timestamp
 
     def to_dict(self) -> dict:
@@ -49,6 +53,8 @@ class Signal:
             "atr": self.atr,
             "rsi": self.rsi,
             "ema200": self.ema200,
+            "atr_percentile": self.atr_percentile,
+            "bb_width": self.bb_width,
             "timestamp": str(self.timestamp),
         }
 
@@ -79,6 +85,8 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     volume = float(row["volume"])
     volume_sma20 = float(row["volume_sma20"])
     atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+    bb_w = float(row.get("bb_width", 0.0))
     ts = row.name
 
     # 1. Tendência de alta macro
@@ -96,6 +104,9 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     # 4. Confirmação institucional via volume
     if not (volume_sma20 > 0 and volume > volume_sma20 * VOLUME_MULTIPLIER):
         return None
+
+    # Nota: Filtro de volatilidade (ATR percentile) é verificado ANTES
+    # de evaluate_signal() pelo RiskManager. Aqui apenas registramos o valor.
 
     # Gestão de risco LONG
     entry = close
@@ -119,6 +130,8 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
         bb_upper=float(row["bb_upper"]),
         volume=volume,
         volume_sma20=volume_sma20,
+        atr_percentile=atr_pct,
+        bb_width=bb_w,
         timestamp=ts,
     )
 
@@ -140,6 +153,8 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     volume = float(row["volume"])
     volume_sma20 = float(row["volume_sma20"])
     atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+    bb_w = float(row.get("bb_width", 0.0))
     ts = row.name
 
     # 1. Tendência de baixa macro
@@ -180,6 +195,8 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
         bb_upper=bb_upper,
         volume=volume,
         volume_sma20=volume_sma20,
+        atr_percentile=atr_pct,
+        bb_width=bb_w,
         timestamp=ts,
     )
 

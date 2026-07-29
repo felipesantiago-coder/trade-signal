@@ -94,6 +94,76 @@
         </div>
     </section>
 
+    <!-- Risk Management KPIs -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Drawdown Diário</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            </div>
+            <div id="riskDailyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
+            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                <div id="riskDailyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
+            </div>
+            <div id="riskDailySub" class="text-xs text-gray-500 mt-1">Limite: 3.0%</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Drawdown Semanal</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+            </div>
+            <div id="riskWeeklyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
+            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                <div id="riskWeeklyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
+            </div>
+            <div id="riskWeeklySub" class="text-xs text-gray-500 mt-1">Limite: 6.0%</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Filtrados</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+            </div>
+            <div id="riskFiltered" class="text-2xl font-semibold font-mono">0</div>
+            <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Bloqueados pelo risk manager</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Consecutivas</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
+            </div>
+            <div id="riskConsecutive" class="text-2xl font-semibold font-mono">0</div>
+            <div id="riskConsecutiveSub" class="text-xs text-gray-500 mt-1">0 / 5 max</div>
+        </div>
+    </section>
+
+    <!-- Kill Switch -->
+    <section id="killSwitchSection" class="rounded-xl border p-5 transition-all duration-300">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <span id="killSwitchEmoji" class="text-2xl">✅</span>
+                <div>
+                    <h2 id="killSwitchTitle" class="text-base font-semibold">Sistema Normal</h2>
+                    <p id="killSwitchMsg" class="text-sm opacity-80">Todas as operações ativas</p>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button id="btnKillSwitch" onclick="killSwitch()"
+                    class="px-5 py-2.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.724 5.111a6 6 0 008.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/></svg>
+                    KILL SWITCH
+                </button>
+                <button id="btnResurrect" onclick="resurrectSwitch()" class="hidden
+                    px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition flex items-center gap-2 shadow-lg">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                    REATIVAR
+                </button>
+            </div>
+        </div>
+    </section>
+
     <!-- KPIs -->
     <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -173,6 +243,78 @@
             </div>
             <div id="logsBody" class="p-4 max-h-[28rem] overflow-y-auto space-y-2 font-mono text-xs">
                 <div class="text-gray-500 text-center py-8">Sem logs.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Backtest -->
+    <section class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+            <div>
+                <h2 class="text-base font-semibold">Backtest</h2>
+                <p class="text-xs text-gray-500">Simulação histórica da estratégia CTEV</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="backtestStatus" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
+                    <span id="backtestStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+                    <span id="backtestStatusText">idle</span>
+                </span>
+                <button id="btnRunBacktest" onclick="runBacktest()"
+                    class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Rodar Backtest
+                </button>
+            </div>
+        </div>
+
+        <!-- Backtest Results (hidden until done) -->
+        <div id="backtestResults" class="hidden">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 p-5 border-b border-gray-800">
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
+                    <div id="btTotalTrades" class="text-lg font-semibold font-mono">—</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
+                    <div id="btWinRate" class="text-lg font-semibold font-mono">—</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Profit Factor</div>
+                    <div id="btProfitFactor" class="text-lg font-semibold font-mono">—</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Max Drawdown</div>
+                    <div id="btMaxDD" class="text-lg font-semibold font-mono">—</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total PnL</div>
+                    <div id="btTotalPnL" class="text-lg font-semibold font-mono">—</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Buy & Hold</div>
+                    <div id="btBuyHold" class="text-lg font-semibold font-mono">—</div>
+                </div>
+            </div>
+            <div class="px-5 py-4 border-b border-gray-800">
+                <h3 class="text-sm font-semibold text-gray-400 mb-3">Últimas 10 Operações</h3>
+            </div>
+            <div class="overflow-x-auto max-h-[20rem] overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Entrada</th>
+                            <th class="px-4 py-3 text-left">Saída</th>
+                            <th class="px-4 py-3 text-left">Tipo</th>
+                            <th class="px-4 py-3 text-right">Preço Entrada</th>
+                            <th class="px-4 py-3 text-right">Preço Saída</th>
+                            <th class="px-4 py-3 text-right">PnL</th>
+                            <th class="px-4 py-3 text-left">Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="backtestTradesBody" class="divide-y divide-gray-800">
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Aguardando backtest...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </section>
@@ -381,22 +523,238 @@
     }
 
     // ---------- Ações ----------
+    let cachedRisk = null;
+
     async function fetchAll() {
         try {
-            const [status, signals, logs] = await Promise.all([
+            const [status, signals, logs, risk] = await Promise.all([
                 api('GET', '/api/status'),
                 api('GET', '/api/signals?limit=50'),
-                api('GET', '/api/logs?limit=50')
+                api('GET', '/api/logs?limit=50'),
+                api('GET', '/api/risk').catch(() => null)
             ]);
             renderStatus(status);
             renderSignals(signals);
             renderLogs(logs);
+            if (risk) {
+                cachedRisk = risk;
+                renderRisk(risk);
+                renderKillSwitch(risk);
+            }
         } catch (err) {
             console.error('Polling falhou:', err);
             const text = document.getElementById('statusText');
             text.textContent = 'Erro de conexão';
             document.getElementById('statusDot').className = 'w-2.5 h-2.5 rounded-full bg-red-500';
         }
+    }
+
+    // ---------- Risk Management Rendering ----------
+    function renderRisk(r) {
+        const dailyPct = r.daily_loss_pct || 0;
+        const dailyMax = r.daily_loss_limit || 3.0;
+        const weeklyPct = r.weekly_loss_pct || 0;
+        const weeklyMax = r.weekly_loss_limit || 6.0;
+        const filtered = r.signals_filtered || 0;
+        const consec = r.consecutive_losses || 0;
+        const consecMax = r.max_consecutive_losses || 5;
+
+        // Daily drawdown
+        const dailyRatio = Math.min((Math.abs(dailyPct) / dailyMax) * 100, 100);
+        document.getElementById('riskDailyLoss').textContent = fmtNum(dailyPct) + '%';
+        document.getElementById('riskDailyBar').style.width = dailyRatio + '%';
+        document.getElementById('riskDailyBar').className = 'h-2 rounded-full transition-all duration-500 ' +
+            (dailyRatio > 80 ? 'bg-red-500' : dailyRatio > 50 ? 'bg-amber-500' : 'bg-emerald-500');
+        document.getElementById('riskDailySub').textContent = 'Limite: ' + fmtNum(dailyMax) + '%';
+
+        // Weekly drawdown
+        const weeklyRatio = Math.min((Math.abs(weeklyPct) / weeklyMax) * 100, 100);
+        document.getElementById('riskWeeklyLoss').textContent = fmtNum(weeklyPct) + '%';
+        document.getElementById('riskWeeklyBar').style.width = weeklyRatio + '%';
+        document.getElementById('riskWeeklyBar').className = 'h-2 rounded-full transition-all duration-500 ' +
+            (weeklyRatio > 80 ? 'bg-red-500' : weeklyRatio > 50 ? 'bg-amber-500' : 'bg-emerald-500');
+        document.getElementById('riskWeeklySub').textContent = 'Limite: ' + fmtNum(weeklyMax) + '%';
+
+        // Filtered signals
+        document.getElementById('riskFiltered').textContent = filtered;
+
+        // Consecutive losses
+        document.getElementById('riskConsecutive').textContent = consec;
+        document.getElementById('riskConsecutiveSub').textContent = consec + ' / ' + consecMax + ' max';
+    }
+
+    // ---------- Kill Switch Rendering ----------
+    function renderKillSwitch(r) {
+        const section = document.getElementById('killSwitchSection');
+        const emoji = document.getElementById('killSwitchEmoji');
+        const title = document.getElementById('killSwitchTitle');
+        const msg = document.getElementById('killSwitchMsg');
+        const btnKill = document.getElementById('btnKillSwitch');
+        const btnRes = document.getElementById('btnResurrect');
+
+        const isKilled = r.is_killed || false;
+        const circuitBreaker = r.circuit_breaker_active || false;
+
+        if (isKilled) {
+            section.className = 'rounded-xl border border-red-600 bg-red-950/60 p-5 transition-all duration-300';
+            emoji.textContent = '💀';
+            title.textContent = 'KILL SWITCH ATIVADO';
+            title.className = 'text-base font-semibold text-red-300';
+            msg.textContent = 'Todas as operações foram interrompidas manualmente';
+            msg.className = 'text-sm opacity-80 text-red-200';
+            btnKill.classList.add('hidden');
+            btnRes.classList.remove('hidden');
+        } else if (circuitBreaker) {
+            section.className = 'rounded-xl border border-amber-600 bg-amber-950/60 p-5 transition-all duration-300';
+            emoji.textContent = '⚠️';
+            title.textContent = 'CIRCUIT BREAKER';
+            title.className = 'text-base font-semibold text-amber-300';
+            msg.textContent = 'Limite de perda atingido — novas operações bloqueadas';
+            msg.className = 'text-sm opacity-80 text-amber-200';
+            btnKill.classList.remove('hidden');
+            btnRes.classList.add('hidden');
+        } else {
+            section.className = 'rounded-xl border border-emerald-800 bg-emerald-950/30 p-5 transition-all duration-300';
+            emoji.textContent = '✅';
+            title.textContent = 'Sistema Normal';
+            title.className = 'text-base font-semibold text-emerald-300';
+            msg.textContent = 'Todas as operações ativas';
+            msg.className = 'text-sm opacity-80 text-emerald-200';
+            btnKill.classList.remove('hidden');
+            btnRes.classList.add('hidden');
+        }
+    }
+
+    // ---------- Kill Switch Actions ----------
+    async function killSwitch() {
+        try {
+            await api('POST', '/api/kill');
+            showToast('Kill Switch ativado 💀', 'error');
+            await fetchAll();
+        } catch (err) {
+            showToast('Falha: ' + err.message, 'error');
+        }
+    }
+
+    async function resurrectSwitch() {
+        try {
+            await api('POST', '/api/resurrect');
+            showToast('Sistema reativado ✓', 'success');
+            await fetchAll();
+        } catch (err) {
+            showToast('Falha: ' + err.message, 'error');
+        }
+    }
+
+    // ---------- Backtest Actions ----------
+    let backtestPollTimer = null;
+
+    async function runBacktest() {
+        const btn = document.getElementById('btnRunBacktest');
+        const dot = document.getElementById('backtestStatusDot');
+        const txt = document.getElementById('backtestStatusText');
+
+        btn.disabled = true;
+        dot.className = 'w-2 h-2 rounded-full bg-amber-500 pulse-dot';
+        txt.textContent = 'running...';
+        document.getElementById('backtestResults').classList.add('hidden');
+
+        try {
+            const res = await api('POST', '/api/backtest?days=365');
+            if (res.status === 'running') {
+                backtestPollTimer = setInterval(() => checkBacktestStatus(), 3000);
+            } else if (res.status === 'done') {
+                renderBacktestResults(res);
+            } else {
+                showToast('Backtest: ' + (res.message || 'resposta inesperada'), 'info');
+                resetBacktestUI();
+            }
+        } catch (err) {
+            showToast('Falha backtest: ' + err.message, 'error');
+            resetBacktestUI();
+        }
+    }
+
+    async function checkBacktestStatus() {
+        try {
+            const res = await api('GET', '/api/backtest/status');
+            if (res.status === 'done') {
+                clearInterval(backtestPollTimer);
+                backtestPollTimer = null;
+                renderBacktestResults(res);
+            } else if (res.status === 'error') {
+                clearInterval(backtestPollTimer);
+                backtestPollTimer = null;
+                showToast('Backtest erro: ' + (res.message || ''), 'error');
+                resetBacktestUI();
+            }
+        } catch (err) {
+            clearInterval(backtestPollTimer);
+            backtestPollTimer = null;
+            showToast('Falha check backtest: ' + err.message, 'error');
+            resetBacktestUI();
+        }
+    }
+
+    function renderBacktestResults(res) {
+        const dot = document.getElementById('backtestStatusDot');
+        const txt = document.getElementById('backtestStatusText');
+        const btn = document.getElementById('btnRunBacktest');
+
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+        txt.textContent = 'done';
+        btn.disabled = false;
+
+        const r = res.results || res;
+        document.getElementById('btTotalTrades').textContent = r.total_trades || 0;
+        document.getElementById('btWinRate').textContent = fmtNum(r.win_rate, 1) + '%';
+        document.getElementById('btProfitFactor').textContent = fmtNum(r.profit_factor, 2);
+
+        const ddEl = document.getElementById('btMaxDD');
+        ddEl.textContent = fmtNum(r.max_drawdown_pct, 2) + '%';
+        ddEl.className = 'text-lg font-semibold font-mono ' + (r.max_drawdown_pct < 0 ? 'text-red-400' : 'text-gray-100');
+
+        const pnlEl = document.getElementById('btTotalPnL');
+        pnlEl.textContent = (r.total_pnl >= 0 ? '+' : '') + fmtNum(r.total_pnl_pct, 2) + '%';
+        pnlEl.className = 'text-lg font-semibold font-mono ' + (r.total_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+        const bhEl = document.getElementById('btBuyHold');
+        bhEl.textContent = fmtNum(r.buy_hold_pct, 2) + '%';
+        bhEl.className = 'text-lg font-semibold font-mono ' + (r.buy_hold_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+        // Trades table
+        const trades = (r.trades || []).slice(-10).reverse();
+        const tbody = document.getElementById('backtestTradesBody');
+        if (trades.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhuma operação.</td></tr>';
+        } else {
+            tbody.innerHTML = trades.map(t => {
+                const isLong = t.type === 'LONG';
+                const pnlVal = t.pnl_pct || 0;
+                const pnlColor = pnlVal >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const pnlSign = pnlVal >= 0 ? '+' : '';
+                const typeClass = isLong ? 'bg-emerald-900/40 text-emerald-300' : 'bg-red-900/40 text-red-300';
+                return `
+                    <tr class="hover:bg-gray-800/40 transition fade-in">
+                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(t.entry_ts || t.entry_date)}</td>
+                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(t.exit_ts || t.exit_date)}</td>
+                        <td class="px-4 py-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${typeClass}">${t.type}</span></td>
+                        <td class="px-4 py-3 text-right font-mono text-gray-200">${fmtNum(t.entry_price)}</td>
+                        <td class="px-4 py-3 text-right font-mono text-gray-200">${fmtNum(t.exit_price)}</td>
+                        <td class="px-4 py-3 text-right font-mono font-semibold ${pnlColor}">${pnlSign}${fmtNum(pnlVal)}%</td>
+                        <td class="px-4 py-3 text-gray-400 text-xs">${escapeHtml(t.reason || '—')}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('backtestResults').classList.remove('hidden');
+    }
+
+    function resetBacktestUI() {
+        document.getElementById('btnRunBacktest').disabled = false;
+        document.getElementById('backtestStatusDot').className = 'w-2 h-2 rounded-full bg-gray-500';
+        document.getElementById('backtestStatusText').textContent = 'idle';
     }
 
     async function controlBot(action) {
