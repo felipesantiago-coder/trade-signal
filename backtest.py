@@ -1,18 +1,20 @@
 """
 backtest.py
 ------------
-Módulo de backtesting da estratégia CTEV usando dados históricos da Binance.
+Modulo de backtesting da estrategia CTEV usando dados historicos da Binance.
 
 Funcionalidades:
-    - Download de dados OHLCV históricos via ccxt (até 1 ano de candles 1H)
-    - Cálculo de todos os indicadores CTEV (EMA200, BB, RSI, Volume SMA, ATR)
-    - Simulação de trades com gestão de risco (SL e TP baseados em ATR)
-    - Métricas de performance: Win Rate, Profit Factor, Max Drawdown, Sharpe,
+    - Download de dados OHLCV historicos via ccxt (ate 1 ano de candles 1H)
+    - Calculo de todos os indicadores CTEV (EMA200, BB, RSI, Volume SMA, ATR)
+    - Simulacao de trades com gestao de risco (SL e TP baseados em ATR)
+    - Simulacao avancada: position sizing, trailing stop, break-even, partial TP
+    - Metricas de performance: Win Rate, Profit Factor, Max Drawdown, Sharpe,
       Total Trades, Avg Win, Avg Loss
     - Walk-Forward Analysis (WFO): janela rolling treino/teste
-    - Comparação com Buy & Hold
+    - Comparacao com Buy & Hold
+    - Curva de equity por trade (para visualizacao no painel)
 
-Referências:
+Referencias:
     - kernc.github.io/backtesting.py — framework Python para backtesting
     - InteractiveBrokers (2025): "Walk Forward Analysis — sophisticated technique
       to test and optimize trading strategies"
@@ -67,11 +69,19 @@ class TradeResult:
     bars_held: int  # candles mantidos
     exit_reason: str  # "tp" ou "sl"
     atr_percentile: float = 0.5
+    # Enhanced fields (Phase 3)
+    position_size: float = 0.0
+    position_usd: float = 0.0
+    risk_usd: float = 0.0
+    be_triggered: bool = False
+    trailing_activated: bool = False
+    partial_tp_filled: bool = False
+    sl_updates: int = 0  # quantas vezes o SL foi movido
 
 
 @dataclass
 class BacktestMetrics:
-    """Métricas agregadas do backtest."""
+    """Metricas agregadas do backtest."""
     total_trades: int = 0
     long_trades: int = 0
     short_trades: int = 0
@@ -82,7 +92,9 @@ class BacktestMetrics:
     avg_loss_pct: float = 0.0
     profit_factor: float = 0.0
     total_pnl_pct: float = 0.0
+    total_pnl_usd: float = 0.0
     max_drawdown_pct: float = 0.0
+    max_drawdown_usd: float = 0.0
     sharpe_ratio: float = 0.0
     avg_bars_held: float = 0.0
     best_trade_pct: float = 0.0
@@ -91,6 +103,13 @@ class BacktestMetrics:
     period_start: str = ""
     period_end: str = ""
     atr_pct_filtered: int = 0  # sinais filtrados por volatilidade
+    # Phase 3: equity curve
+    equity_curve: list = field(default_factory=list)  # [(trade_num, equity), ...]
+    # Phase 3: trailing stats
+    be_triggered_count: int = 0
+    trailing_activated_count: int = 0
+    partial_tp_count: int = 0
+    avg_r_r: float = 0.0  # average risk:reward ratio
 
     def to_dict(self) -> dict:
         return {
@@ -104,7 +123,9 @@ class BacktestMetrics:
             "avg_loss_pct": round(self.avg_loss_pct, 4),
             "profit_factor": round(self.profit_factor, 4),
             "total_pnl_pct": round(self.total_pnl_pct, 4),
+            "total_pnl_usd": round(self.total_pnl_usd, 2),
             "max_drawdown_pct": round(self.max_drawdown_pct, 4),
+            "max_drawdown_usd": round(self.max_drawdown_usd, 2),
             "sharpe_ratio": round(self.sharpe_ratio, 4),
             "avg_bars_held": round(self.avg_bars_held, 1),
             "best_trade_pct": round(self.best_trade_pct, 4),
@@ -113,6 +134,11 @@ class BacktestMetrics:
             "period_start": self.period_start,
             "period_end": self.period_end,
             "atr_pct_filtered": self.atr_pct_filtered,
+            "equity_curve": self.equity_curve[-100:],  # Last 100 points
+            "be_triggered_count": self.be_triggered_count,
+            "trailing_activated_count": self.trailing_activated_count,
+            "partial_tp_count": self.partial_tp_count,
+            "avg_r_r": round(self.avg_r_r, 2),
         }
 
 
@@ -130,7 +156,7 @@ class WalkForwardResult:
 
 
 # ------------------------------------------------------------------
-# Download de dados históricos
+# Download de dados historicos
 # ------------------------------------------------------------------
 def fetch_historical_ohlcv(
     symbol: str = "BTC/USDT",
@@ -138,9 +164,9 @@ def fetch_historical_ohlcv(
     since_days_ago: int = 365,
 ) -> pd.DataFrame:
     """
-    Baixa dados históricos da Binance via ccxt (sem autenticação).
+    Baixa dados historicos da Binance via ccxt (sem autenticacao).
 
-    O endpoint publico da Binance permite até 1500 candles por request.
+    O endpoint publico da Binance permite ate 1500 candles por request.
     Para 1 ano de candles 1H (~8760), fazemos ~6 requests paginadas.
 
     Returns:
@@ -163,7 +189,7 @@ def fetch_historical_ohlcv(
             if not batch:
                 break
             all_ohlcv.extend(batch)
-            # Próximo batch: timestamp do último candle + 1 candle
+            # Proximo batch: timestamp do ultimo candle + 1 candle
             since_ms = batch[-1][0] + (60 * 60 * 1000)  # +1h em ms
             if len(batch) < 1000:
                 break
@@ -174,7 +200,7 @@ def fetch_historical_ohlcv(
     exchange.close()
 
     if not all_ohlcv:
-        raise RuntimeError("Nenhum dado histórico baixado.")
+        raise RuntimeError("Nenhum dado historico baixado.")
 
     df = pd.DataFrame(all_ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
@@ -191,24 +217,24 @@ def fetch_historical_ohlcv(
 
 
 # ------------------------------------------------------------------
-# Simulação de trades
+# Simulacao de trades (basica + avancada)
 # ------------------------------------------------------------------
 def simulate_trades(
     df_ind: pd.DataFrame,
     atr_pct_min: float = 0.20,
     atr_pct_max: float = 0.80,
-) -> List[TradeResult]:
+) -> Tuple[List[TradeResult], int]:
     """
     Percorre o DataFrame com indicadores calculados e simula trades
-    da estratégia CTEV, respeitando SL e TP baseados em ATR.
+    da estrategia CTEV, respeitando SL e TP baseados em ATR.
 
     Parameters:
         df_ind: DataFrame com indicadores (output de compute_indicators)
-        atr_pct_min: filtro de volatilidade mínimo (default 0.20)
-        atr_pct_max: filtro de volatilidade máximo (default 0.80)
+        atr_pct_min: filtro de volatilidade minimo (default 0.20)
+        atr_pct_max: filtro de volatilidade maximo (default 0.80)
 
     Returns:
-        Lista de TradeResult com todos os trades simulados.
+        Tuple[List[TradeResult], atr_filtered_count]
     """
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -218,7 +244,7 @@ def simulate_trades(
     while i < n:
         row = df_ind.iloc[i]
 
-        # Verifica NaN nos indicadores críticos
+        # Verifica NaN nos indicadores criticos
         critical = ["ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"]
         if any(pd.isna(row.get(c)) for c in critical):
             i += 1
@@ -226,7 +252,7 @@ def simulate_trades(
 
         atr_pct = float(row.get("atr_percentile", 0.5))
 
-        # Filtro de volatilidade: só opera se ATR percentile está na faixa
+        # Filtro de volatilidade: so opera se ATR percentile esta na faixa
         if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
             atr_filtered += 1
             i += 1
@@ -241,7 +267,7 @@ def simulate_trades(
             i += 1
             continue
 
-        # Simula o trade: percorre candles seguintes até SL ou TP
+        # Simula o trade: percorre candles seguintes ate SL ou TP
         entry_price = signal.entry_price
         sl = signal.stop_loss
         tp = signal.take_profit
@@ -283,7 +309,7 @@ def simulate_trades(
                     break
 
         if exit_price is None:
-            # Timeout: sai no close do último candle avaliado
+            # Timeout: sai no close do ultimo candle avaliado
             last_j = min(i + 48, n) - 1
             exit_price = float(df_ind.iloc[last_j]["close"])
             exit_reason = "timeout"
@@ -312,25 +338,242 @@ def simulate_trades(
             atr_percentile=atr_pct,
         ))
 
-        # Avança após o trade fechar (evita trades sobrepostos)
+        # Avanca apos o trade fechar (evita trades sobrepostos)
         i += bars + 1
 
     logger.info(
-        "Simulação completa: %d trades, %d sinais filtrados por volatilidade",
+        "Simulacao completa: %d trades, %d sinais filtrados por volatilidade",
         len(trades), atr_filtered,
     )
     return trades, atr_filtered
 
 
+def simulate_trades_advanced(
+    df_ind: pd.DataFrame,
+    atr_pct_min: float = 0.20,
+    atr_pct_max: float = 0.80,
+    initial_balance: float = 10000.0,
+    risk_per_trade_pct: float = 0.01,
+    be_trigger_atr_mult: float = 1.0,
+    trailing_atr_mult: float = 1.5,
+    partial_tp_pct: float = 0.50,
+) -> Tuple[List[TradeResult], int]:
+    """
+    Simulacao avancada com position sizing, trailing stop, break-even e partial TP.
+
+    Simula o comportamento real do position_tracker.py no backtest,
+    permitindo avaliar o impacto do gerenciamento de posicoes.
+
+    Parameters:
+        df_ind: DataFrame com indicadores
+        atr_pct_min/max: filtro de volatilidade
+        initial_balance: saldo inicial em USD
+        risk_per_trade_pct: % do balance a arriscar por trade
+        be_trigger_atr_mult: ATR multiplier para ativar break-even
+        trailing_atr_mult: ATR multiplier para distancia do trailing
+        partial_tp_pct: % da posicao a fechar no TP1
+
+    Returns:
+        Tuple[List[TradeResult], atr_filtered_count]
+    """
+    trades: List[TradeResult] = []
+    atr_filtered = 0
+    balance = initial_balance
+    i = 0
+    n = len(df_ind)
+
+    while i < n:
+        row = df_ind.iloc[i]
+
+        critical = ["ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"]
+        if any(pd.isna(row.get(c)) for c in critical):
+            i += 1
+            continue
+
+        atr_pct = float(row.get("atr_percentile", 0.5))
+        if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
+            atr_filtered += 1
+            i += 1
+            continue
+
+        signal = evaluate_long(row)
+        if signal is None:
+            signal = evaluate_short(row)
+
+        if signal is None:
+            i += 1
+            continue
+
+        entry_price = signal.entry_price
+        sl = signal.stop_loss
+        tp = signal.take_profit
+        atr = signal.atr
+        is_long = signal.type == SignalType.LONG
+
+        # Position sizing
+        sl_distance_pct = abs(entry_price - sl) / entry_price if entry_price > 0 else 0
+        risk_usd = balance * risk_per_trade_pct
+        if sl_distance_pct > 0:
+            position_size = risk_usd / (sl_distance_pct * entry_price)
+        else:
+            position_size = 0.0
+        position_usd = position_size * entry_price
+
+        if position_usd < 10.0:  # Min position
+            i += 1
+            continue
+
+        # Simula com trailing/BE/partial
+        current_sl = sl
+        be_triggered = False
+        trailing_activated = False
+        partial_tp_filled = False
+        highest_favorable = entry_price
+        exit_price = None
+        exit_reason = None
+        bars = 0
+        sl_updates = 0
+
+        for j in range(i + 1, min(i + 72, n)):  # Max 72 candles (3 dias)
+            future = df_ind.iloc[j]
+            f_close = float(future["close"])
+            f_low = float(future["low"])
+            f_high = float(future["high"])
+            bars = j - i
+
+            # Atualiza highest favorable
+            if is_long:
+                highest_favorable = max(highest_favorable, f_high)
+            else:
+                highest_favorable = min(highest_favorable, f_low)
+
+            # Break-even check
+            if not be_triggered:
+                fav_dist = abs(highest_favorable - entry_price)
+                if fav_dist >= atr * be_trigger_atr_mult:
+                    be_triggered = True
+                    trailing_activated = True
+                    current_sl = entry_price
+                    sl_updates += 1
+
+            # Trailing stop update
+            if trailing_activated:
+                trail_dist = atr * trailing_atr_mult
+                if is_long:
+                    new_trail = highest_favorable - trail_dist
+                    if new_trail > current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                else:
+                    new_trail = highest_favorable + trail_dist
+                    if new_trail < current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+
+            # Check exits
+            if is_long:
+                tp_hit = f_high >= tp
+                sl_hit = f_low <= current_sl
+            else:
+                tp_hit = f_low <= tp
+                sl_hit = f_high >= current_sl
+
+            if sl_hit and not tp_hit:
+                exit_price = current_sl
+                exit_reason = "sl"
+                break
+            elif tp_hit and not sl_hit:
+                if not partial_tp_filled:
+                    partial_tp_filled = True
+                    be_triggered = True
+                    current_sl = entry_price
+                    trailing_activated = True
+                    sl_updates += 1
+                else:
+                    exit_price = tp
+                    exit_reason = "tp"
+                    break
+            elif tp_hit and sl_hit:
+                exit_price = current_sl
+                exit_reason = "sl"
+                break
+
+        if exit_price is None:
+            last_j = min(i + 72, n) - 1
+            exit_price = float(df_ind.iloc[last_j]["close"])
+            exit_reason = "timeout"
+            bars = last_j - i
+
+        # PnL
+        if is_long:
+            pnl_pct = (exit_price - entry_price) / entry_price * 100
+            pnl_usd = (exit_price - entry_price) * position_size
+        else:
+            pnl_pct = (entry_price - exit_price) / entry_price * 100
+            pnl_usd = (entry_price - exit_price) * position_size
+
+        # Se partial TP, PnL total = 50% partial + 50% remaining
+        if partial_tp_filled and exit_reason == "tp":
+            # Partial ja capturou 50% do movimento ate TP
+            # Restante fechou no TP tambem (full exit)
+            pass  # PnL calculado normalmente ja esta correto
+        elif partial_tp_filled:
+            # Partial capturou 50% ate TP, o restante saiu em SL ou timeout
+            partial_pnl_pct = ((tp - entry_price) / entry_price * 100) if is_long else (
+                (entry_price - tp) / entry_price * 100)
+            remaining_pnl_pct = pnl_pct
+            pnl_pct = partial_tp_pct * partial_pnl_pct + (1 - partial_tp_pct) * remaining_pnl_pct
+            if position_usd > 0:
+                pnl_usd = position_usd * (pnl_pct / 100)
+
+        balance += pnl_usd
+
+        rr = abs(exit_price - entry_price) / max(abs(entry_price - sl), 1e-9)
+        if not is_long:
+            rr = 1 / rr if rr > 0 else 0
+
+        trades.append(TradeResult(
+            entry_ts=row.name,
+            exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
+            type=signal.type.value,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=sl,
+            take_profit=tp,
+            atr=atr,
+            rsi=signal.rsi,
+            pnl_pct=round(pnl_pct, 4),
+            pnl_abs=round(exit_price - entry_price, 2),
+            bars_held=bars,
+            exit_reason=exit_reason,
+            atr_percentile=atr_pct,
+            position_size=round(position_size, 8),
+            position_usd=round(position_usd, 2),
+            risk_usd=round(risk_usd, 2),
+            be_triggered=be_triggered,
+            trailing_activated=trailing_activated,
+            partial_tp_filled=partial_tp_filled,
+            sl_updates=sl_updates,
+        ))
+
+        i += bars + 1
+
+    logger.info(
+        "Simulacao avancada completa: %d trades, %d filtrados, balance final=$%.2f",
+        len(trades), atr_filtered, balance,
+    )
+    return trades, atr_filtered
+
+
 # ------------------------------------------------------------------
-# Cálculo de métricas
+# Calculo de metricas
 # ------------------------------------------------------------------
 def calculate_metrics(
     trades: List[TradeResult],
     df: pd.DataFrame,
     atr_filtered: int = 0,
 ) -> BacktestMetrics:
-    """Calcula todas as métricas de performance a partir dos trades simulados."""
+    """Calcula todas as metricas de performance a partir dos trades simulados."""
     if not trades:
         return BacktestMetrics(
             period_start=str(df.index[0]) if not df.empty else "",
@@ -347,6 +590,9 @@ def calculate_metrics(
     pnls = [t.pnl_pct for t in trades]
     cum_pnl = np.cumsum(pnls)
 
+    # Equity curve
+    equity_curve = [(i, float(cum_pnl[i])) for i in range(len(pnls))]
+
     # Max Drawdown (percentual do pico)
     peak = np.maximum.accumulate(cum_pnl)
     drawdown = cum_pnl - peak
@@ -359,7 +605,7 @@ def calculate_metrics(
 
     # Sharpe Ratio (simplificado, sem risk-free rate)
     if len(pnls) > 1 and np.std(pnls) > 0:
-        sharpe = np.mean(pnls) / np.std(pnls) * (365 ** 0.5)  # anualizado ~365 trades max
+        sharpe = np.mean(pnls) / np.std(pnls) * (365 ** 0.5)
     else:
         sharpe = 0.0
 
@@ -368,6 +614,37 @@ def calculate_metrics(
         buy_hold_pct = (float(df.iloc[-1]["close"]) - float(df.iloc[0]["close"])) / float(df.iloc[0]["close"]) * 100
     else:
         buy_hold_pct = 0.0
+
+    # Phase 3: trailing stats
+    be_count = sum(1 for t in trades if t.be_triggered)
+    trail_count = sum(1 for t in trades if t.trailing_activated)
+    partial_count = sum(1 for t in trades if t.partial_tp_filled)
+
+    # Avg Risk:Reward
+    rrs = []
+    for t in trades:
+        sl_dist = abs(t.entry_price - t.stop_loss)
+        if sl_dist > 0:
+            rr = abs(t.exit_price - t.entry_price) / sl_dist
+            rrs.append(rr)
+    avg_rr = np.mean(rrs) if rrs else 0.0
+
+    # USD PnL
+    total_pnl_usd = sum(
+        t.position_usd * (t.pnl_pct / 100) if t.position_usd > 0 else 0
+        for t in trades
+    )
+
+    # Max Drawdown USD (from equity curve)
+    equity_usd = [10000.0]  # starting balance
+    for t in trades:
+        prev = equity_usd[-1]
+        pnl = t.position_usd * (t.pnl_pct / 100) if t.position_usd > 0 else 0
+        equity_usd.append(prev + pnl)
+    eq_arr = np.array(equity_usd)
+    eq_peak = np.maximum.accumulate(eq_arr)
+    dd_usd = eq_peak - eq_arr
+    max_dd_usd = float(np.max(dd_usd)) if len(dd_usd) > 0 else 0.0
 
     return BacktestMetrics(
         total_trades=len(trades),
@@ -380,7 +657,9 @@ def calculate_metrics(
         avg_loss_pct=np.mean([t.pnl_pct for t in losses]) if losses else 0.0,
         profit_factor=pf,
         total_pnl_pct=sum(pnls),
+        total_pnl_usd=total_pnl_usd,
         max_drawdown_pct=max_dd,
+        max_drawdown_usd=max_dd_usd,
         sharpe_ratio=sharpe,
         avg_bars_held=np.mean([t.bars_held for t in trades]) if trades else 0.0,
         best_trade_pct=max(pnls) if pnls else 0.0,
@@ -389,6 +668,11 @@ def calculate_metrics(
         period_start=str(df.index[0]),
         period_end=str(df.index[-1]),
         atr_pct_filtered=atr_filtered,
+        equity_curve=equity_curve,
+        be_triggered_count=be_count,
+        trailing_activated_count=trail_count,
+        partial_tp_count=partial_count,
+        avg_r_r=avg_rr,
     )
 
 
@@ -401,16 +685,21 @@ def run_backtest(
     days: int = 365,
     atr_pct_min: float = 0.20,
     atr_pct_max: float = 0.80,
+    advanced: bool = False,
 ) -> Tuple[BacktestMetrics, List[TradeResult]]:
     """
-    Executa backtest completo da estratégia CTEV.
+    Executa backtest completo da estrategia CTEV.
+
+    Parameters:
+        advanced: se True, usa simulate_trades_advanced com sizing/trailing
 
     Returns:
         (BacktestMetrics, List[TradeResult])
     """
     logger.info(
-        "Iniciando backtest CTEV: %s %s %d dias ATR_pct=[%.0f%%, %.0f%%]",
+        "Iniciando backtest CTEV: %s %s %d dias ATR_pct=[%.0f%%, %.0f%%] mode=%s",
         symbol, timeframe, days, atr_pct_min * 100, atr_pct_max * 100,
+        "advanced" if advanced else "basic",
     )
 
     # 1. Download dados
@@ -419,20 +708,23 @@ def run_backtest(
     # 2. Calcula indicadores
     df_ind = compute_indicators(df)
 
-    # 3. Remove linhas com NaN (início do dataset)
+    # 3. Remove linhas com NaN
     df_clean = df_ind.dropna(subset=[
         "ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"
     ]).copy()
     logger.info("DataFrame limpo: %d candles (de %d originais)", len(df_clean), len(df_ind))
 
     # 4. Simula trades
-    trades, atr_filtered = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
+    if advanced:
+        trades, atr_filtered = simulate_trades_advanced(df_clean, atr_pct_min, atr_pct_max)
+    else:
+        trades, atr_filtered = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
 
-    # 5. Calcula métricas
+    # 5. Calcula metricas
     metrics = calculate_metrics(trades, df_clean, atr_filtered)
 
     logger.info(
-        "Backtest concluído: %d trades | WR=%.1f%% | PF=%.2f | MaxDD=%.2f%% | PnL=%.2f%%",
+        "Backtest concluido: %d trades | WR=%.1f%% | PF=%.2f | MaxDD=%.2f%% | PnL=%.2f%%",
         metrics.total_trades, metrics.win_rate, metrics.profit_factor,
         metrics.max_drawdown_pct, metrics.total_pnl_pct,
     )
@@ -454,14 +746,14 @@ def run_walk_forward(
     atr_pct_max: float = 0.80,
 ) -> List[WalkForwardResult]:
     """
-    Executa Walk-Forward Analysis da estratégia CTEV.
+    Executa Walk-Forward Analysis da estrategia CTEV.
 
     Divide o dataset em janelas treino/teste e rola para frente.
     Cada janela: [train_days] de treino + [test_days] de teste,
-    avançando [step_days] por iteração.
+    avancando [step_days] por iteracao.
 
     Returns:
-        Lista de WalkForwardResult com métricas de cada janela.
+        Lista de WalkForwardResult com metricas de cada janela.
     """
     logger.info(
         "Iniciando Walk-Forward: train=%dd test=%dd step=%dd total=%dd",
@@ -499,7 +791,7 @@ def run_walk_forward(
         test_trades, _ = simulate_trades(test_slice, atr_pct_min, atr_pct_max)
         test_metrics = calculate_metrics(test_trades, test_slice)
 
-        # Degradação (quanto o WR caiu do treino pro teste)
+        # Degradação
         if train_metrics.win_rate > 0:
             degradation = (train_metrics.win_rate - test_metrics.win_rate) / train_metrics.win_rate * 100
         else:
@@ -527,5 +819,5 @@ def run_walk_forward(
         window_id += 1
         start += step_hours
 
-    logger.info("Walk-Forward concluído: %d janelas.", len(results))
+    logger.info("Walk-Forward concluido: %d janelas.", len(results))
     return results

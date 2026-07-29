@@ -13,6 +13,8 @@ Caracteristicas:
 - Circuit Breaker: detecta movimentos extremos de preco
 - Position Tracker: monitora posicoes abertas com trailing stop e break-even
 - Position Sizing: calcula tamanho de posicao baseado em risco % e ATR
+- Multi-Timeframe Filter: confirma tendencia em H4/D1 antes de sinal
+- Order Executor: executa ordens reais ou simuladas (dry-run)
 """
 
 from __future__ import annotations
@@ -29,7 +31,9 @@ from bot_state import get_bot_state
 from config import Settings
 from db import insert_closed_trade, insert_log, insert_signal
 from indicators import compute_indicators
+from multi_timeframe import get_mtf_filter
 from notifier import TelegramNotifier
+from order_executor import OrderSide, get_order_executor
 from position_sizing import get_position_sizer
 from position_tracker import get_position_tracker, PositionStatus
 from risk_manager import RiskBlockReason, get_risk_manager
@@ -50,6 +54,8 @@ class CTEVWorker:
         self.risk = get_risk_manager()
         self.sizer = get_position_sizer()
         self.tracker = get_position_tracker()
+        self.executor = get_order_executor()
+        self.mtf = get_mtf_filter()
         self.exchange: Optional[ccxt.binance] = None
         self.notifier: Optional[TelegramNotifier] = None
         self.last_processed_ts: Optional[pd.Timestamp] = None
@@ -101,13 +107,27 @@ class CTEVWorker:
             "max_position_pct": self.settings.position.max_position_pct,
         })
 
+        # Configura OrderExecutor
+        self.executor.configure({
+            "dry_run": self.settings.exchange.dry_run,
+            "exchange": self.exchange,
+        })
+
+        # Configura Multi-Timeframe Filter
+        self.mtf.configure({
+            "enabled": self.settings.multitf.enabled,
+            "cache_ttl": self.settings.multitf.cache_ttl_seconds,
+        })
+
         self.state.last_status_message = "Worker iniciado"
         insert_log(
             "INFO",
-            f"Worker CTEV v2.0 iniciado | symbol={self.settings.binance.symbol} "
+            f"Worker CTEV v3.0 iniciado | symbol={self.settings.binance.symbol} "
             f"balance=${self.settings.position.account_balance:,.0f} "
             f"risk={self.settings.position.risk_per_trade_pct*100:.1f}%/trade "
-            f"trailing={self.settings.position.trailing_atr_mult}xATR",
+            f"trailing={self.settings.position.trailing_atr_mult}xATR "
+            f"mtf={'ON' if self.settings.multitf.enabled else 'OFF'} "
+            f"executor={'DRY-RUN' if self.settings.exchange.dry_run else 'LIVE'}",
             "worker",
         )
 
@@ -225,6 +245,17 @@ class CTEVWorker:
                 self.last_processed_ts = closed_candle_ts
                 return
 
+        # ---- MULTI-TIMEFRAME ANALYSIS ----
+        if self.mtf.enabled:
+            try:
+                mtf_result = await self.mtf.analyze(
+                    self.exchange,
+                    self.settings.binance.symbol,
+                )
+            except Exception as exc:
+                logger.warning("MTF analysis falhou: %s (continuando sem filtro)", exc)
+                mtf_result = None
+
         # ---- VALIDACAO DE RISCO ----
         last_row = df_ind.iloc[-1]
         atr_pct = float(last_row.get("atr_percentile", 0.5))
@@ -279,6 +310,23 @@ class CTEVWorker:
             self.last_processed_ts = closed_candle_ts
             return
 
+        # ---- MULTI-TIMEFRAME FILTER ----
+        if self.mtf.enabled:
+            allowed, reason = self.mtf.allows_signal(signal.type.value, mtf_result)
+            if not allowed:
+                self.state.last_status_message = f"MTF bloqueou: {reason}"
+                insert_log("WARNING", reason, "mtf")
+                if self.notifier is not None:
+                    try:
+                        await self.notifier.send_text(
+                            f"⏳ *MULTI-TF FILTER* — Sinal {signal.type.value} bloqueado\n"
+                            f"{reason}"
+                        )
+                    except Exception:
+                        pass
+                self.last_processed_ts = closed_candle_ts
+                return
+
         # ---- SINAL GERADO — Abrir posicao ----
         self.risk.register_signal(str(closed_candle_ts))
 
@@ -313,7 +361,20 @@ class CTEVWorker:
             partial_tp_pct=self.settings.position.partial_tp_pct,
         )
 
-        # Telegram: notificacao completa com sizing
+        # Order Executor: envia ordem real ou simulada
+        order_side = OrderSide.BUY if signal.type.value == "LONG" else OrderSide.SELL
+        order = self.executor.execute_market(
+            symbol=self.settings.binance.symbol,
+            side=order_side,
+            amount=pos_size.position_size,
+            price=signal.entry_price,
+        )
+
+        if order.status.value == "failed" and not self.executor.dry_run:
+            logger.error("Ordem FALHOU na exchange: %s", order.error)
+            insert_log("ERROR", f"Ordem falhou: {order.error}", "worker")
+
+        # Telegram: notificacao completa com sizing + MTF + executor
         if self.notifier is not None:
             try:
                 await self.notifier.send_position_open(
@@ -324,6 +385,9 @@ class CTEVWorker:
                         "risk_usd": pos_size.risk_usd,
                         "risk_pct": pos_size.risk_pct,
                         "leverage": pos_size.leverage,
+                        "mtf": mtf_result.to_dict() if mtf_result else None,
+                        "executor": "DRY-RUN" if self.executor.dry_run else "LIVE",
+                        "order_id": order.id,
                     },
                     self.settings.binance.symbol,
                 )
@@ -333,10 +397,11 @@ class CTEVWorker:
                 insert_log("ERROR", f"Telegram envio: {exc}", "worker")
 
         self.state.last_signal_ts = now_iso
+        exec_mode = "DRY-RUN" if self.executor.dry_run else "LIVE"
         self.state.last_status_message = (
             f"Posicao #{position.id} {signal.type.value} aberta em {signal.entry_price:.2f} "
             f"| SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
-            f"size={pos_size.position_usd:,.2f}USD"
+            f"size={pos_size.position_usd:,.2f}USD [{exec_mode}]"
         )
         self.last_processed_ts = closed_candle_ts
 
@@ -344,7 +409,8 @@ class CTEVWorker:
             "INFO",
             f"Posicao #{position.id} {signal.type.value} aberta | "
             f"entry={signal.entry_price:.2f} SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
-            f"size={pos_size.position_usd:,.2f}USD risk={pos_size.risk_usd:,.2f}USD",
+            f"size={pos_size.position_usd:,.2f}USD risk={pos_size.risk_usd:,.2f}USD "
+            f"order={order.id} [{exec_mode}]",
             "worker",
         )
 
@@ -362,6 +428,10 @@ class CTEVWorker:
         close = float(last["close"])
         high = float(last["high"])
         low = float(last["low"])
+
+        prev_trailing = {}
+        for pos in self.tracker.open_positions:
+            prev_trailing[pos.id] = pos.trailing_stop if pos.trailing_activated else pos.stop_loss
 
         closed_positions = self.tracker.update_positions(
             candle_close=close,
@@ -433,6 +503,19 @@ class CTEVWorker:
                 f"{pos.pnl_pct:+.2f}% (${pos.pnl_usd:+,.2f})"
             )
 
+        # Notifica atualizacoes de trailing
+        if self.notifier is not None:
+            for pos in self.tracker.open_positions:
+                old_sl = prev_trailing.get(pos.id)
+                new_sl = pos.trailing_stop if pos.trailing_activated else pos.stop_loss
+                if old_sl and new_sl and abs(new_sl - old_sl) > 0.01:
+                    try:
+                        await self.notifier.send_trailing_update(
+                            pos.type, new_sl, pos.entry_price,
+                        )
+                    except Exception:
+                        pass
+
     def _get_position_status_text(self) -> str:
         pos = self.tracker.get_open_position()
         if pos is None:
@@ -462,6 +545,7 @@ class CTEVWorker:
             )
 
             # Fecha todas as posicoes abertas
+            closed = []
             if self.tracker.has_open_positions:
                 closed = self.tracker.close_all(
                     exit_price=curr_close,
@@ -490,12 +574,12 @@ class CTEVWorker:
                         pass
 
             self.state.last_status_message = (
-                f"CIRCUIT BREAKER: {move_pct:.2f}% detectado! Posicoes fechadas."
+                f"CIRCUIT BREAKER: {move_pct:.2f}% detectado! {len(closed)} posicoes fechadas."
             )
             insert_log(
                 "CRITICAL",
                 f"Circuit Breaker: {move_pct:.2f}% (limite {cb_pct}%). "
-                f"{len(closed) if closed else 0} posicoes fechadas.",
+                f"{len(closed)} posicoes fechadas.",
                 "risk",
             )
 

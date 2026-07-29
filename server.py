@@ -44,6 +44,9 @@ from db import (
     list_recent_signals,
     list_recent_trades,
 )
+from multi_timeframe import get_mtf_filter
+from order_executor import get_order_executor
+from optimizer import get_optimizer
 from position_sizing import get_position_sizer
 from position_tracker import get_position_tracker
 from risk_manager import get_risk_manager
@@ -57,7 +60,7 @@ app = FastAPI(
     title="CTEV Trading Bot - Painel Administrativo",
     description="Bot de sinais CTEV para BTC/USD 1H com painel web, "
                 "RiskManager e Backtesting.",
-    version="2.1.0",
+    version="3.0.0",
 )
 
 _worker: Optional[CTEVWorker] = None
@@ -65,6 +68,9 @@ _settings: Optional[Settings] = None
 _backtest_task: Optional[asyncio.Task] = None
 _backtest_result: Optional[dict] = None
 _backtest_running: bool = False
+_optimizer_task: Optional[asyncio.Task] = None
+_optimizer_result: Optional[dict] = None
+_optimizer_running: bool = False
 
 
 def get_worker() -> CTEVWorker:
@@ -90,7 +96,10 @@ async def _on_startup() -> None:
         _settings = load_settings()
     except RuntimeError as exc:
         logger.error("Falha ao carregar settings: %s", exc)
-        from config import BinanceConfig, PositionConfig, Settings as S, TelegramConfig, RiskConfig
+        from config import (
+            BinanceConfig, ExchangeConfig, MultiTFConfig, OptimizerConfig,
+            PositionConfig, Settings as S, TelegramConfig, RiskConfig,
+        )
         _settings = S(
             telegram=TelegramConfig(token="", chat_id=""),
             binance=BinanceConfig(
@@ -101,6 +110,9 @@ async def _on_startup() -> None:
             ),
             risk=RiskConfig(),
             position=PositionConfig(),
+            exchange=ExchangeConfig(),
+            multitf=MultiTFConfig(),
+            optimizer=OptimizerConfig(),
             loop_interval_seconds=int(os.getenv("LOOP_INTERVAL_SECONDS", "60")),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
@@ -132,7 +144,7 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 async def health() -> JSONResponse:
     return JSONResponse(
         status_code=200,
-        content={"status": "ok", "service": "ctev-bot", "version": "2.0.0"},
+        content={"status": "ok", "service": "ctev-bot", "version": "3.0.0"},
     )
 
 
@@ -247,7 +259,7 @@ async def api_backtest(days: int = 365) -> dict:
         global _backtest_result, _backtest_running
         try:
             from backtest import run_backtest
-            metrics, trades = run_backtest(days=days)
+            metrics, trades = run_backtest(days=days, advanced=True)
             _backtest_result = {
                 "ok": True,
                 "metrics": metrics.to_dict(),
@@ -262,6 +274,10 @@ async def api_backtest(days: int = 365) -> dict:
                         "exit_reason": t.exit_reason,
                         "bars_held": t.bars_held,
                         "atr_percentile": t.atr_percentile,
+                        "be_triggered": t.be_triggered,
+                        "trailing_activated": t.trailing_activated,
+                        "partial_tp_filled": t.partial_tp_filled,
+                        "position_usd": t.position_usd,
                     }
                     for t in trades
                 ],
@@ -299,6 +315,111 @@ async def api_positions() -> dict:
     """Retorna posicoes abertas e historico de trades."""
     tracker = get_position_tracker()
     return tracker.snapshot()
+
+
+@app.get("/api/mtf", summary="Analise multi-timeframe H4/D1")
+async def api_multitf() -> dict:
+    """Retorna o estado do filtro multi-timeframe."""
+    return get_mtf_filter().snapshot()
+
+
+@app.get("/api/executor", summary="Estado do executor de ordens")
+async def api_executor() -> dict:
+    """Retorna o estado do executor de ordens."""
+    return get_order_executor().snapshot()
+
+
+@app.get("/api/optimizer", summary="Estado e resultados do otimizador")
+async def api_optimizer() -> dict:
+    """Retorna o estado e melhores parametros do otimizador."""
+    return get_optimizer().snapshot()
+
+
+@app.post("/api/optimizer/run", summary="Dispara otimizacao de parametros")
+async def api_optimizer_run(days: int = 180) -> dict:
+    """Executa otimizacao de parametros (assincrona)."""
+    global _optimizer_task, _optimizer_result, _optimizer_running
+
+    if _optimizer_running:
+        return {"ok": False, "error": "Otimizacao ja em andamento."}
+
+    _optimizer_running = True
+    _optimizer_result = None
+
+    async def _run_opt():
+        global _optimizer_result, _optimizer_running
+        try:
+            from optimizer import get_optimizer as _get_opt
+            opt = _get_opt()
+            results = opt.run_grid_search(days=days)
+            _optimizer_result = {
+                "ok": True,
+                "total_results": len(results),
+                "best": results[0].to_dict() if results else None,
+                "top_5": [r.to_dict() for r in results[:5]] if results else [],
+            }
+            insert_log(
+                "INFO",
+                f"Otimizacao concluida: {len(results)} combinacoes avaliadas.",
+                "optimizer",
+            )
+        except Exception as exc:
+            logger.exception("Otimizacao falhou: %s", exc)
+            _optimizer_result = {"ok": False, "error": str(exc)}
+            insert_log("ERROR", f"Otimizacao falhou: {exc}", "optimizer")
+        finally:
+            _optimizer_running = False
+
+    _optimizer_task = asyncio.create_task(_run_opt())
+    return {"ok": True, "message": f"Otimizacao iniciada ({days} dias). Consulte /api/optimizer/status."}
+
+
+@app.get("/api/optimizer/status", summary="Status do otimizador")
+async def api_optimizer_status() -> dict:
+    """Retorna status e resultado do otimizador."""
+    global _optimizer_result, _optimizer_running
+    if _optimizer_running:
+        return {"status": "running", "progress": get_optimizer().snapshot()["progress"]}
+    if _optimizer_result is not None:
+        return {"status": "done", "result": _optimizer_result}
+    return {"status": "none", "result": None}
+
+
+@app.post("/api/executor/toggle-dry-run", summary="Alterna modo dry-run")
+async def api_toggle_dry_run() -> dict:
+    """Alterna entre dry-run e live execution."""
+    executor = get_order_executor()
+    new_mode = not executor.dry_run
+    executor.dry_run = new_mode
+    insert_log(
+        "WARNING",
+        f"Executor modo alterado: {'LIVE' if not new_mode else 'DRY-RUN'}",
+        "server",
+    )
+    return {"ok": True, "dry_run": new_mode}
+
+
+@app.get("/api/status", summary="Estado completo do bot")
+async def api_status() -> dict:
+    state = get_bot_state().snapshot()
+    risk = get_risk_manager().snapshot()
+    tracker = get_position_tracker()
+    sizer = get_position_sizer()
+    mtf = get_mtf_filter().snapshot()
+    executor = get_order_executor().snapshot()
+    return {
+        "bot": state,
+        "risk": risk,
+        "position": sizer.snapshot(),
+        "positions": tracker.snapshot(),
+        "multitf": mtf,
+        "executor": executor,
+        "trades_summary": get_trades_summary(),
+        "symbol": get_settings().binance.symbol,
+        "timeframe": get_settings().binance.timeframe,
+        "signals_today": count_signals_today(),
+        "signals_today_by_type": count_signals_by_type_today(),
+    }
 
 
 @app.get("/api/trades", summary="Trades fechados com summary")

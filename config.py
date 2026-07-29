@@ -68,12 +68,37 @@ class PositionConfig:
 
 
 @dataclass(frozen=True)
+class ExchangeConfig:
+    """Configuracoes de execucao de ordens na exchange."""
+    dry_run: bool = True                  # True = simulacao (padrao seguro)
+    order_type: str = "market"           # "market" ou "limit"
+    slippage_pct: float = 0.05           # 0.05% slippage estimado
+
+
+@dataclass(frozen=True)
+class MultiTFConfig:
+    """Configuracoes do filtro multi-timeframe (H4/D1)."""
+    enabled: bool = True                  # Filtro MTF ativo
+    cache_ttl_seconds: int = 900          # 15 min cache (H4 = 4h candle)
+
+
+@dataclass(frozen=True)
+class OptimizerConfig:
+    """Configuracoes do otimizador de parametros."""
+    max_combos: int = 500                 # Max combinacoes para avaliar
+    default_days: int = 180               # Dias de dados para otimizacao
+
+
+@dataclass(frozen=True)
 class Settings:
     """Agrega todas as configuracoes do bot CTEV."""
     telegram: TelegramConfig
     binance: BinanceConfig
     risk: RiskConfig
     position: PositionConfig
+    exchange: ExchangeConfig
+    multitf: MultiTFConfig
+    optimizer: OptimizerConfig
     loop_interval_seconds: int = 60
     log_level: str = "INFO"
 
@@ -130,11 +155,30 @@ def load_settings() -> Settings:
         max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "1")),
     )
 
+    exchange = ExchangeConfig(
+        dry_run=os.getenv("EXCHANGE_DRY_RUN", "true").lower() in ("true", "1", "yes"),
+        order_type=os.getenv("EXCHANGE_ORDER_TYPE", "market"),
+        slippage_pct=float(os.getenv("EXCHANGE_SLIPPAGE_PCT", "0.05")),
+    )
+
+    multitf = MultiTFConfig(
+        enabled=os.getenv("MULTITF_ENABLED", "true").lower() in ("true", "1", "yes"),
+        cache_ttl_seconds=int(os.getenv("MULTITF_CACHE_TTL", "900")),
+    )
+
+    optimizer = OptimizerConfig(
+        max_combos=int(os.getenv("OPTIMIZER_MAX_COMBOS", "500")),
+        default_days=int(os.getenv("OPTIMIZER_DEFAULT_DAYS", "180")),
+    )
+
     return Settings(
         telegram=telegram,
         binance=binance,
         risk=risk,
         position=position,
+        exchange=exchange,
+        multitf=multitf,
+        optimizer=optimizer,
         loop_interval_seconds=int(os.getenv("LOOP_INTERVAL_SECONDS", "60")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )

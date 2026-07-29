@@ -60,7 +60,7 @@ def _format_signal_message(signal: Signal, symbol: str) -> str:
         f"• BB Lower: `{signal.bb_lower:.2f}`\n"
         f"• BB Upper: `{signal.bb_upper:.2f}`\n"
         f"\n"
-        f"_Estratégia CTEV v2.0 — Risk Manager ativo_"
+        f"_Estratégia CTEV v3.0 — Risk Manager ativo_"
     )
     return msg
 
@@ -104,7 +104,7 @@ class TelegramNotifier:
             logger.exception("Falha ao enviar texto ao Telegram: %s", exc)
 
     async def send_position_open(self, signal: Signal, position_info: dict, symbol: str) -> None:
-        """Envia notificacao detalhada de abertura de posicao com sizing."""
+        """Envia notificacao detalhada de abertura de posicao com sizing + MTF."""
         base_msg = _format_signal_message(signal, symbol)
         sizing = (
             f"\n"
@@ -115,15 +115,32 @@ class TelegramNotifier:
             f"• Risco: `$`{position_info.get('risk_usd', 0):,.2f}` ({position_info.get('risk_pct', 0) * 100:.1f}%)\n"
             f"• Alavancagem: `{position_info.get('leverage', 0):.2f}x`\n"
         )
+
+        # Phase 3: MTF info
+        mtf = position_info.get('mtf')
+        mtf_str = ""
+        if mtf:
+            mtf_str = (
+                f"\n"
+                f"📊 *Multi-Timeframe:*\n"
+                f"• H4: `{mtf.get('h4_trend', '?')}` | D1: `{mtf.get('d1_trend', '?')}`\n"
+                f"• Confluencia: `{mtf.get('confluence', '?')}`\n"
+            )
+
+        # Phase 3: Executor mode
+        exec_mode = position_info.get('executor', 'DRY-RUN')
+        exec_str = f"\n⚡ Modo: `{exec_mode}`"
+        if position_info.get('order_id'):
+            exec_str += f" | Order: `{position_info['order_id']}`"
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=base_msg + sizing,
+                text=base_msg + sizing + mtf_str + exec_str,
                 parse_mode=ParseMode.MARKDOWN,
             )
         except Exception:
             try:
-                await self.bot.send_message(chat_id=self.chat_id, text=base_msg + sizing)
+                await self.bot.send_message(chat_id=self.chat_id, text=base_msg + sizing + mtf_str + exec_str)
             except Exception:
                 pass
 
@@ -177,7 +194,7 @@ class TelegramNotifier:
                     f"PnL: `{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%`\n"
                     f"PnL $: `{'+' if pnl_usd >= 0 else ''}{pnl_usd:,.2f}`\n"
                     f"{feat_str}\n"
-                    f"\n_CTEV Bot v2.0 — Position Manager_"
+                    f"\n_CTEV Bot v3.0 — Position Manager_"
                 ),
                 parse_mode=ParseMode.MARKDOWN,
             )

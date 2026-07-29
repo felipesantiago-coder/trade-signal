@@ -112,6 +112,26 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_trades_ts ON closed_trades(ts DESC);
+
+        CREATE TABLE IF NOT EXISTS optimizer_results (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts              TEXT    NOT NULL,
+            rsi_long        REAL,
+            rsi_short       REAL,
+            bb_period       INTEGER,
+            bb_std          REAL,
+            vol_multiplier REAL,
+            sl_atr_mult     REAL,
+            tp_atr_mult     REAL,
+            total_trades    INTEGER,
+            win_rate        REAL,
+            profit_factor   REAL,
+            sharpe_ratio    REAL,
+            max_drawdown    REAL,
+            score           REAL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_optimizer_ts ON optimizer_results(ts DESC);
         """
     )
 
