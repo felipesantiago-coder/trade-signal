@@ -435,7 +435,6 @@ async def api_trades(limit: int = 50) -> dict:
 @app.post("/api/close-positions", summary="Fecha todas as posicoes abertas")
 async def api_close_positions(price: Optional[float] = None) -> dict:
     """Fecha todas as posicoes no preco atual ou especifico."""
-    import ccxt.async_support as ccxt_async
     tracker = get_position_tracker()
     if not tracker.has_open_positions:
         return {"ok": True, "closed": 0, "message": "Nenhuma posicao aberta."}
@@ -443,10 +442,13 @@ async def api_close_positions(price: Optional[float] = None) -> dict:
     # Busca preco atual se nao especificado
     if price is None:
         try:
-            ex_id = get_settings().binance.exchange_id
-            ex_class = getattr(ccxt_async, ex_id, ccxt_async.binance)
-            exchange = ex_class({"enableRateLimit": True})
-            ticker = await exchange.fetch_ticker(get_settings().binance.symbol)
+            from exchange_loader import ExchangeLoader
+            loader = ExchangeLoader()
+            exchange, ex_info = await loader.connect(
+                preferred_id=get_settings().binance.exchange_id,
+                symbol=get_settings().binance.symbol,
+            )
+            ticker = await exchange.fetch_ticker(ex_info.symbol)
             price = ticker["last"]
             await exchange.close()
         except Exception as exc:

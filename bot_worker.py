@@ -30,6 +30,7 @@ import pandas as pd
 from bot_state import get_bot_state
 from config import Settings
 from db import insert_closed_trade, insert_log, insert_signal
+from exchange_loader import ExchangeLoader, ExchangeInfo
 from indicators import compute_indicators
 from multi_timeframe import get_mtf_filter
 from notifier import TelegramNotifier
@@ -57,6 +58,7 @@ class CTEVWorker:
         self.executor = get_order_executor()
         self.mtf = get_mtf_filter()
         self.exchange = None  # type: Optional[ccxt.Exchange]
+        self.exchange_info: Optional[ExchangeInfo] = None
         self.notifier: Optional[TelegramNotifier] = None
         self.last_processed_ts: Optional[pd.Timestamp] = None
         self._task: Optional[asyncio.Task] = None
@@ -65,26 +67,30 @@ class CTEVWorker:
     # Lifecycle
     # ------------------------------------------------------------------
     async def start(self) -> None:
+        # Conecta exchange com fallback automatico
         try:
-            ex_class = getattr(ccxt, self.settings.binance.exchange_id)
-            if ex_class is None:
-                raise RuntimeError(
-                    f"Exchange '{self.settings.binance.exchange_id}' nao encontrada no ccxt."
-                )
-            self.exchange = ex_class({
-                "apiKey": self.settings.binance.api_key,
-                "secret": self.settings.binance.api_secret,
-                "enableRateLimit": True,
-                "options": {"defaultType": "spot"},
-            })
+            loader = ExchangeLoader()
+            self.exchange, self.exchange_info = await loader.connect(
+                preferred_id=self.settings.binance.exchange_id,
+                symbol=self.settings.binance.symbol,
+                api_key=self.settings.binance.api_key,
+                api_secret=self.settings.binance.api_secret,
+            )
             logger.info(
-                "Exchange inicializada: %s (%s)",
-                self.settings.binance.exchange_id,
-                self.exchange.urls.get("www", ""),
+                "Exchange conectada: %s (symbol=%s)",
+                self.exchange_info.exchange_id,
+                self.exchange_info.symbol,
+            )
+            insert_log(
+                "INFO",
+                f"Exchange conectada via fallback: {self.exchange_info.exchange_id} "
+                f"symbol={self.exchange_info.symbol} "
+                f"(original={self.exchange_info.original_symbol})",
+                "worker",
             )
         except Exception as exc:
-            logger.exception("Falha ao inicializar ccxt/Binance: %s", exc)
-            insert_log("ERROR", f"Falha ao inicializar Binance: {exc}", "worker")
+            logger.exception("Falha ao conectar exchange: %s", exc)
+            insert_log("ERROR", f"Falha ao conectar exchange: {exc}", "worker")
             self.state.last_error = str(exc)
 
         try:
@@ -130,10 +136,12 @@ class CTEVWorker:
         })
 
         self.state.last_status_message = "Worker iniciado"
+        ex_id = self.exchange_info.exchange_id if self.exchange_info else "?"
+        ex_sym = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
         insert_log(
             "INFO",
-            f"Worker CTEV v3.1 iniciado | exchange={self.settings.binance.exchange_id} "
-            f"symbol={self.settings.binance.symbol} "
+            f"Worker CTEV v3.2 iniciado | exchange={ex_id} "
+            f"symbol={ex_sym} "
             f"balance=${self.settings.position.account_balance:,.0f} "
             f"risk={self.settings.position.risk_per_trade_pct*100:.1f}%/trade "
             f"trailing={self.settings.position.trailing_atr_mult}xATR "
@@ -259,9 +267,10 @@ class CTEVWorker:
         # ---- MULTI-TIMEFRAME ANALYSIS ----
         if self.mtf.enabled:
             try:
+                mtf_symbol = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
                 mtf_result = await self.mtf.analyze(
                     self.exchange,
-                    self.settings.binance.symbol,
+                    mtf_symbol,
                 )
             except Exception as exc:
                 logger.warning("MTF analysis falhou: %s (continuando sem filtro)", exc)
@@ -600,13 +609,14 @@ class CTEVWorker:
     async def _fetch_candles(self) -> pd.DataFrame:
         if self.exchange is None:
             raise RuntimeError("Exchange nao inicializada.")
+        symbol = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
         ohlcv = await self.exchange.fetch_ohlcv(
-            symbol=self.settings.binance.symbol,
+            symbol=symbol,
             timeframe=self.settings.binance.timeframe,
             limit=CANDLE_LIMIT,
         )
         if not ohlcv:
-            raise RuntimeError("Resposta vazia da Binance.")
+            raise RuntimeError(f"Resposta vazia de {self.exchange_info.exchange_id}.")
         df = pd.DataFrame(
             ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
         )
