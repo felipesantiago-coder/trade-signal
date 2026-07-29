@@ -1,0 +1,33 @@
+# ============================================================
+# CTEV Bot — Docker Ignore
+# ============================================================
+
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+
+# Ambiente local
+.env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Node (Tailwind — já pré-compilado)
+node_modules/
+package-lock.json
+
+# Deploy files desnecessários no container
+render.yaml
+Procfile
+
+# Documentação
+README.md

@@ -1,0 +1,67 @@
+# ============================================================
+# CTEV Bot — Docker Compose
+# ============================================================
+# Uso: docker compose up -d
+# ============================================================
+
+services:
+  ctev-bot:
+    build: .
+    container_name: ctev-bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # ---- Obrigatórias ----
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      - EXCHANGE_ID=binance
+
+      # ---- Telegram (preencha com seus valores) ----
+      # - TELEGRAM_BOT_TOKEN=123456789:AAAA...
+      # - TELEGRAM_CHAT_ID=-1001234567890
+
+      # ---- Exchange (opcional, para dry-run não precisa) ----
+      # - BINANCE_API_KEY=sua_key
+      # - BINANCE_API_SECRET=sua_secret
+
+      # ---- Trading ----
+      - BINANCE_SYMBOL=BTC/USDT
+      - BINANCE_TIMEFRAME=1h
+      - LOOP_INTERVAL_SECONDS=60
+
+      # ---- Risk ----
+      - MAX_DAILY_LOSS_PCT=5.0
+      - MAX_WEEKLY_LOSS_PCT=10.0
+      - MAX_CONSECUTIVE_LOSSES=5
+      - CIRCUIT_BREAKER_PCT=3.0
+      - COOLDOWN_CANDLES=3
+      - COOLDOWN_HOURS=12
+      - ATR_PCT_MIN=0.20
+      - ATR_PCT_MAX=0.80
+
+      # ---- Position ----
+      - ACCOUNT_BALANCE=10000.0
+      - RISK_PER_TRADE_PCT=0.01
+      - MIN_POSITION_USD=10.0
+      - MAX_POSITION_PCT=0.10
+      - MAX_OPEN_POSITIONS=1
+      - BE_TRIGGER_ATR_MULT=1.0
+      - TRAILING_ATR_MULT=1.5
+      - PARTIAL_TP_PCT=0.50
+
+      # ---- Executor ----
+      - EXCHANGE_DRY_RUN=true
+      - EXCHANGE_ORDER_TYPE=market
+      - EXCHANGE_SLIPPAGE_PCT=0.05
+
+      # ---- MTF ----
+      - MULTITF_ENABLED=true
+      - MULTITF_CACHE_TTL=900
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
