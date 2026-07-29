@@ -49,6 +49,108 @@ from strategy import (
 
 logger = logging.getLogger("ctev.backtest")
 
+# ------------------------------------------------------------------
+# Geo-fallback sincrono para backtest (ccxt sync)
+# ------------------------------------------------------------------
+_FALLBACK_CHAIN = [
+    "binance", "bybit", "kucoin", "okx",
+    "gate", "bitget", "kraken", "coinbase",
+]
+
+_GEOBLOCK_CODES = {403, 451}
+_GEOBLOCK_MESSAGES = (
+    "restricted location",
+    "block access from your country",
+    "service unavailable from a restricted",
+    "access denied",
+    "forbidden",
+)
+
+_USD_ONLY_EXCHANGES = {"coinbase", "kraken", "gemini"}
+
+_PAIR_MAP = {
+    "BTC/USDT": "BTC/USD",
+    "ETH/USDT": "ETH/USD",
+    "BNB/USDT": "BNB/USD",
+    "SOL/USDT": "SOL/USD",
+    "XRP/USDT": "XRP/USD",
+    "ADA/USDT": "ADA/USD",
+    "DOGE/USDT": "DOGE/USD",
+    "AVAX/USDT": "AVAX/USD",
+    "DOT/USDT": "DOT/USD",
+    "MATIC/USDT": "MATIC/USD",
+}
+
+
+def _is_geoblock(exc: Exception) -> bool:
+    """Verifica se a excecao indica geo-bloqueio."""
+    err_str = str(exc).lower()
+    status = getattr(exc, "status", 0) or getattr(
+        getattr(exc, "response", None), "status_code", 0
+    )
+    return (
+        status in _GEOBLOCK_CODES
+        or any(msg in err_str for msg in _GEOBLOCK_MESSAGES)
+    )
+
+
+def _pick_exchange_and_symbol(
+    preferred_id: str, symbol: str,
+) -> Tuple[ccxt.Exchange, str, str]:
+    """
+    Tenta conectar em exchanges com geo-fallback sincrono.
+    Retorna (exchange_instance, effective_symbol, exchange_id).
+    """
+    chain = list(_FALLBACK_CHAIN)
+    if preferred_id not in chain:
+        chain.insert(0, preferred_id)
+    else:
+        chain.remove(preferred_id)
+        chain.insert(0, preferred_id)
+
+    for ex_id in chain:
+        ex_class = getattr(ccxt, ex_id, None)
+        if ex_class is None:
+            continue
+
+        # Resolve par: USDT -> USD para exchanges US-only
+        effective_symbol = symbol
+        if ex_id in _USD_ONLY_EXCHANGES:
+            effective_symbol = _PAIR_MAP.get(
+                symbol, symbol.replace("/USDT", "/USD")
+            )
+
+        try:
+            exchange = ex_class({"enableRateLimit": True})
+            ticker = exchange.fetch_ticker(effective_symbol)
+            if ticker and ticker.get("last"):
+                logger.info(
+                    "Backtest exchange conectada: %s (par=%s)",
+                    ex_id, effective_symbol,
+                )
+                return exchange, effective_symbol, ex_id
+            exchange.close()
+        except Exception as exc:
+            try:
+                exchange.close()
+            except Exception:
+                pass
+            if _is_geoblock(exc):
+                logger.warning(
+                    "Backtest: %s geo-bloqueada, tentando proxima...", ex_id
+                )
+            else:
+                logger.warning(
+                    "Backtest: %s falhou (%s), tentando proxima...",
+                    ex_id, exc,
+                )
+            continue
+
+    raise RuntimeError(
+        f"Impossivel conectar em nenhuma exchange para backtest. "
+        f"Tentadas: {', '.join(chain)}"
+    )
+
 
 # ------------------------------------------------------------------
 # Estruturas de dados para resultados
@@ -165,44 +267,71 @@ def fetch_historical_ohlcv(
     since_days_ago: int = 365,
 ) -> pd.DataFrame:
     """
-    Baixa dados historicos da Binance via ccxt (sem autenticacao).
+    Baixa dados historicos via ccxt (sem autenticacao) com geo-fallback.
 
-    O endpoint publico da Binance permite ate 1500 candles por request.
-    Para 1 ano de candles 1H (~8760), fazemos ~6 requests paginadas.
+    Tenta conectar na exchange preferida (EXCHANGE_ID env var); se geo-bloqueada,
+    faz fallback automatico pela cadeia binance->bybit->...->coinbase.
+
+    Paginacao robusta: avanca 1 candle por iteracao e so para quando
+    o exchange retorna batch vazio OU os timestamps param de avancar.
+    (Corrige bug onde exchanges com limit < 1000 interrompiam a coleta.)
 
     Returns:
         DataFrame com colunas open, high, low, close, volume e index datetime UTC.
     """
-    exchange_id = os.getenv("EXCHANGE_ID", "binance").lower()
-    exchange = getattr(ccxt, exchange_id, ccxt.binance)({"enableRateLimit": True})
+    preferred_id = os.getenv("EXCHANGE_ID", "binance").lower()
+    exchange, effective_symbol, ex_id = _pick_exchange_and_symbol(
+        preferred_id, symbol,
+    )
+
     since_ms = int(
         (datetime.now(timezone.utc).replace(tzinfo=None)
          - pd.Timedelta(days=since_days_ago)).timestamp() * 1000
     )
     all_ohlcv: list = []
+    last_ts = 0
+    max_iterations = since_days_ago * 24 + 100  # safety: max candles + buffer
+    iteration = 0
 
-    while True:
+    while iteration < max_iterations:
+        iteration += 1
         try:
-            logger.info(
-                "Baixando candles %s %s desde %s...",
-                symbol, timeframe, datetime.utcfromtimestamp(since_ms / 1000),
+            batch = exchange.fetch_ohlcv(
+                effective_symbol, timeframe,
+                since=since_ms, limit=1000,
             )
-            batch = exchange.fetch_ohlcv(symbol, timeframe, since=since_ms, limit=1000)
             if not batch:
                 break
-            all_ohlcv.extend(batch)
-            # Proximo batch: timestamp do ultimo candle + 1 candle
-            since_ms = batch[-1][0] + (60 * 60 * 1000)  # +1h em ms
-            if len(batch) < 1000:
+
+            batch_ts = batch[-1][0]
+
+            # Se o timestamp nao avancou, estamos num loop - parar
+            if batch_ts <= last_ts:
                 break
+            last_ts = batch_ts
+
+            all_ohlcv.extend(batch)
+
+            # Proximo batch: ultimo candle + 1 candle
+            since_ms = batch_ts + (60 * 60 * 1000)  # +1h em ms
+
+            logger.debug(
+                "Batch %d: %d candles de %s (%s), total=%d",
+                iteration, len(batch), effective_symbol,
+                datetime.utcfromtimestamp(batch[0][0] / 1000),
+                len(all_ohlcv),
+            )
+
         except Exception as exc:
-            logger.error("Erro ao baixar dados: %s", exc)
+            logger.error("Erro ao baixar dados (batch %d): %s", iteration, exc)
             break
 
     exchange.close()
 
     if not all_ohlcv:
-        raise RuntimeError("Nenhum dado historico baixado.")
+        raise RuntimeError(
+            f"Nenhum dado historico baixado de {ex_id} ({effective_symbol})."
+        )
 
     df = pd.DataFrame(all_ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
@@ -212,8 +341,8 @@ def fetch_historical_ohlcv(
     df.sort_index(inplace=True)
 
     logger.info(
-        "Download completo: %d candles (%s a %s)",
-        len(df), df.index[0], df.index[-1],
+        "Download completo de %s (%s): %d candles (%s a %s)",
+        ex_id, effective_symbol, len(df), df.index[0], df.index[-1],
     )
     return df
 
@@ -684,7 +813,7 @@ def calculate_metrics(
 def run_backtest(
     symbol: str = "BTC/USDT",
     timeframe: str = "1h",
-    days: int = 365,
+    days: int = 730,
     atr_pct_min: float = 0.20,
     atr_pct_max: float = 0.80,
     advanced: bool = False,
@@ -740,7 +869,7 @@ def run_backtest(
 def run_walk_forward(
     symbol: str = "BTC/USDT",
     timeframe: str = "1h",
-    total_days: int = 365,
+    total_days: int = 730,
     train_days: int = 180,
     test_days: int = 60,
     step_days: int = 60,

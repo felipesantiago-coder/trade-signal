@@ -893,7 +893,7 @@
         document.getElementById('backtestResults').classList.add('hidden');
 
         try {
-            const res = await api('POST', '/api/backtest?days=365');
+            const res = await api('POST', '/api/backtest?days=730');
             if (res.status === 'running') {
                 backtestPollTimer = setInterval(() => checkBacktestStatus(), 3000);
             } else if (res.status === 'done') {
@@ -1324,7 +1324,7 @@
         document.getElementById('optimizerProgressLabel').textContent = 'Iniciando otimização...';
 
         try {
-            await api('POST', '/api/optimizer/run?days=180');
+            await api('POST', '/api/optimizer/run?days=730');
             showToast('Otimização iniciada...', 'info');
             if (!optimizerPollTimer) {
                 optimizerPollTimer = setInterval(() => fetchOptimizerStatus(), 3000);

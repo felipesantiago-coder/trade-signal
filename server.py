@@ -240,7 +240,7 @@ async def api_resurrect() -> dict:
 
 
 @app.post("/api/backtest", summary="Dispara backtest da estrategia CTEV")
-async def api_backtest(days: int = 365) -> dict:
+async def api_backtest(days: int = 730) -> dict:
     """
     Executa backtest assincrono da estrategia CTEV.
 
@@ -336,7 +336,7 @@ async def api_optimizer() -> dict:
 
 
 @app.post("/api/optimizer/run", summary="Dispara otimizacao de parametros")
-async def api_optimizer_run(days: int = 180) -> dict:
+async def api_optimizer_run(days: int = 730) -> dict:
     """Executa otimizacao de parametros (assincrona)."""
     global _optimizer_task, _optimizer_result, _optimizer_running
 
