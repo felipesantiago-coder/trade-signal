@@ -1,0 +1,8 @@
+# Bot CTEV — Dependências Python 3.10+
+# Trading signals para BTC/USD (1H) — Long & Short
+
+ccxt>=4.2.0
+pandas>=2.0.0
+pandas-ta>=0.3.14b
+python-telegram-bot>=21.0
+python-dotenv>=1.0.0
