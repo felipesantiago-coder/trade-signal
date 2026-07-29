@@ -443,7 +443,9 @@ async def api_close_positions(price: Optional[float] = None) -> dict:
     # Busca preco atual se nao especificado
     if price is None:
         try:
-            exchange = ccxt_async.binance({"enableRateLimit": True})
+            ex_id = get_settings().binance.exchange_id
+            ex_class = getattr(ccxt_async, ex_id, ccxt_async.binance)
+            exchange = ex_class({"enableRateLimit": True})
             ticker = await exchange.fetch_ticker(get_settings().binance.symbol)
             price = ticker["last"]
             await exchange.close()

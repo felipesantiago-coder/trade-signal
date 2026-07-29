@@ -9,9 +9,12 @@ na raiz do projeto (NUNCA versionado - ver .gitignore).
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Optional
+
+logger = logging.getLogger("ctev.config")
 
 try:
     from dotenv import load_dotenv
@@ -32,11 +35,20 @@ class TelegramConfig:
     chat_id: str
 
 
+SUPPORTED_EXCHANGES = ("binance", "bybit", "kucoin", "okx", "gate", "bitget")
+
+
 @dataclass(frozen=True)
 class BinanceConfig:
-    """Configuracoes de acesso a Binance via ccxt."""
-    api_key: Optional[str]
-    api_secret: Optional[str]
+    """Configuracoes de acesso a exchange via ccxt.
+
+    exchange_id: ID da exchange ccxt (binance, bybit, kucoin, okx, gate, bitget).
+        Render (US) bloqueia a Binance — use 'bybit' ou 'kucoin' como alternativa.
+        Do Brasil ou UE, 'binance' funciona normalmente.
+    """
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    exchange_id: str = "binance"
     symbol: str = "BTC/USDT"
     timeframe: str = "1h"
 
@@ -126,11 +138,20 @@ def load_settings() -> Settings:
         chat_id=_require_env("TELEGRAM_CHAT_ID"),
     )
 
+    exchange_id = os.getenv("EXCHANGE_ID", "binance").lower()
+    if exchange_id not in SUPPORTED_EXCHANGES:
+        logger.warning(
+            "EXCHANGE_ID='%s' nao suportado. Opcoes: %s. Usando 'binance'.",
+            exchange_id, SUPPORTED_EXCHANGES,
+        )
+        exchange_id = "binance"
+
     binance = BinanceConfig(
-        api_key=os.getenv("BINANCE_API_KEY") or None,
-        api_secret=os.getenv("BINANCE_API_SECRET") or None,
-        symbol=os.getenv("BINANCE_SYMBOL", "BTC/USDT"),
-        timeframe=os.getenv("BINANCE_TIMEFRAME", "1h"),
+        exchange_id=exchange_id,
+        api_key=os.getenv("EXCHANGE_API_KEY") or os.getenv("BINANCE_API_KEY") or None,
+        api_secret=os.getenv("EXCHANGE_API_SECRET") or os.getenv("BINANCE_API_SECRET") or None,
+        symbol=os.getenv("EXCHANGE_SYMBOL") or os.getenv("BINANCE_SYMBOL", "BTC/USDT"),
+        timeframe=os.getenv("EXCHANGE_TIMEFRAME") or os.getenv("BINANCE_TIMEFRAME", "1h"),
     )
 
     risk = RiskConfig(

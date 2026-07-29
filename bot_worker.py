@@ -56,7 +56,7 @@ class CTEVWorker:
         self.tracker = get_position_tracker()
         self.executor = get_order_executor()
         self.mtf = get_mtf_filter()
-        self.exchange: Optional[ccxt.binance] = None
+        self.exchange = None  # type: Optional[ccxt.Exchange]
         self.notifier: Optional[TelegramNotifier] = None
         self.last_processed_ts: Optional[pd.Timestamp] = None
         self._task: Optional[asyncio.Task] = None
@@ -66,12 +66,22 @@ class CTEVWorker:
     # ------------------------------------------------------------------
     async def start(self) -> None:
         try:
-            self.exchange = ccxt.binance({
+            ex_class = getattr(ccxt, self.settings.binance.exchange_id)
+            if ex_class is None:
+                raise RuntimeError(
+                    f"Exchange '{self.settings.binance.exchange_id}' nao encontrada no ccxt."
+                )
+            self.exchange = ex_class({
                 "apiKey": self.settings.binance.api_key,
                 "secret": self.settings.binance.api_secret,
                 "enableRateLimit": True,
                 "options": {"defaultType": "spot"},
             })
+            logger.info(
+                "Exchange inicializada: %s (%s)",
+                self.settings.binance.exchange_id,
+                self.exchange.urls.get("www", ""),
+            )
         except Exception as exc:
             logger.exception("Falha ao inicializar ccxt/Binance: %s", exc)
             insert_log("ERROR", f"Falha ao inicializar Binance: {exc}", "worker")
@@ -122,7 +132,8 @@ class CTEVWorker:
         self.state.last_status_message = "Worker iniciado"
         insert_log(
             "INFO",
-            f"Worker CTEV v3.0 iniciado | symbol={self.settings.binance.symbol} "
+            f"Worker CTEV v3.1 iniciado | exchange={self.settings.binance.exchange_id} "
+            f"symbol={self.settings.binance.symbol} "
             f"balance=${self.settings.position.account_balance:,.0f} "
             f"risk={self.settings.position.risk_per_trade_pct*100:.1f}%/trade "
             f"trailing={self.settings.position.trailing_atr_mult}xATR "

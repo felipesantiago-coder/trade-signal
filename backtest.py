@@ -25,6 +25,7 @@ Referencias:
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -172,7 +173,8 @@ def fetch_historical_ohlcv(
     Returns:
         DataFrame com colunas open, high, low, close, volume e index datetime UTC.
     """
-    exchange = ccxt.binance({"enableRateLimit": True})
+    exchange_id = os.getenv("EXCHANGE_ID", "binance").lower()
+    exchange = getattr(ccxt, exchange_id, ccxt.binance)({"enableRateLimit": True})
     since_ms = int(
         (datetime.now(timezone.utc).replace(tzinfo=None)
          - pd.Timedelta(days=since_days_ago)).timestamp() * 1000
