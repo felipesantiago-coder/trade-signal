@@ -1,0 +1,41 @@
+# ============================================================
+# Render Blueprint — CTEV Bot
+# ============================================================
+# Deploy gratuito via Render Web Service.
+# Doc: https://render.com/docs/blueprint-spec
+# ============================================================
+
+services:
+  - type: web
+    name: ctev-bot
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Variáveis sensíveis devem ser configuradas no dashboard do Render
+      # (Settings → Environment) para não ficarem versionadas aqui.
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOOP_INTERVAL_SECONDS
+        value: "60"
+      - key: BINANCE_SYMBOL
+        value: BTC/USDT
+      - key: BINANCE_TIMEFRAME
+        value: 1h
+      # As duas abaixo DEVEM ser configuradas no dashboard:
+      # - key: TELEGRAM_BOT_TOKEN
+      #   sync: false
+      # - key: TELEGRAM_CHAT_ID
+      #   sync: false
+      # - key: BINANCE_API_KEY
+      #   sync: false
+      # - key: BINANCE_API_SECRET
+      #   sync: false

@@ -1,6 +1,6 @@
 # 🤖 Bot CTEV — Confluência de Tendência e Exaustão Volumétrica
 
-Sistema de sinalização de trading automatizado para **BTC/USD** em timeframe de **1 hora**, operando **LONG (compra)** e **SHORT (venda)** com confirmação institucional por volume.
+Sistema de sinalização de trading automatizado para **BTC/USD** em timeframe de **1 hora**, operando **LONG (compra)** e **SHORT (venda)** com confirmação institucional por volume, **com painel administrativo web** e pronto para deploy 24/7 em nuvem gratuita (Render/Koyeb).
 
 > ⚠️ **Aviso de risco**: Este software é fornecido apenas para fins educacionais e de pesquisa. Trading de criptomoedas envolve risco substancial de perda. Não constitui aconselhamento financeiro. Teste exaustivamente em paper-trading antes de qualquer uso com capital real.
 
@@ -48,38 +48,63 @@ A estratégia **CTEV** combina 4 confirmações independentes antes de emitir um
 
 ## 🏗️ Arquitetura
 
+A partir da versão 1.1.0 o sistema roda um **servidor web (FastAPI)** e um **background worker (loop de trading)** no mesmo processo, em paralelo, sem um bloquear o outro.
+
 ```
 ctev-bot/
-├── main.py            # Ponto de entrada, loop assíncrono e controle de tempo
-├── indicators.py      # Cálculo dos indicadores (EMA, BB, RSI, Vol SMA, ATR) com pandas-ta
-├── strategy.py        # Validação das condições LONG/SHORT e cálculo de SL/TP
-├── notifier.py        # Envio de sinais via Telegram (python-telegram-bot)
-├── config.py          # Carregamento de variáveis de ambiente (.env)
-├── requirements.txt   # Dependências Python
-├── .env.example       # Template de variáveis de ambiente
-├── .gitignore
+├── main.py               # Entry point: sobe Uvicorn na porta $PORT
+├── server.py             # App FastAPI: /health, /, /api/status, /api/start|stop, /api/signals, /api/logs
+├── bot_worker.py         # Background task: loop CTEV (respeita flag running)
+├── bot_state.py          # Estado compartilhado (running, last_check, ciclo, erros)
+├── db.py                 # SQLite em memória (sinais + logs)
+├── indicators.py         # EMA200, BB(20,2), RSI14, VolSMA20, ATR14 (pandas-ta)
+├── strategy.py           # Validação LONG/SHORT + cálculo SL/TP
+├── notifier.py           # Envio ao Telegram (python-telegram-bot)
+├── config.py             # Carregamento de .env
+├── templates/
+│   └── index.html        # Painel admin (Tailwind via CDN, polling 5s)
+├── render.yaml           # Deploy no Render (Blueprint)
+├── Procfile              # Deploy alternativo (Koyeb, Heroku-like)
+├── requirements.txt
+├── .env.example
 └── README.md
 ```
 
 ### Fluxo de execução
 
 ```
-[Binance API (ccxt)] → fetch 300 candles 1H
-        ↓
-[indicators.py] → EMA200, BB(20,2), RSI14, VolSMA20, ATR14
-        ↓
-[strategy.py] → avalia apenas o último candle FECHADO
-        ↓              (LONG / SHORT / nenhum)
-[notifier.py] → envia mensagem 🟢/🔴 para o Telegram
-        ↓
-aguarda 60s e repete
+                  ┌────────────────────────────────────┐
+                  │        main.py  (Uvicorn)          │
+                  │  porta: $PORT  (default 8000)      │
+                  └─────────────┬──────────────────────┘
+                                │
+              ┌─────────────────┴─────────────────┐
+              ▼                                   ▼
+   ┌────────────────────┐              ┌──────────────────────┐
+   │   server.py        │              │   bot_worker.py      │
+   │   (FastAPI)        │  compart.    │   (asyncio.Task)     │
+   │                    │◄────────────►│                      │
+   │ • /health          │  bot_state   │ Loop infinito:       │
+   │ • /                │   .running   │  fetch candles 1H    │
+   │ • /api/status      │              │  → indicators        │
+   │ • /api/signals     │  db.py       │  → strategy          │
+   │ • /api/logs        │   (SQLite    │  → notifier(Telegram)│
+   │ • /api/start|stop  │    in-mem)   │  → db.insert_signal  │
+   └─────────┬──────────┘              └──────────┬───────────┘
+             │                                    │
+             ▼                                    ▼
+   Painel HTML (Tailwind)              Binance API (ccxt)
+   polling 5s                           + Telegram Bot API
 ```
 
-O bot:
-- Roda em loop infinito assíncrono
-- Verifica a cada 60 segundos se um novo candle de 1H foi fechado
-- Só avalia o candle já fechado (nunca o em formação)
-- Não reprocessa o mesmo candle (controle por timestamp)
+### Características operacionais
+
+- **Loop paralelo sem bloqueio**: o servidor web responde mesmo enquanto o worker busca candles
+- **Pause/Resume via painel**: altera `bot_state.running` em memória
+- **Apenas candle fechado**: o worker só avalia o último candle quando `now >= close_ts`
+- **Sem reprocessamento**: controle por timestamp evita duplicar sinais
+- **Tolerante a falhas**: exceções no worker são logadas mas não derrubam o processo
+- **SQLite em memória**: ideal para filesystem efêmero dos planos gratuitos
 
 ---
 
@@ -91,7 +116,7 @@ O bot:
 - Conta na **Binance** (API key opcional para dados públicos, mas recomendada)
 - Bot do **Telegram** criado via [@BotFather](https://t.me/BotFather)
 
-### Passo a passo
+### Passo a passo (local)
 
 ```bash
 # 1. Clone o repositório
@@ -110,9 +135,12 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edite o .env com seu TOKEN do Telegram, CHAT_ID e chaves da Binance
 
-# 5. Execute o bot
+# 5. Execute o servidor + worker
 python main.py
+# ou: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Abra o painel em **http://localhost:8000**
 
 ---
 
@@ -128,6 +156,8 @@ python main.py
 | `BINANCE_TIMEFRAME` | Timeframe (default: `1h`) | ❌ |
 | `LOOP_INTERVAL_SECONDS` | Intervalo entre ciclos (default: `60`) | ❌ |
 | `LOG_LEVEL` | Nível de log: `DEBUG`/`INFO`/`WARNING`/`ERROR` | ❌ |
+| `PORT` | Porta HTTP (default: `8000`) — obrigatória em nuvem | ❌ |
+| `HOST` | Bind host (default: `0.0.0.0`) | ❌ |
 
 ### Como obter o `TELEGRAM_CHAT_ID`
 
@@ -169,7 +199,42 @@ Estratégia CTEV — Confluência de Tendência e Exaustão Volumétrica
 
 ---
 
-## 🛠️ Execução em produção
+## ☁️ Deploy em nuvem gratuita (24/7)
+
+O servidor escuta na porta definida por `PORT` e expõe `/health` para que serviços gratuitos (Render/Koyeb) não entrem em modo sleep.
+
+### Render (recomendado)
+
+1. Faça push do código para o GitHub (já configurado)
+2. Acesse https://render.com → **New +** → **Blueprint**
+3. Selecione o repositório `felipesantiago-coder/trade-signal`
+4. O Render detecta `render.yaml` automaticamente
+5. Em **Environment**, adicione as variáveis sensíveis (não versionadas):
+   - `TELEGRAM_BOT_TOKEN`
+   - `TELEGRAM_CHAT_ID`
+   - `BINANCE_API_KEY` (opcional)
+   - `BINANCE_API_SECRET` (opcional)
+6. Deploy → aguarde o build → acesse `https://ctev-bot.onrender.com`
+
+### Koyeb / Heroku-like
+
+Use o `Procfile` incluído:
+```
+web: uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+### Manter a instância acordada (UptimeRobot)
+
+1. Crie conta gratuita em https://uptimerobot.com
+2. **Add New Monitor** → tipo **HTTP(s)**
+3. URL: `https://<sua-app>.onrender.com/health`
+4. Intervalo: **5 minutos**
+
+Isso evita que o Render durma a instância gratuita após 15 min de inatividade.
+
+---
+
+## 🛠️ Execução em produção (VPS / local)
 
 Recomenda-se usar `systemd`, `tmux` ou `screen` para manter o bot rodando:
 
@@ -246,6 +311,34 @@ TP_ATR_MULT = 2.0
 ```
 
 Ajuste conforme seu backtest. Para um sistema mais robusto, considere mover estes parâmetros para o `.env` ou um arquivo `params.yaml`.
+
+---
+
+## 🖥️ Painel administrativo
+
+Acesse `/` para ver o painel com:
+
+- **Status do bot** (Online/Pausado) com indicador pulsante
+- **KPIs**: sinais hoje, breakdown LONG/SHORT, ciclos executados, erros, última verificação
+- **Tabela de sinais recentes** (data, tipo, entrada, SL, TP, RSI, status Telegram)
+- **Log do sistema** em tempo real (INFO/WARNING/ERROR)
+- **Botões Iniciar/Pausar** funcionais (alteram flag em memória)
+- **Polling automático a cada 5 segundos**
+
+Interface responsiva com Tailwind CSS via CDN, dark mode profissional.
+
+Endpoints REST disponíveis:
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/health` | 200 OK para liveness probes (UptimeRobot) |
+| GET | `/` | Painel HTML |
+| GET | `/api/status` | Estado completo do bot |
+| GET | `/api/signals?limit=50` | Sinais recentes |
+| GET | `/api/logs?limit=50` | Logs recentes |
+| POST | `/api/start` | Ativa o bot |
+| POST | `/api/stop` | Pausa o bot |
+| GET | `/docs` | Documentação OpenAPI interativa |
 
 ---
 

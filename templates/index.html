@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTEV Bot — Painel Administrativo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe',
+                            300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6',
+                            600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .pulse-dot { animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.85); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- Header -->
+<header class="border-b border-gray-800 bg-gray-900/50 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center font-bold text-white text-lg">
+                C
+            </div>
+            <div>
+                <h1 class="text-lg font-semibold leading-tight">CTEV Bot</h1>
+                <p class="text-xs text-gray-500 leading-tight">Confluência de Tendência e Exaustão Volumétrica</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="botStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800 text-sm">
+                <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
+                <span id="statusText" class="font-medium">Carregando...</span>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Controle rápido -->
+    <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h2 class="text-base font-semibold mb-1">Controle do Bot</h2>
+                <p id="statusMessage" class="text-sm text-gray-400">Aguardando primeiro ciclo...</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="btnStart" onclick="controlBot('start')"
+                    class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M6 4l10 6-10 6V4z"/></svg>
+                    Iniciar
+                </button>
+                <button id="btnStop" onclick="controlBot('stop')"
+                    class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4h4v12H5V4zm6 0h4v12h-4V4z"/></svg>
+                    Pausar
+                </button>
+                <button id="btnRefresh" onclick="fetchAll()"
+                    class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Atualizar
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- KPIs -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Status</span>
+                <span id="kpiStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+            </div>
+            <div id="kpiStatus" class="text-2xl font-semibold">—</div>
+            <div id="kpiStatusSub" class="text-xs text-gray-500 mt-1">—</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Hoje</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            </div>
+            <div id="kpiSignalsToday" class="text-2xl font-semibold">0</div>
+            <div id="kpiSignalsBreakdown" class="text-xs text-gray-500 mt-1">0 LONG / 0 SHORT</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Ciclos</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </div>
+            <div id="kpiCycles" class="text-2xl font-semibold">0</div>
+            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">0 erros</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Última Verificação</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div id="kpiLastCheck" class="text-lg font-mono font-semibold">—</div>
+            <div id="kpiLastSignal" class="text-xs text-gray-500 mt-1">Último sinal: —</div>
+        </div>
+    </section>
+
+    <!-- Grid de sinais e logs -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Tabela de sinais (ocupa 2 colunas) -->
+        <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold">Sinais Recentes</h2>
+                    <p class="text-xs text-gray-500">Histórico dos últimos 50 sinais CTEV</p>
+                </div>
+                <span id="symbolBadge" class="px-2.5 py-1 rounded-md bg-brand-900/40 text-brand-300 text-xs font-mono">BTC/USDT · 1H</span>
+            </div>
+            <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Data/Hora</th>
+                            <th class="px-4 py-3 text-left">Tipo</th>
+                            <th class="px-4 py-3 text-right">Entrada</th>
+                            <th class="px-4 py-3 text-right">Stop Loss</th>
+                            <th class="px-4 py-3 text-right">Take Profit</th>
+                            <th class="px-4 py-3 text-center">RSI</th>
+                            <th class="px-4 py-3 text-center">Telegram</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signalsBody" class="divide-y divide-gray-800">
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum sinal ainda.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Painel de logs (1 coluna) -->
+        <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-800">
+                <h2 class="text-base font-semibold">Log do Sistema</h2>
+                <p class="text-xs text-gray-500">Últimas 50 entradas</p>
+            </div>
+            <div id="logsBody" class="p-4 max-h-[28rem] overflow-y-auto space-y-2 font-mono text-xs">
+                <div class="text-gray-500 text-center py-8">Sem logs.</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Info da estratégia -->
+    <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <h2 class="text-base font-semibold mb-3">Regras da Estratégia</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div class="bg-emerald-900/10 border border-emerald-900/30 rounded-lg p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-emerald-400 text-lg">🟢</span>
+                    <span class="font-semibold text-emerald-300">LONG (Compra)</span>
+                </div>
+                <ul class="space-y-1 text-xs text-gray-400">
+                    <li>• Close &gt; EMA(200)</li>
+                    <li>• Low ou Close ≤ BB Inferior(20, 2)</li>
+                    <li>• RSI(14) &lt; 35</li>
+                    <li>• Volume &gt; 1.5× SMA(20)</li>
+                    <li class="mt-2 pt-2 border-t border-emerald-900/30 text-emerald-400">SL = Entry − 1.5·ATR · TP = Entry + 2.0·ATR</li>
+                </ul>
+            </div>
+            <div class="bg-red-900/10 border border-red-900/30 rounded-lg p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-red-400 text-lg">🔴</span>
+                    <span class="font-semibold text-red-300">SHORT (Venda)</span>
+                </div>
+                <ul class="space-y-1 text-xs text-gray-400">
+                    <li>• Close &lt; EMA(200)</li>
+                    <li>• High ou Close ≥ BB Superior(20, 2)</li>
+                    <li>• RSI(14) &gt; 65</li>
+                    <li>• Volume &gt; 1.5× SMA(20)</li>
+                    <li class="mt-2 pt-2 border-t border-red-900/30 text-red-400">SL = Entry + 1.5·ATR · TP = Entry − 2.0·ATR</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <footer class="text-center text-xs text-gray-600 pt-4 pb-8">
+        CTEV Bot v1.1.0 · <a href="/health" class="hover:text-brand-400 underline">/health</a> · <a href="/api/status" class="hover:text-brand-400 underline">/api/status</a> · <a href="/docs" class="hover:text-brand-400 underline">/docs</a>
+    </footer>
+</main>
+
+<!-- Toast container -->
+<div id="toast" class="fixed bottom-4 right-4 hidden px-4 py-3 rounded-lg shadow-lg text-sm font-medium z-50"></div>
+
+<script>
+    const POLL_INTERVAL_MS = 5000;
+    let pollTimer = null;
+
+    // ---------- Helpers ----------
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        const colors = {
+            info: 'bg-gray-800 text-white',
+            success: 'bg-emerald-600 text-white',
+            error: 'bg-red-600 text-white'
+        };
+        toast.className = 'fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg text-sm font-medium z-50 ' + colors[type];
+        toast.textContent = message;
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 3000);
+    }
+
+    function fmtDateTime(iso) {
+        if (!iso) return '—';
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString('pt-BR', { hour12: false });
+        } catch { return iso; }
+    }
+
+    function fmtNum(n, decimals = 2) {
+        if (n === null || n === undefined) return '—';
+        return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
+    function fmtVolume(n) {
+        if (!n) return '—';
+        return Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    }
+
+    async function api(method, path, body) {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(path, opts);
+        if (!res.ok) throw new Error(`${path} → ${res.status}`);
+        return res.json();
+    }
+
+    // ---------- Renderização ----------
+    function renderStatus(data) {
+        const bot = data.bot;
+        const running = bot.running;
+        const dot = document.getElementById('statusDot');
+        const kpiDot = document.getElementById('kpiStatusDot');
+        const text = document.getElementById('statusText');
+        const kpiStatus = document.getElementById('kpiStatus');
+        const kpiStatusSub = document.getElementById('kpiStatusSub');
+        const msg = document.getElementById('statusMessage');
+        const badge = document.getElementById('botStatusBadge');
+
+        if (running) {
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot';
+            kpiDot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
+            text.textContent = 'Online';
+            kpiStatus.textContent = 'Online';
+            kpiStatusSub.textContent = 'Bot ativo';
+            badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-900/40 text-emerald-300 text-sm';
+        } else {
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+            kpiDot.className = 'w-2 h-2 rounded-full bg-amber-500';
+            text.textContent = 'Pausado';
+            kpiStatus.textContent = 'Pausado';
+            kpiStatusSub.textContent = 'Aguardando reativação';
+            badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-900/40 text-amber-300 text-sm';
+        }
+
+        msg.textContent = bot.last_status_message || '—';
+
+        // KPIs
+        document.getElementById('kpiSignalsToday').textContent = data.signals_today || 0;
+        const byType = data.signals_today_by_type || { LONG: 0, SHORT: 0 };
+        document.getElementById('kpiSignalsBreakdown').textContent =
+            `${byType.LONG || 0} LONG / ${byType.SHORT || 0} SHORT`;
+
+        document.getElementById('kpiCycles').textContent = bot.cycle_count || 0;
+        document.getElementById('kpiErrors').textContent = `${bot.error_count || 0} erros`;
+
+        document.getElementById('kpiLastCheck').textContent = fmtDateTime(bot.last_check);
+        document.getElementById('kpiLastSignal').textContent =
+            'Último sinal: ' + fmtDateTime(bot.last_signal_ts);
+
+        document.getElementById('symbolBadge').textContent =
+            `${data.symbol} · ${data.timeframe.toUpperCase()}`;
+
+        // Botões
+        document.getElementById('btnStart').disabled = running;
+        document.getElementById('btnStop').disabled = !running;
+    }
+
+    function renderSignals(data) {
+        const tbody = document.getElementById('signalsBody');
+        const signals = data.signals || [];
+        if (signals.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum sinal ainda.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = signals.map(s => {
+            const isLong = s.type === 'LONG';
+            const typeClass = isLong
+                ? 'bg-emerald-900/40 text-emerald-300'
+                : 'bg-red-900/40 text-red-300';
+            const emoji = isLong ? '🟢' : '🔴';
+            const tgIcon = s.notified
+                ? '<span class="text-emerald-400" title="Enviado">✓</span>'
+                : '<span class="text-gray-600" title="Não enviado">○</span>';
+            return `
+                <tr class="hover:bg-gray-800/40 transition fade-in">
+                    <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(s.ts)}</td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${typeClass}">
+                            ${emoji} ${s.type}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-right font-mono text-gray-200">${fmtNum(s.entry_price)}</td>
+                    <td class="px-4 py-3 text-right font-mono text-red-300">${fmtNum(s.stop_loss)}</td>
+                    <td class="px-4 py-3 text-right font-mono text-emerald-300">${fmtNum(s.take_profit)}</td>
+                    <td class="px-4 py-3 text-center font-mono text-gray-400">${fmtNum(s.rsi)}</td>
+                    <td class="px-4 py-3 text-center">${tgIcon}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderLogs(data) {
+        const body = document.getElementById('logsBody');
+        const logs = data.logs || [];
+        if (logs.length === 0) {
+            body.innerHTML = '<div class="text-gray-500 text-center py-8">Sem logs.</div>';
+            return;
+        }
+        const levelColors = {
+            INFO: 'text-blue-400',
+            WARNING: 'text-amber-400',
+            ERROR: 'text-red-400',
+            DEBUG: 'text-gray-500'
+        };
+        body.innerHTML = logs.map(l => {
+            const color = levelColors[l.level] || 'text-gray-400';
+            const time = fmtDateTime(l.ts).split(' ')[1] || l.ts;
+            return `
+                <div class="flex gap-2 fade-in">
+                    <span class="text-gray-600 shrink-0">${time}</span>
+                    <span class="${color} shrink-0 font-semibold">[${l.level}]</span>
+                    <span class="text-gray-300 break-words">${escapeHtml(l.message)}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function escapeHtml(s) {
+        if (!s) return '';
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+        }[c]));
+    }
+
+    // ---------- Ações ----------
+    async function fetchAll() {
+        try {
+            const [status, signals, logs] = await Promise.all([
+                api('GET', '/api/status'),
+                api('GET', '/api/signals?limit=50'),
+                api('GET', '/api/logs?limit=50')
+            ]);
+            renderStatus(status);
+            renderSignals(signals);
+            renderLogs(logs);
+        } catch (err) {
+            console.error('Polling falhou:', err);
+            const text = document.getElementById('statusText');
+            text.textContent = 'Erro de conexão';
+            document.getElementById('statusDot').className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+        }
+    }
+
+    async function controlBot(action) {
+        try {
+            const res = await api('POST', `/api/${action}`);
+            showToast(action === 'start' ? 'Bot ativado ✓' : 'Bot pausado ⏸',
+                       action === 'start' ? 'success' : 'info');
+            await fetchAll();
+        } catch (err) {
+            showToast('Falha: ' + err.message, 'error');
+        }
+    }
+
+    // ---------- Inicialização ----------
+    fetchAll();
+    pollTimer = setInterval(fetchAll, POLL_INTERVAL_MS);
+</script>
+
+</body>
+</html>
