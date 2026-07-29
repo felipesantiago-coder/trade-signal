@@ -1,7 +1,7 @@
 """
 indicators.py
 -------------
-Cálculo de indicadores técnicos usando pandas-ta.
+Calculo de indicadores tecnicos usando pandas/numpy (sem dependencias externas).
 
 Indicadores suportados:
 - EMA(200)
@@ -9,11 +9,11 @@ Indicadores suportados:
 - RSI(14)
 - Volume SMA(20)
 - ATR(14)
-- ATR Percentile (rank dos últimos 100 candles — filtro de volatilidade)
-- Bollinger Bandwidth (detecção de squeeze)
+- ATR Percentile (rank dos ultimos 100 candles — filtro de volatilidade)
+- Bollinger Bandwidth (deteccao de squeeze)
 
-Todos os cálculos operam sobre um DataFrame pandas com colunas
-OCHLV padrão (Open, High, Low, Close, Volume).
+Todos os calculos operam sobre um DataFrame pandas com colunas
+OCHLV padrao (Open, High, Low, Close, Volume).
 """
 
 from __future__ import annotations
@@ -21,17 +21,60 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import numpy as np
 import pandas as pd
-import pandas_ta as ta
 
 logger = logging.getLogger(__name__)
+
+
+def _ema(series: pd.Series, span: int) -> pd.Series:
+    """Calcula EMA usando ewm do pandas."""
+    return series.ewm(span=span, adjust=False).mean()
+
+
+def _sma(series: pd.Series, window: int) -> pd.Series:
+    """Calcula SMA usando rolling do pandas."""
+    return series.rolling(window=window).mean()
+
+
+def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Calcula RSI (Relative Strength Index) usando metodo Wilder's smoothing.
+    Equivalente ao RSI(14) do TradingView/pandas-ta.
+    """
+    delta = close.diff()
+    gain = delta.where(delta > 0.0, 0.0)
+    loss = (-delta).where(delta < 0.0, 0.0)
+
+    # Wilder's smoothing: media exponencial com alpha = 1/period
+    avg_gain = gain.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+
+    rs = avg_gain / avg_loss
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return rsi
+
+
+def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Calcula ATR (Average True Range) usando metodo Wilder's smoothing.
+    Equivalente ao ATR(14) do TradingView/pandas-ta.
+    """
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr = tr.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+    return atr
 
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
     Recebe um DataFrame com colunas ['open','high','low','close','volume']
-    e devolve uma cópia enriquecida com as colunas de indicadores usadas
-    pela estratégia CTEV:
+    e devolve uma copia enriquecida com as colunas de indicadores usadas
+    pela estrategia CTEV:
         - ema200
         - bb_lower, bb_middle, bb_upper
         - rsi
@@ -46,13 +89,13 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        DataFrame com indicadores anexados. As últimas N linhas podem conter
-        NaN dependendo do período do indicador (ex.: EMA200 precisa de 200+ candles).
+        DataFrame com indicadores anexados. As ultimas N linhas podem conter
+        NaN dependendo do periodo do indicador (ex.: EMA200 precisa de 200+ candles).
     """
     required = {"open", "high", "low", "close", "volume"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(f"DataFrame está sem colunas obrigatórias: {missing}")
+        raise ValueError(f"DataFrame esta sem colunas obrigatorias: {missing}")
 
     if len(df) < 210:
         logger.warning(
@@ -63,30 +106,28 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 
     # EMA 200
-    out["ema200"] = ta.ema(out["close"], length=200)
+    out["ema200"] = _ema(out["close"], span=200)
 
     # Bollinger Bands 20, 2 desvios
-    bb = ta.bbands(out["close"], length=20, std=2)
-    if bb is None or bb.empty:
-        raise RuntimeError("Falha ao calcular Bollinger Bands.")
-    # pandas-ta retorna colunas: BBL_20_2.0, BBM_20_2.0, BBU_20_2.0, BBB_20_2.0, BBP_20_2.0
-    out["bb_lower"] = bb.iloc[:, 0]
-    out["bb_middle"] = bb.iloc[:, 1]
-    out["bb_upper"] = bb.iloc[:, 2]
+    bb_middle = _sma(out["close"], window=20)
+    bb_std = out["close"].rolling(window=20).std(ddof=0)
+    out["bb_lower"] = bb_middle - 2.0 * bb_std
+    out["bb_middle"] = bb_middle
+    out["bb_upper"] = bb_middle + 2.0 * bb_std
 
     # RSI 14
-    out["rsi"] = ta.rsi(out["close"], length=14)
+    out["rsi"] = _rsi(out["close"], period=14)
 
     # Volume SMA 20
-    out["volume_sma20"] = ta.sma(out["volume"], length=20)
+    out["volume_sma20"] = _sma(out["volume"], window=20)
 
     # ATR 14
-    out["atr"] = ta.atr(out["high"], out["low"], out["close"], length=14)
+    out["atr"] = _atr(out["high"], out["low"], out["close"], period=14)
 
-    # ATR Percentile — ranking do ATR atual entre os últimos 100 candles
+    # ATR Percentile — ranking do ATR atual entre os ultimos 100 candles
     # Valor entre 0.0 e 1.0. Usado como filtro de volatilidade:
     #   - Baixo (< 0.20): mercado lateral/morto → evitar
-    #   - Normal (0.20 - 0.80): condições favoráveis → operar
+    #   - Normal (0.20 - 0.80): condicoes favoraveis → operar
     #   - Alto (> 0.80): caos/evento extremo → evitar
     ATR_LOOKBACK = 100
     out["atr_percentile"] = out["atr"].rolling(ATR_LOOKBACK).apply(
@@ -102,9 +143,9 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_latest_signal_row(df_ind: pd.DataFrame) -> Optional[pd.Series]:
     """
-    Retorna a última linha (candle mais recente) já com indicadores.
-    Se houver NaN em qualquer coluna crítica da última linha, retorna None
-    e emite warning (não há dados suficientes para sinalizar).
+    Retorna a ultima linha (candle mais recente) ja com indicadores.
+    Se houver NaN em qualquer coluna critica da ultima linha, retorna None
+    e emite warning (nao ha dados suficientes para sinalizar).
     """
     if df_ind.empty:
         return None
@@ -114,7 +155,7 @@ def get_latest_signal_row(df_ind: pd.DataFrame) -> Optional[pd.Series]:
     missing = [c for c in critical if pd.isna(last.get(c))]
     if missing:
         logger.warning(
-            "Último candle possui NaN nos indicadores: %s. Aguardando mais dados.",
+            "Ultimo candle possui NaN nos indicadores: %s. Aguardando mais dados.",
             missing,
         )
         return None

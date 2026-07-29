@@ -1,10 +1,9 @@
-# CTEV Bot — Dependências Python 3.10+
+# CTEV Bot — Dependencias Python 3.10+
 # Trading signals + Painel web FastAPI + Risk Manager + Backtesting para BTC/USD (1H)
 
 # ---- Trading / dados ----
 ccxt>=4.2.0
 pandas>=2.0.0
-pandas-ta>=0.3.14b
 numpy>=1.24.0
 python-telegram-bot>=21.0
 
