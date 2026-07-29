@@ -11,7 +11,7 @@ set -e
 export PORT="${PORT:-8000}"
 export HOST="${HOST:-0.0.0.0}"
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
-export EXCHANGE_ID="${EXCHANGE_ID:-binance}"
+export EXCHANGE_ID="${EXCHANGE_ID:-coinbase}"
 export EXCHANGE_DRY_RUN="${EXCHANGE_DRY_RUN:-true}"
 
 echo "=========================================="

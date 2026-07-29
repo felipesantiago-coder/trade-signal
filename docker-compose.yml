@@ -15,7 +15,7 @@ services:
       # ---- Obrigatórias ----
       - PORT=8000
       - LOG_LEVEL=INFO
-      - EXCHANGE_ID=binance
+      - EXCHANGE_ID=coinbase
 
       # ---- Telegram (preencha com seus valores) ----
       # - TELEGRAM_BOT_TOKEN=123456789:AAAA...
@@ -26,7 +26,7 @@ services:
       # - BINANCE_API_SECRET=sua_secret
 
       # ---- Trading ----
-      - BINANCE_SYMBOL=BTC/USDT
+      - BINANCE_SYMBOL=BTC/USD
       - BINANCE_TIMEFRAME=1h
       - LOOP_INTERVAL_SECONDS=60
 

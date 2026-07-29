@@ -27,7 +27,7 @@ services:
       - key: LOOP_INTERVAL_SECONDS
         value: "60"
       - key: BINANCE_SYMBOL
-        value: BTC/USDT
+        value: BTC/USD
       - key: BINANCE_TIMEFRAME
         value: 1h
       # As duas abaixo DEVEM ser configuradas no dashboard:

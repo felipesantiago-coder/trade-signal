@@ -53,8 +53,9 @@ logger = logging.getLogger("ctev.backtest")
 # Geo-fallback sincrono para backtest (ccxt sync)
 # ------------------------------------------------------------------
 _FALLBACK_CHAIN = [
+    "coinbase", "kraken",
     "binance", "bybit", "kucoin", "okx",
-    "gate", "bitget", "kraken", "coinbase",
+    "gate", "bitget",
 ]
 
 _GEOBLOCK_CODES = {403, 451}
@@ -279,7 +280,7 @@ def fetch_historical_ohlcv(
     Returns:
         DataFrame com colunas open, high, low, close, volume e index datetime UTC.
     """
-    preferred_id = os.getenv("EXCHANGE_ID", "binance").lower()
+    preferred_id = os.getenv("EXCHANGE_ID", "coinbase").lower()
     exchange, effective_symbol, ex_id = _pick_exchange_and_symbol(
         preferred_id, symbol,
     )
@@ -322,7 +323,11 @@ def fetch_historical_ohlcv(
                 len(all_ohlcv),
             )
 
-        except Exception as exc:
+        except ccxt.BadRequest as exc:
+            # Coinbase retorna 400 quando "start" está no futuro (fim dos dados)
+            if "start must not be in the future" in str(exc):
+                logger.debug("Coinbase: fim dos dados historicos (batch %d)", iteration)
+                break
             logger.error("Erro ao baixar dados (batch %d): %s", iteration, exc)
             break
 

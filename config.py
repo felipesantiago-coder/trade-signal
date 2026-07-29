@@ -35,21 +35,25 @@ class TelegramConfig:
     chat_id: str
 
 
-SUPPORTED_EXCHANGES = ("binance", "bybit", "kucoin", "okx", "gate", "bitget")
+SUPPORTED_EXCHANGES = (
+    "coinbase", "kraken",
+    "binance", "bybit", "kucoin", "okx", "gate", "bitget",
+)
 
 
 @dataclass(frozen=True)
 class BinanceConfig:
     """Configuracoes de acesso a exchange via ccxt.
 
-    exchange_id: ID da exchange ccxt (binance, bybit, kucoin, okx, gate, bitget).
-        Render (US) bloqueia a Binance — use 'bybit' ou 'kucoin' como alternativa.
-        Do Brasil ou UE, 'binance' funciona normalmente.
+    exchange_id: ID da exchange ccxt.
+        Coinbase funciona dos EUA (sem geo-bloqueio) com dados de 730+ dias.
+        Kraken funciona dos EUA mas com dados limitados (~30 dias).
+        Binance/Bybit podem ser geo-blocados em servidores US/BR.
     """
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
-    exchange_id: str = "binance"
-    symbol: str = "BTC/USDT"
+    exchange_id: str = "coinbase"
+    symbol: str = "BTC/USD"
     timeframe: str = "1h"
 
 
@@ -98,7 +102,7 @@ class MultiTFConfig:
 class OptimizerConfig:
     """Configuracoes do otimizador de parametros."""
     max_combos: int = 500                 # Max combinacoes para avaliar
-    default_days: int = 180               # Dias de dados para otimizacao
+    default_days: int = 730               # Dias de dados para otimizacao
 
 
 @dataclass(frozen=True)
@@ -138,19 +142,19 @@ def load_settings() -> Settings:
         chat_id=_require_env("TELEGRAM_CHAT_ID"),
     )
 
-    exchange_id = os.getenv("EXCHANGE_ID", "binance").lower()
+    exchange_id = os.getenv("EXCHANGE_ID", "coinbase").lower()
     if exchange_id not in SUPPORTED_EXCHANGES:
         logger.warning(
-            "EXCHANGE_ID='%s' nao suportado. Opcoes: %s. Usando 'binance'.",
+            "EXCHANGE_ID='%s' nao suportado. Opcoes: %s. Usando 'coinbase'.",
             exchange_id, SUPPORTED_EXCHANGES,
         )
-        exchange_id = "binance"
+        exchange_id = "coinbase"
 
     binance = BinanceConfig(
         exchange_id=exchange_id,
         api_key=os.getenv("EXCHANGE_API_KEY") or os.getenv("BINANCE_API_KEY") or None,
         api_secret=os.getenv("EXCHANGE_API_SECRET") or os.getenv("BINANCE_API_SECRET") or None,
-        symbol=os.getenv("EXCHANGE_SYMBOL") or os.getenv("BINANCE_SYMBOL", "BTC/USDT"),
+        symbol=os.getenv("EXCHANGE_SYMBOL") or os.getenv("BINANCE_SYMBOL", "BTC/USD"),
         timeframe=os.getenv("EXCHANGE_TIMEFRAME") or os.getenv("BINANCE_TIMEFRAME", "1h"),
     )
 
@@ -189,7 +193,7 @@ def load_settings() -> Settings:
 
     optimizer = OptimizerConfig(
         max_combos=int(os.getenv("OPTIMIZER_MAX_COMBOS", "500")),
-        default_days=int(os.getenv("OPTIMIZER_DEFAULT_DAYS", "180")),
+        default_days=int(os.getenv("OPTIMIZER_DEFAULT_DAYS", "730")),
     )
 
     return Settings(

@@ -97,14 +97,15 @@ class ExchangeLoader:
 
     def __init__(self, fallback_chain: Optional[List[str]] = None) -> None:
         self._chain = fallback_chain or [
+            "coinbase", "kraken",
             "binance", "bybit", "kucoin", "okx",
-            "gate", "bitget", "kraken", "coinbase",
+            "gate", "bitget",
         ]
         self._tried: List[str] = []
 
     async def connect(
         self,
-        preferred_id: str = "binance",
+        preferred_id: str = "coinbase",
         symbol: str = "BTC/USDT",
         api_key: Optional[str] = None,
         api_secret: Optional[str] = None,
