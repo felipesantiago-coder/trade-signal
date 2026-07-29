@@ -165,7 +165,7 @@
     </section>
 
     <!-- KPIs -->
-    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <section class="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-xs uppercase tracking-wider text-gray-500">Status</span>
@@ -200,6 +200,60 @@
             </div>
             <div id="kpiLastCheck" class="text-lg font-mono font-semibold">—</div>
             <div id="kpiLastSignal" class="text-xs text-gray-500 mt-1">Último sinal: —</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">Balance</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div id="kpiBalance" class="text-2xl font-semibold font-mono">—</div>
+            <div id="kpiBalanceSub" class="text-xs text-gray-500 mt-1">Risk/trade: —</div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wider text-gray-500">PnL Total</span>
+                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </div>
+            <div id="kpiPnL" class="text-2xl font-semibold font-mono">—</div>
+            <div id="kpiPnLSub" class="text-xs text-gray-500 mt-1">WR: — | 0 trades</div>
+        </div>
+    </section>
+
+    <!-- Posição Aberta -->
+    <section id="openPositionSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold">Posição Aberta</h2>
+            <button onclick="closePositions()" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium">Fechar Posição</button>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
+            <div>
+                <span class="text-gray-500 text-xs">Tipo</span>
+                <div id="posType" class="font-semibold text-emerald-400">—</div>
+            </div>
+            <div>
+                <span class="text-gray-500 text-xs">Entrada</span>
+                <div id="posEntry" class="font-mono">—</div>
+            </div>
+            <div>
+                <span class="text-gray-500 text-xs">SL (atual)</span>
+                <div id="posSL" class="font-mono text-red-300">—</div>
+            </div>
+            <div>
+                <span class="text-gray-500 text-xs">TP</span>
+                <div id="posTP" class="font-mono text-emerald-300">—</div>
+            </div>
+            <div>
+                <span class="text-gray-500 text-xs">Status</span>
+                <div id="posStatus" class="font-semibold">—</div>
+            </div>
+        </div>
+        <div class="mt-3 flex gap-4 text-xs text-gray-500">
+            <span>Size: <span id="posSize" class="text-gray-300 font-mono">—</span></span>
+            <span>USD: <span id="posUSD" class="text-gray-300 font-mono">—</span></span>
+            <span>BE: <span id="posBE" class="text-gray-300">—</span></span>
+            <span>Trail: <span id="posTrail" class="text-gray-300">—</span></span>
         </div>
     </section>
 
@@ -247,6 +301,52 @@
         </div>
     </section>
 
+
+    <!-- Trades Fechados -->
+    <section id="closedTradesSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+            <div>
+                <h2 class="text-base font-semibold">Trades Fechados</h2>
+                <p class="text-xs text-gray-500">Histórico de operações encerradas</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="tradesSummaryBadge" class="hidden px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">0 trades</span>
+            </div>
+        </div>
+        <div id="closedTradesKPIs" class="hidden grid grid-cols-3 gap-4 p-4 border-b border-gray-800">
+            <div>
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total</div>
+                <div id="ctTotal" class="text-lg font-semibold font-mono">0</div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
+                <div id="ctWinRate" class="text-lg font-semibold font-mono">—</div>
+            </div>
+            <div>
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">PnL Total</div>
+                <div id="ctPnL" class="text-lg font-semibold font-mono">—</div>
+            </div>
+        </div>
+        <div class="overflow-x-auto max-h-[24rem] overflow-y-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Entrada</th>
+                        <th class="px-4 py-3 text-left">Saída</th>
+                        <th class="px-4 py-3 text-left">Tipo</th>
+                        <th class="px-4 py-3 text-right">Preço Entrada</th>
+                        <th class="px-4 py-3 text-right">Preço Saída</th>
+                        <th class="px-4 py-3 text-right">PnL</th>
+                        <th class="px-4 py-3 text-left">Motivo</th>
+                        <th class="px-4 py-3 text-center">Tags</th>
+                    </tr>
+                </thead>
+                <tbody id="closedTradesBody" class="divide-y divide-gray-800">
+                    <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">Nenhuma operação fechada.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
     <!-- Backtest -->
     <section class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
@@ -527,11 +627,12 @@
 
     async function fetchAll() {
         try {
-            const [status, signals, logs, risk] = await Promise.all([
+            const [status, signals, logs, risk, positions] = await Promise.all([
                 api('GET', '/api/status'),
                 api('GET', '/api/signals?limit=50'),
                 api('GET', '/api/logs?limit=50'),
-                api('GET', '/api/risk').catch(() => null)
+                api('GET', '/api/risk').catch(() => null),
+                api('GET', '/api/positions').catch(() => ({positions: {open_count: 0, closed_trades: []}}))
             ]);
             renderStatus(status);
             renderSignals(signals);
@@ -541,6 +642,7 @@
                 renderRisk(risk);
                 renderKillSwitch(risk);
             }
+            renderPositions(positions);
         } catch (err) {
             console.error('Polling falhou:', err);
             const text = document.getElementById('statusText');
@@ -762,6 +864,110 @@
             const res = await api('POST', `/api/${action}`);
             showToast(action === 'start' ? 'Bot ativado ✓' : 'Bot pausado ⏸',
                        action === 'start' ? 'success' : 'info');
+            await fetchAll();
+        } catch (err) {
+            showToast('Falha: ' + err.message, 'error');
+        }
+    }
+
+    // ---------- Positions Rendering ----------
+    function renderPositions(data) {
+        const pos = data.positions || {};
+        const summary = data.trades_summary || {};
+        const position = pos.open_position || null;
+        const closedTrades = pos.closed_trades || [];
+
+        // Balance KPI
+        const balance = pos.balance || 0;
+        const riskPerTrade = pos.risk_per_trade_pct || 0;
+        document.getElementById('kpiBalance').textContent = '$' + fmtNum(balance);
+        document.getElementById('kpiBalanceSub').textContent = 'Risk/trade: ' + fmtNum(riskPerTrade) + '%';
+
+        // PnL KPI
+        const totalPnl = summary.total_pnl_usd || 0;
+        const winRate = summary.win_rate || 0;
+        const totalTrades = summary.total_trades || 0;
+        const pnlEl = document.getElementById('kpiPnL');
+        pnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + fmtNum(Math.abs(totalPnl));
+        pnlEl.className = 'text-2xl font-semibold font-mono ' + (totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400');
+        document.getElementById('kpiPnLSub').textContent = 'WR: ' + fmtNum(winRate, 1) + '% | ' + totalTrades + ' trades';
+
+        // Open position card
+        const section = document.getElementById('openPositionSection');
+        if (pos.open_count > 0 && position) {
+            section.classList.remove('hidden');
+            const isLong = position.type === 'LONG';
+            const typeEl = document.getElementById('posType');
+            typeEl.textContent = (isLong ? '🟢 ' : '🔴 ') + position.type;
+            typeEl.className = 'font-semibold ' + (isLong ? 'text-emerald-400' : 'text-red-400');
+            document.getElementById('posEntry').textContent = fmtNum(position.entry_price);
+            document.getElementById('posSL').textContent = fmtNum(position.current_sl);
+            document.getElementById('posTP').textContent = fmtNum(position.take_profit);
+            const statusEl = document.getElementById('posStatus');
+            statusEl.textContent = position.status || 'open';
+            statusEl.className = 'font-semibold ' + (position.status === 'trailing' ? 'text-amber-400' : 'text-emerald-300');
+            document.getElementById('posSize').textContent = position.size || '—';
+            document.getElementById('posUSD').textContent = position.usd_value ? '$' + fmtNum(position.usd_value) : '—';
+            document.getElementById('posBE').textContent = position.breakeven ? 'Sim' : 'Não';
+            document.getElementById('posTrail').textContent = position.trailing ? 'Ativo' : 'Não';
+        } else {
+            section.classList.add('hidden');
+        }
+
+        // Closed trades table
+        const tbody = document.getElementById('closedTradesBody');
+        const kpis = document.getElementById('closedTradesKPIs');
+        const badge = document.getElementById('tradesSummaryBadge');
+        const ctSection = document.getElementById('closedTradesSection');
+
+        if (closedTrades.length === 0) {
+            kpis.classList.add('hidden');
+            badge.classList.add('hidden');
+            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">Nenhuma operação fechada.</td></tr>';
+        } else {
+            ctSection.classList.remove('hidden');
+            kpis.classList.remove('hidden');
+            badge.classList.remove('hidden');
+            badge.textContent = closedTrades.length + ' trades';
+
+            document.getElementById('ctTotal').textContent = closedTrades.length;
+            const wr = summary.win_rate || 0;
+            document.getElementById('ctWinRate').textContent = fmtNum(wr, 1) + '%';
+            const ctPnlEl = document.getElementById('ctPnL');
+            ctPnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + fmtNum(Math.abs(totalPnl));
+            ctPnlEl.className = 'text-lg font-semibold font-mono ' + (totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+            tbody.innerHTML = closedTrades.map(t => {
+                const isLong = t.type === 'LONG';
+                const typeClass = isLong ? 'bg-emerald-900/40 text-emerald-300' : 'bg-red-900/40 text-red-300';
+                const pnlVal = t.pnl_usd || 0;
+                const pnlPct = t.pnl_pct || 0;
+                const pnlColor = pnlVal >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const pnlSign = pnlVal >= 0 ? '+' : '';
+                let tags = '';
+                if (t.breakeven_hit) tags += '<span class="inline-block px-1.5 py-0.5 rounded text-xs bg-amber-900/40 text-amber-300 mr-1">BE</span>';
+                if (t.trailing_hit) tags += '<span class="inline-block px-1.5 py-0.5 rounded text-xs bg-blue-900/40 text-blue-300">Trail</span>';
+                return `
+                    <tr class="hover:bg-gray-800/40 transition fade-in">
+                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">{fmtDateTime(t.entry_ts || t.entry_date)}</td>
+                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">{fmtDateTime(t.exit_ts || t.exit_date)}</td>
+                        <td class="px-4 py-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold {typeClass}">{t.type}</span></td>
+                        <td class="px-4 py-3 text-right font-mono text-gray-200">{fmtNum(t.entry_price)}</td>
+                        <td class="px-4 py-3 text-right font-mono text-gray-200">{fmtNum(t.exit_price)}</td>
+                        <td class="px-4 py-3 text-right font-mono font-semibold {pnlColor}">{pnlSign}${fmtNum(Math.abs(pnlVal))} ({pnlSign}{fmtNum(pnlPct)}%)</td>
+                        <td class="px-4 py-3 text-gray-400 text-xs">{escapeHtml(t.reason || '—')}</td>
+                        <td class="px-4 py-3 text-center">{tags || '—'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // ---------- Close Positions Action ----------
+    async function closePositions() {
+        try {
+            await api('POST', '/api/close-positions');
+            showToast('Posição fechada ✓', 'success');
             await fetchAll();
         } catch (err) {
             showToast('Falha: ' + err.message, 'error');

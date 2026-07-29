@@ -55,12 +55,26 @@ class RiskConfig:
 
 
 @dataclass(frozen=True)
+class PositionConfig:
+    """Configuracoes de position sizing e gestao de posicoes."""
+    account_balance: float = 10000.0      # Saldo da conta em USD
+    risk_per_trade_pct: float = 0.01     # 1% do balance por trade
+    min_position_usd: float = 10.0       # Tamanho minimo em USD
+    max_position_pct: float = 0.10       # Max 10% do balance em 1 trade
+    be_trigger_atr_mult: float = 1.0      # ATR mult para ativar break-even
+    trailing_atr_mult: float = 1.5        # ATR mult para distancia do trailing stop
+    partial_tp_pct: float = 0.50          # 50% no TP1
+    max_open_positions: int = 1           # Max posicoes abertas simultaneas
+
+
+@dataclass(frozen=True)
 class Settings:
     """Agrega todas as configuracoes do bot CTEV."""
     telegram: TelegramConfig
     binance: BinanceConfig
     risk: RiskConfig
-    loop_interval_seconds: int = 60  # Verifica a cada 1 minuto
+    position: PositionConfig
+    loop_interval_seconds: int = 60
     log_level: str = "INFO"
 
 
@@ -105,10 +119,22 @@ def load_settings() -> Settings:
         atr_pct_max=float(os.getenv("ATR_PCT_MAX", "0.80")),
     )
 
+    position = PositionConfig(
+        account_balance=float(os.getenv("ACCOUNT_BALANCE", "10000.0")),
+        risk_per_trade_pct=float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
+        min_position_usd=float(os.getenv("MIN_POSITION_USD", "10.0")),
+        max_position_pct=float(os.getenv("MAX_POSITION_PCT", "0.10")),
+        be_trigger_atr_mult=float(os.getenv("BE_TRIGGER_ATR_MULT", "1.0")),
+        trailing_atr_mult=float(os.getenv("TRAILING_ATR_MULT", "1.5")),
+        partial_tp_pct=float(os.getenv("PARTIAL_TP_PCT", "0.50")),
+        max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "1")),
+    )
+
     return Settings(
         telegram=telegram,
         binance=binance,
         risk=risk,
+        position=position,
         loop_interval_seconds=int(os.getenv("LOOP_INTERVAL_SECONDS", "60")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )

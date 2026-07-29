@@ -102,3 +102,84 @@ class TelegramNotifier:
             await self.bot.send_message(chat_id=self.chat_id, text=text)
         except Exception as exc:
             logger.exception("Falha ao enviar texto ao Telegram: %s", exc)
+
+    async def send_position_open(self, signal: Signal, position_info: dict, symbol: str) -> None:
+        """Envia notificacao detalhada de abertura de posicao com sizing."""
+        base_msg = _format_signal_message(signal, symbol)
+        sizing = (
+            f"\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"📐 *Posicao:*\n"
+            f"• Tamanho: `{position_info.get('position_size', 0):.8f}` BTC\n"
+            f"• Valor: `$`{position_info.get('position_usd', 0):,.2f}`\n"
+            f"• Risco: `$`{position_info.get('risk_usd', 0):,.2f}` ({position_info.get('risk_pct', 0) * 100:.1f}%)\n"
+            f"• Alavancagem: `{position_info.get('leverage', 0):.2f}x`\n"
+        )
+        try:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text=base_msg + sizing,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            try:
+                await self.bot.send_message(chat_id=self.chat_id, text=base_msg + sizing)
+            except Exception:
+                pass
+
+    async def send_trailing_update(self, pos_type: str, trailing_sl: float, entry_price: float) -> None:
+        """Envia notificacao de atualizacao de trailing stop."""
+        emoji = "🟢" if pos_type == "LONG" else "🔴"
+        try:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text=(
+                    f"📊 *TRAILING STOP* {emoji}\n"
+                    f"Posicao {pos_type} | Entrada: `{entry_price:.2f}`\n"
+                    f"Novo SL: `{trailing_sl:.2f}`"
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            pass
+
+    async def send_trade_close(self, pos_type: str, entry: float, exit_p: float,
+                               pnl_pct: float, pnl_usd: float, reason: str,
+                               be: bool = False, trailing: bool = False,
+                               partial: bool = False) -> None:
+        """Envia notificacao de fechamento de trade."""
+        emoji = "🟢" if pos_type == "LONG" else "🔴"
+        if reason == "tp":
+            icon = "🎯"
+            label = "TAKE PROFIT"
+        else:
+            icon = "🛑"
+            label = "STOP LOSS"
+
+        features = []
+        if be:
+            features.append("BE ativado")
+        if trailing:
+            features.append("Trailing")
+        if partial:
+            features.append("50% partial")
+
+        feat_str = " | ".join(features) if features else ""
+
+        try:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text=(
+                    f"{icon} *{label}* {emoji} {pos_type}\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"Entrada: `{entry:.2f}`\n"
+                    f"Saida: `{exit_p:.2f}`\n"
+                    f"PnL: `{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%`\n"
+                    f"PnL $: `{'+' if pnl_usd >= 0 else ''}{pnl_usd:,.2f}`\n"
+                    f"{feat_str}\n"
+                    f"\n_CTEV Bot v2.0 — Position Manager_"
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            pass

@@ -7,12 +7,12 @@ paralela ao servidor web FastAPI.
 Caracteristicas:
 - Roda como asyncio.Task criado no startup do servidor
 - Respeita a flag `bot_state.running` (True = ativo, False = pausado)
-- Quando pausado, ainda atualiza `last_check` para o painel mostrar que esta vivo
-- Salva sinais em SQLite em memoria (db.py) e envia notificacao ao Telegram
 - Tolerante a falhas: excecoes sao logadas e o loop continua
 - Nao reprocessa o mesmo candle (controle por timestamp)
 - Integra RiskManager: valida risco antes de gerar sinais
 - Circuit Breaker: detecta movimentos extremos de preco
+- Position Tracker: monitora posicoes abertas com trailing stop e break-even
+- Position Sizing: calcula tamanho de posicao baseado em risco % e ATR
 """
 
 from __future__ import annotations
@@ -27,16 +27,18 @@ import pandas as pd
 
 from bot_state import get_bot_state
 from config import Settings
-from db import insert_log, insert_signal
+from db import insert_closed_trade, insert_log, insert_signal
 from indicators import compute_indicators
 from notifier import TelegramNotifier
+from position_sizing import get_position_sizer
+from position_tracker import get_position_tracker, PositionStatus
 from risk_manager import RiskBlockReason, get_risk_manager
 from strategy import evaluate_signal
 
 logger = logging.getLogger("ctev.worker")
 
-CANDLE_LIMIT = 300  # 200+ para EMA200 com folga
-TIMEFRAME_MS = 60 * 60 * 1000  # 1h
+CANDLE_LIMIT = 300
+TIMEFRAME_MS = 60 * 60 * 1000
 
 
 class CTEVWorker:
@@ -46,6 +48,8 @@ class CTEVWorker:
         self.settings = settings
         self.state = get_bot_state()
         self.risk = get_risk_manager()
+        self.sizer = get_position_sizer()
+        self.tracker = get_position_tracker()
         self.exchange: Optional[ccxt.binance] = None
         self.notifier: Optional[TelegramNotifier] = None
         self.last_processed_ts: Optional[pd.Timestamp] = None
@@ -55,7 +59,6 @@ class CTEVWorker:
     # Lifecycle
     # ------------------------------------------------------------------
     async def start(self) -> None:
-        """Inicializa recursos e dispara o loop em background."""
         try:
             self.exchange = ccxt.binance({
                 "apiKey": self.settings.binance.api_key,
@@ -68,7 +71,6 @@ class CTEVWorker:
             insert_log("ERROR", f"Falha ao inicializar Binance: {exc}", "worker")
             self.state.last_error = str(exc)
 
-        # Telegram (opcional)
         try:
             self.notifier = TelegramNotifier(
                 bot_token=self.settings.telegram.token,
@@ -79,7 +81,7 @@ class CTEVWorker:
             insert_log("WARNING", f"Telegram nao configurado: {exc}", "worker")
             self.notifier = None
 
-        # Configura RiskManager a partir das Settings
+        # Configura RiskManager
         self.risk.configure({
             "max_daily_loss_pct": self.settings.risk.max_daily_loss_pct,
             "max_weekly_loss_pct": self.settings.risk.max_weekly_loss_pct,
@@ -91,13 +93,21 @@ class CTEVWorker:
             "atr_pct_max": self.settings.risk.atr_pct_max,
         })
 
+        # Configura PositionSizer
+        self.sizer.configure({
+            "balance": self.settings.position.account_balance,
+            "risk_per_trade_pct": self.settings.position.risk_per_trade_pct,
+            "min_position_usd": self.settings.position.min_position_usd,
+            "max_position_pct": self.settings.position.max_position_pct,
+        })
+
         self.state.last_status_message = "Worker iniciado"
         insert_log(
             "INFO",
-            f"Worker CTEV iniciado | symbol={self.settings.binance.symbol} "
-            f"tf={self.settings.binance.timeframe} "
-            f"risk=daily_max={self.settings.risk.max_daily_loss_pct}% "
-            f"cb={self.settings.risk.circuit_breaker_pct}%",
+            f"Worker CTEV v2.0 iniciado | symbol={self.settings.binance.symbol} "
+            f"balance=${self.settings.position.account_balance:,.0f} "
+            f"risk={self.settings.position.risk_per_trade_pct*100:.1f}%/trade "
+            f"trailing={self.settings.position.trailing_atr_mult}xATR",
             "worker",
         )
 
@@ -105,7 +115,6 @@ class CTEVWorker:
         logger.info("Background worker CTEV agendado.")
 
     async def stop(self) -> None:
-        """Cancela o loop e fecha recursos."""
         if self._task is not None and not self._task.done():
             self._task.cancel()
             try:
@@ -144,7 +153,6 @@ class CTEVWorker:
         now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.state.last_check = now_iso
 
-        # Se pausado, apenas atualiza status e retorna
         if not self.state.running:
             self.state.last_status_message = "Pausado — aguardando reativacao"
             return
@@ -167,20 +175,20 @@ class CTEVWorker:
             self.state.last_status_message = "Sem dados de candle"
             return
 
-        # Verifica se o ultimo candle ja fechou
+        # Verifica candle fechado
         last_open_ts_ms = int(df.index[-1].timestamp() * 1000)
         last_close_ts_ms = last_open_ts_ms + TIMEFRAME_MS
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
         if now_ms < last_close_ts_ms:
+            pos_status = self._get_position_status_text()
             self.state.last_status_message = (
-                f"Aguardando fechamento do candle {df.index[-1].isoformat()}"
+                f"Aguardando fechamento do candle {df.index[-1].isoformat()} | {pos_status}"
             )
             return
 
         closed_candle_ts = df.index[-1]
 
-        # Evita reprocessar
         if self.last_processed_ts is not None and closed_candle_ts == self.last_processed_ts:
             self.state.last_status_message = (
                 f"Candle {closed_candle_ts.isoformat()} ja processado"
@@ -197,10 +205,27 @@ class CTEVWorker:
             insert_log("ERROR", f"Indicadores falharam: {exc}", "worker")
             return
 
-        # ---- CIRCUIT BREAKER: detecta movimento extremo de preco ----
+        # ---- MONITORAR POSICOES ABERTAS (a cada candle fechado) ----
+        await self._monitor_open_positions(df_ind, closed_candle_ts)
+
+        # ---- CIRCUIT BREAKER ----
         self._check_circuit_breaker(df_ind)
 
-        # ---- VALIDACAO DE RISCO antes de avaliar sinal ----
+        # ---- NAO gera novo sinal se ja tem posicao aberta (max_open_positions=1) ----
+        if self.tracker.has_open_positions:
+            open_count = len(self.tracker.open_positions)
+            if open_count >= self.settings.position.max_open_positions:
+                pos = self.tracker.get_open_position()
+                if pos:
+                    self.state.last_status_message = (
+                        f"Posicao #{pos.id} {pos.type.value} aberta | "
+                        f"SL={pos.trailing_stop if pos.trailing_activated else pos.stop_loss:.2f} | "
+                        f"entry={pos.entry_price:.2f}"
+                    )
+                self.last_processed_ts = closed_candle_ts
+                return
+
+        # ---- VALIDACAO DE RISCO ----
         last_row = df_ind.iloc[-1]
         atr_pct = float(last_row.get("atr_percentile", 0.5))
 
@@ -213,11 +238,10 @@ class CTEVWorker:
             self.state.last_status_message = f"Risco bloqueou: {risk_check.message}"
             insert_log(
                 "WARNING",
-                f"Sinal bloqueado pelo RiskManager: [{risk_check.reason.value}] {risk_check.message}",
+                f"Sinal bloqueado: [{risk_check.reason.value}] {risk_check.message}",
                 "risk",
             )
 
-            # Notifica Telegram em caso de bloqueio critico
             if risk_check.reason in (
                 RiskBlockReason.DAILY_DRAWDOWN,
                 RiskBlockReason.WEEKLY_DRAWDOWN,
@@ -237,7 +261,7 @@ class CTEVWorker:
             self.last_processed_ts = closed_candle_ts
             return
 
-        # Avalia sinal
+        # ---- AVALIA SINAL ----
         try:
             signal = evaluate_signal(df_ind)
         except Exception as exc:
@@ -255,11 +279,16 @@ class CTEVWorker:
             self.last_processed_ts = closed_candle_ts
             return
 
-        # ---- SINAL GERADO ----
-        # Registra no RiskManager (para cooldown)
+        # ---- SINAL GERADO — Abrir posicao ----
         self.risk.register_signal(str(closed_candle_ts))
 
-        # Salva sinal no banco em memoria
+        # Position Sizing
+        pos_size = self.sizer.calculate(
+            entry_price=signal.entry_price,
+            stop_loss=signal.stop_loss,
+        )
+
+        # Salva sinal no DB
         signal_dict = signal.to_dict()
         signal_dict["symbol"] = self.settings.binance.symbol
         signal_dict["notified"] = 0
@@ -269,39 +298,155 @@ class CTEVWorker:
             logger.exception("Erro ao inserir sinal no DB: %s", exc)
             insert_log("ERROR", f"DB insert signal: {exc}", "worker")
 
-        # Envia ao Telegram (se configurado)
+        # Abre posicao no tracker
+        position = self.tracker.open_position(
+            type_=signal.type.value,
+            entry_price=signal.entry_price,
+            stop_loss=signal.stop_loss,
+            take_profit=signal.take_profit,
+            atr=signal.atr,
+            entry_ts=str(closed_candle_ts),
+            position_size=pos_size.position_size,
+            position_usd=pos_size.position_usd,
+            be_trigger_atr_mult=self.settings.position.be_trigger_atr_mult,
+            trailing_atr_mult=self.settings.position.trailing_atr_mult,
+            partial_tp_pct=self.settings.position.partial_tp_pct,
+        )
+
+        # Telegram: notificacao completa com sizing
         if self.notifier is not None:
             try:
-                await self.notifier.send_signal(signal, self.settings.binance.symbol)
+                await self.notifier.send_position_open(
+                    signal,
+                    {
+                        "position_size": pos_size.position_size,
+                        "position_usd": pos_size.position_usd,
+                        "risk_usd": pos_size.risk_usd,
+                        "risk_pct": pos_size.risk_pct,
+                        "leverage": pos_size.leverage,
+                    },
+                    self.settings.binance.symbol,
+                )
                 signal_dict["notified"] = 1
             except Exception as exc:
                 logger.exception("Erro ao enviar Telegram: %s", exc)
                 insert_log("ERROR", f"Telegram envio: {exc}", "worker")
 
-        # Atualiza estado
         self.state.last_signal_ts = now_iso
         self.state.last_status_message = (
-            f"Sinal {signal.type.value} gerado em {signal.entry_price:.2f} "
-            f"(ATR pct: {signal.atr_percentile:.2f})"
+            f"Posicao #{position.id} {signal.type.value} aberta em {signal.entry_price:.2f} "
+            f"| SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
+            f"size={pos_size.position_usd:,.2f}USD"
         )
         self.last_processed_ts = closed_candle_ts
 
         insert_log(
             "INFO",
-            f"Sinal {signal.type.value} | entry={signal.entry_price:.2f} "
-            f"SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
-            f"ATR_pct={signal.atr_percentile:.2f}",
+            f"Posicao #{position.id} {signal.type.value} aberta | "
+            f"entry={signal.entry_price:.2f} SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
+            f"size={pos_size.position_usd:,.2f}USD risk={pos_size.risk_usd:,.2f}USD",
             "worker",
+        )
+
+    # ------------------------------------------------------------------
+    # Monitoramento de posicoes abertas
+    # ------------------------------------------------------------------
+    async def _monitor_open_positions(
+        self, df_ind: pd.DataFrame, candle_ts: pd.Timestamp
+    ) -> None:
+        """Verifica e atualiza posicoes abertas a cada candle fechado."""
+        if not self.tracker.has_open_positions:
+            return
+
+        last = df_ind.iloc[-1]
+        close = float(last["close"])
+        high = float(last["high"])
+        low = float(last["low"])
+
+        closed_positions = self.tracker.update_positions(
+            candle_close=close,
+            candle_high=high,
+            candle_low=low,
+            candle_ts=str(candle_ts),
+            trailing_atr_mult=self.settings.position.trailing_atr_mult,
+        )
+
+        # Processa posicoes fechadas
+        for pos in closed_positions:
+            # Salva no DB
+            try:
+                insert_closed_trade({
+                    "entry_ts": pos.entry_ts,
+                    "exit_ts": pos.exit_ts,
+                    "type": pos.type,
+                    "symbol": self.settings.binance.symbol,
+                    "entry_price": pos.entry_price,
+                    "exit_price": pos.exit_price,
+                    "stop_loss": pos.stop_loss_initial,
+                    "take_profit": pos.take_profit,
+                    "atr": pos.atr,
+                    "position_size": pos.position_size,
+                    "position_usd": pos.position_usd,
+                    "pnl_pct": pos.pnl_pct,
+                    "pnl_usd": pos.pnl_usd,
+                    "exit_reason": pos.exit_reason,
+                    "trailing_activated": int(pos.trailing_activated),
+                    "be_triggered": int(pos.be_triggered),
+                    "partial_tp_filled": int(pos.partial_tp_filled),
+                })
+            except Exception as exc:
+                logger.exception("Erro ao salvar trade no DB: %s", exc)
+
+            # Atualiza balance no sizer
+            self.sizer.update_balance(pos.pnl_usd)
+
+            # Registra resultado no risk manager
+            self.risk.register_trade_result(pos.pnl_pct)
+
+            # Telegram: notificacao de fechamento
+            if self.notifier is not None:
+                try:
+                    await self.notifier.send_trade_close(
+                        pos_type=pos.type,
+                        entry=pos.entry_price,
+                        exit_p=pos.exit_price,
+                        pnl_pct=pos.pnl_pct,
+                        pnl_usd=pos.pnl_usd,
+                        reason=pos.exit_reason,
+                        be=pos.be_triggered,
+                        trailing=pos.trailing_activated,
+                        partial=pos.partial_tp_filled,
+                    )
+                except Exception:
+                    pass
+
+            insert_log(
+                "INFO" if pos.pnl_pct >= 0 else "WARNING",
+                f"Trade #{pos.id} FECHADO: {pos.type} exit={pos.exit_price:.2f} "
+                f"pnl={pos.pnl_pct:+.2f}% (${pos.pnl_usd:+,.2f}) reason={pos.exit_reason} "
+                f"BE={pos.be_triggered} trail={pos.trailing_activated} partial={pos.partial_tp_filled}",
+                "worker",
+            )
+
+            self.state.last_status_message = (
+                f"Trade #{pos.id} {pos.exit_reason.upper()}: "
+                f"{pos.pnl_pct:+.2f}% (${pos.pnl_usd:+,.2f})"
+            )
+
+    def _get_position_status_text(self) -> str:
+        pos = self.tracker.get_open_position()
+        if pos is None:
+            return "sem posicoes"
+        sl = pos.trailing_stop if pos.trailing_activated else pos.stop_loss
+        return (
+            f"#{pos.id} {pos.type} entry={pos.entry_price:.2f} SL={sl:.2f} "
+            f"[{pos.status.value}]"
         )
 
     # ------------------------------------------------------------------
     # Circuit Breaker
     # ------------------------------------------------------------------
     def _check_circuit_breaker(self, df_ind: pd.DataFrame) -> None:
-        """
-        Verifica se o ultimo candle teve movimento extremo (ex: > 3%).
-        Se sim, aciona o circuit breaker automaticamente.
-        """
         if len(df_ind) < 2:
             return
 
@@ -315,13 +460,42 @@ class CTEVWorker:
                 price_move_pct=round(move_pct, 2),
                 duration_minutes=60,
             )
+
+            # Fecha todas as posicoes abertas
+            if self.tracker.has_open_positions:
+                closed = self.tracker.close_all(
+                    exit_price=curr_close,
+                    exit_ts=str(df_ind.index[-1]),
+                    reason="circuit_breaker",
+                )
+                for pos in closed:
+                    self.sizer.update_balance(pos.pnl_usd)
+                    self.risk.register_trade_result(pos.pnl_pct)
+                    try:
+                        insert_closed_trade({
+                            "entry_ts": pos.entry_ts,
+                            "exit_ts": pos.exit_ts,
+                            "type": pos.type,
+                            "symbol": self.settings.binance.symbol,
+                            "entry_price": pos.entry_price,
+                            "exit_price": pos.exit_price,
+                            "stop_loss": pos.stop_loss_initial,
+                            "take_profit": pos.take_profit,
+                            "atr": pos.atr,
+                            "pnl_pct": pos.pnl_pct,
+                            "pnl_usd": pos.pnl_usd,
+                            "exit_reason": pos.exit_reason,
+                        })
+                    except Exception:
+                        pass
+
             self.state.last_status_message = (
-                f"CIRCUIT BREAKER: movimento de {move_pct:.2f}% detectado!"
+                f"CIRCUIT BREAKER: {move_pct:.2f}% detectado! Posicoes fechadas."
             )
             insert_log(
                 "CRITICAL",
-                f"Circuit Breaker acionado: candle moveu {move_pct:.2f}% "
-                f"(limite: {cb_pct}%). Pausa por 60 minutos.",
+                f"Circuit Breaker: {move_pct:.2f}% (limite {cb_pct}%). "
+                f"{len(closed) if closed else 0} posicoes fechadas.",
                 "risk",
             )
 

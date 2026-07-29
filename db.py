@@ -88,6 +88,30 @@ def _init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(ts DESC);
         CREATE INDEX IF NOT EXISTS idx_logs_ts    ON logs(ts DESC);
+
+        CREATE TABLE IF NOT EXISTS closed_trades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts              TEXT    NOT NULL,
+            entry_ts        TEXT,
+            exit_ts         TEXT,
+            type            TEXT    NOT NULL,
+            symbol          TEXT    NOT NULL,
+            entry_price     REAL    NOT NULL,
+            exit_price      REAL    NOT NULL,
+            stop_loss       REAL    NOT NULL,
+            take_profit     REAL    NOT NULL,
+            atr             REAL,
+            position_size   REAL,
+            position_usd    REAL,
+            pnl_pct         REAL,
+            pnl_usd         REAL,
+            exit_reason     TEXT,            -- 'tp' | 'sl' | 'timeout' | 'manual' | 'kill'
+            trailing_activated INTEGER DEFAULT 0,
+            be_triggered    INTEGER DEFAULT 0,
+            partial_tp_filled INTEGER DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_trades_ts ON closed_trades(ts DESC);
         """
     )
 
@@ -201,6 +225,81 @@ def list_recent_logs(limit: int = 50) -> List[dict]:
             (limit,),
         )
         return [_row_to_dict(r) for r in cur.fetchall()]
+
+
+# ------------------------------------------------------------------
+# API publica — Trades Fechados
+# ------------------------------------------------------------------
+def insert_closed_trade(trade_data: dict) -> int:
+    """Insere um trade fechado na tabela closed_trades."""
+    conn = _get_conn()
+    with _lock:
+        cur = conn.execute(
+            """
+            INSERT INTO closed_trades (
+                ts, entry_ts, exit_ts, type, symbol,
+                entry_price, exit_price, stop_loss, take_profit,
+                atr, position_size, position_usd,
+                pnl_pct, pnl_usd, exit_reason,
+                trailing_activated, be_triggered, partial_tp_filled
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _now_iso(),
+                trade_data.get("entry_ts", ""),
+                trade_data.get("exit_ts", ""),
+                trade_data["type"],
+                trade_data.get("symbol", "BTC/USDT"),
+                float(trade_data["entry_price"]),
+                float(trade_data["exit_price"]),
+                float(trade_data["stop_loss"]),
+                float(trade_data["take_profit"]),
+                float(trade_data.get("atr", 0)),
+                float(trade_data.get("position_size", 0)),
+                float(trade_data.get("position_usd", 0)),
+                float(trade_data.get("pnl_pct", 0)),
+                float(trade_data.get("pnl_usd", 0)),
+                trade_data.get("exit_reason", ""),
+                int(trade_data.get("trailing_activated", 0)),
+                int(trade_data.get("be_triggered", 0)),
+                int(trade_data.get("partial_tp_filled", 0)),
+            ),
+        )
+        return cur.lastrowid
+
+
+def list_recent_trades(limit: int = 50) -> List[dict]:
+    """Retorna os N trades fechados mais recentes."""
+    conn = _get_conn()
+    with _lock:
+        cur = conn.execute(
+            "SELECT * FROM closed_trades ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        return [_row_to_dict(r) for r in cur.fetchall()]
+
+
+def get_trades_summary() -> dict:
+    """Retorna resumo dos trades: total, wins, losses, PnL acumulado."""
+    conn = _get_conn()
+    with _lock:
+        cur = conn.execute(
+            "SELECT COUNT(*) AS total, "
+            "  SUM(CASE WHEN pnl_pct > 0 THEN 1 ELSE 0 END) AS wins, "
+            "  SUM(CASE WHEN pnl_pct <= 0 THEN 1 ELSE 0 END) AS losses, "
+            "  COALESCE(SUM(pnl_pct), 0) AS total_pnl_pct, "
+            "  COALESCE(SUM(pnl_usd), 0) AS total_pnl_usd "
+            "FROM closed_trades"
+        )
+        row = cur.fetchone()
+        return {
+            "total_trades": int(row["total"]),
+            "wins": int(row["wins"] or 0),
+            "losses": int(row["losses"] or 0),
+            "win_rate": round(int(row["wins"] or 0) / max(int(row["total"]), 1) * 100, 1),
+            "total_pnl_pct": round(float(row["total_pnl_pct"]), 2),
+            "total_pnl_usd": round(float(row["total_pnl_usd"]), 2),
+        }
 
 
 # ------------------------------------------------------------------

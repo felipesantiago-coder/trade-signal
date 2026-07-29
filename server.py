@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -37,10 +38,14 @@ from config import Settings, load_settings
 from db import (
     count_signals_by_type_today,
     count_signals_today,
+    get_trades_summary,
     insert_log,
     list_recent_logs,
     list_recent_signals,
+    list_recent_trades,
 )
+from position_sizing import get_position_sizer
+from position_tracker import get_position_tracker
 from risk_manager import get_risk_manager
 
 logger = logging.getLogger("ctev.server")
@@ -52,7 +57,7 @@ app = FastAPI(
     title="CTEV Trading Bot - Painel Administrativo",
     description="Bot de sinais CTEV para BTC/USD 1H com painel web, "
                 "RiskManager e Backtesting.",
-    version="2.0.0",
+    version="2.1.0",
 )
 
 _worker: Optional[CTEVWorker] = None
@@ -85,7 +90,7 @@ async def _on_startup() -> None:
         _settings = load_settings()
     except RuntimeError as exc:
         logger.error("Falha ao carregar settings: %s", exc)
-        from config import BinanceConfig, Settings as S, TelegramConfig, RiskConfig
+        from config import BinanceConfig, PositionConfig, Settings as S, TelegramConfig, RiskConfig
         _settings = S(
             telegram=TelegramConfig(token="", chat_id=""),
             binance=BinanceConfig(
@@ -95,6 +100,7 @@ async def _on_startup() -> None:
                 timeframe=os.getenv("BINANCE_TIMEFRAME", "1h"),
             ),
             risk=RiskConfig(),
+            position=PositionConfig(),
             loop_interval_seconds=int(os.getenv("LOOP_INTERVAL_SECONDS", "60")),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
@@ -146,9 +152,14 @@ async def index() -> HTMLResponse:
 async def api_status() -> dict:
     state = get_bot_state().snapshot()
     risk = get_risk_manager().snapshot()
+    tracker = get_position_tracker()
+    sizer = get_position_sizer()
     return {
         "bot": state,
         "risk": risk,
+        "position": sizer.snapshot(),
+        "positions": tracker.snapshot(),
+        "trades_summary": get_trades_summary(),
         "symbol": get_settings().binance.symbol,
         "timeframe": get_settings().binance.timeframe,
         "signals_today": count_signals_today(),
@@ -281,6 +292,50 @@ async def api_backtest_status() -> dict:
     if _backtest_result is not None:
         return {"status": "done", "result": _backtest_result}
     return {"status": "none", "result": None}
+
+
+@app.get("/api/positions", summary="Posicoes abertas e trades fechados")
+async def api_positions() -> dict:
+    """Retorna posicoes abertas e historico de trades."""
+    tracker = get_position_tracker()
+    return tracker.snapshot()
+
+
+@app.get("/api/trades", summary="Trades fechados com summary")
+async def api_trades(limit: int = 50) -> dict:
+    """Retorna trades fechados e resumo."""
+    limit = max(1, min(limit, 200))
+    return {
+        "trades": list_recent_trades(limit=limit),
+        "summary": get_trades_summary(),
+    }
+
+
+@app.post("/api/close-positions", summary="Fecha todas as posicoes abertas")
+async def api_close_positions(price: Optional[float] = None) -> dict:
+    """Fecha todas as posicoes no preco atual ou especifico."""
+    import ccxt.async_support as ccxt_async
+    tracker = get_position_tracker()
+    if not tracker.has_open_positions:
+        return {"ok": True, "closed": 0, "message": "Nenhuma posicao aberta."}
+
+    # Busca preco atual se nao especificado
+    if price is None:
+        try:
+            exchange = ccxt_async.binance({"enableRateLimit": True})
+            ticker = await exchange.fetch_ticker(get_settings().binance.symbol)
+            price = ticker["last"]
+            await exchange.close()
+        except Exception as exc:
+            return {"ok": False, "error": f"Erro ao buscar preco: {exc}"}
+
+    closed = tracker.close_all(
+        exit_price=price,
+        exit_ts=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        reason="manual",
+    )
+    insert_log("WARNING", f"{len(closed)} posicoes fechadas manualmente via painel.", "server")
+    return {"ok": True, "closed": len(closed)}
 
 
 # Mount de arquivos estaticos (se houver necessidade futura de CSS/JS externos)
