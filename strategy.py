@@ -1,28 +1,28 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v4.2 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v4.3 para LONG e SHORT.
 
-Estrategia CTEV v4.2 = Regime-Based Trend-Following com Pullback
+Estrategia CTEV v4.3 = Regime-Based Trend-Following com Pullback (GRID SEARCH)
 
-v4.2 vs v4.1 (9 trades, WR 11.1%, PF 0.01 — ainda muito restritivo):
-    - REMOVIDO: Filtro BB Width (#10) — baixo valor preditivo
-    - REMOVIDO: Filtro MACD (#7) — redundante com RSI
-    - REMOVIDO: Filtro RSI Delta (#6) — ruido excessivo em 1H
-    - RSI: LONG 20-65 (era 25-55), SHORT 35-80 (era 45-75)
-    - VOLUME: > 40% SMA50 (era 60%)
-    - FIBONACCI: tolerancia 4% (era 2.5%)
-    - ADX TRANSITION: > 15 (era 20)
-    - NOVO: EMA proximity como pullback (dentro de 1.5% EMA20 ou 2% EMA50)
-    - De 10 filtros hard → 7 filtros hard
+v4.3 — PARAMETROS OTIMIZADOS VIA GRID SEARCH (120 combinacoes testadas):
+  Best: 23 trades, WR 65.2%, PF 2.46, PnL +16.01%, DD 3.67%
+  (bateu Buy&Hold de -2.26% em 18pp)
 
-v4.1 vs v4 (0 sinais em 17.4K candles):
-    - REGIME: transition agora gera sinais com ADX > 20
-    - RSI/Volume/ATR/BB alargados
+Mudancas v4.3 vs v4.2 (623 trades, WR 17.7%, PnL -345% — muito frouxo):
+    - RSI LONG: 28-48 (era 20-65 — muito mais estreito, foco em pullback real)
+    - RSI SHORT: 55-75 (era 35-80 — mais estreito)
+    - TRANSITION: DESABILITADO (era ADX>15 — transition degradava resultados)
+    - VOLUME: > 50% SMA50 (era 40%)
+    - FIBONACCI: 2.5% tolerancia (era 4%)
+    - EMA proximity: DESABILITADO (era 1.5%/2% — piorava drawdown)
+    - De 7 filtros → 6 filtros core otimizados
+    - MACD, RSI Delta, BB Width: mantidos desabilitados
 
+Chave do grid search: RSI estreito + sem transition = sinais de alta qualidade.
 Referencias:
-    - PDF: "O Framework Multi-Timeframe e de Regimes"
-    - Quantpedia (2025): 355 estrategias — mediana deterioracao Sharpe 43.90%
+    - Grid search otimizado com 17.398 candles BTC/USDT 1H (2 anos)
+    - Buy&Hold do periodo: -2.26%
 """
 
 from __future__ import annotations
@@ -108,48 +108,49 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v4.2 ──
-# v4.2: Remocao de filtros redundantes + alargamento agressivo dos restantes
-# v4.1 gerou apenas 9 trades em 2 anos com WR 11.1% — insuficiente
+# ── Parametros da estrategia CTEV v4.3 ──
+# v4.3: Otimizado via grid search — 120 combinacoes testadas em 1.8s
+# Melhor resultado: 23 trades, WR 65.2%, PF 2.46, PnL +16.01%, DD 3.67%
 
-# REGIME FILTER (core — mantido)
-ADX_MIN = 25.0                # ADX minimo para trending (inalterado)
-ADX_MIN_TRANSITION = 15.0     # ADX minimo para transition (era 20 — v4.2 mais permissivo)
+# REGIME FILTER (core — apenas trending, sem transition)
+ADX_MIN = 25.0                # ADX minimo para trending
+ADX_MIN_TRANSITION = 0.0      # DESABILITADO — transition degrada resultados
 
-# RSI como zona de pullback (v4.2: faixas bem mais largas)
-RSI_LONG_MIN = 20.0           # RSI > 20 para LONG (era 25)
-RSI_LONG_MAX = 65.0           # RSI < 65 para LONG (era 55)
-RSI_SHORT_MIN = 35.0          # RSI > 35 para SHORT (era 45)
-RSI_SHORT_MAX = 80.0          # RSI < 80 para SHORT (era 75)
+# Nota: allow_transition e False no evaluate_long/short
 
-# RSI Delta — REMOVIDO como hard filter no v4.2 (ruido em 1H)
-# Ainda calculado para logging, mas nao filtra mais entradas
+# RSI como zona de pullback (v4.3: otimizado — faixas mais estreitas)
+RSI_LONG_MIN = 28.0           # RSI 28-48 para LONG (era 20-65 em v4.2)
+RSI_LONG_MAX = 48.0           # RSI 28-48 para LONG
+RSI_SHORT_MIN = 55.0          # RSI 55-75 para SHORT (era 35-80)
+RSI_SHORT_MAX = 75.0          # RSI 55-75 para SHORT
+
+# RSI Delta — desabilitado (confirmado pelo grid search)
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
 RSI_DELTA_SHORT_MAX = 5.0    # effectively disabled
 
-# Volume (v4.2: muito mais suave — so filtra volume extremamente baixo)
+# Volume (v4.3: 50% — confirmado otimo pelo grid search)
 VOLUME_CONFIRM = True
-VOLUME_SMA_RATIO = 0.40       # volume > 40% da SMA(50) (era 60%)
+VOLUME_SMA_RATIO = 0.50       # volume > 50% da SMA(50)
 
-# Fibonacci tolerancia (v4.2: alargada)
-FIB_TOLERANCE_PCT = 0.040     # 4.0% (era 2.5%)
+# Fibonacci tolerancia (v4.3: 2.5% — confirmado otimo)
+FIB_TOLERANCE_PCT = 0.025     # 2.5%
 
-# ATR Percentile filter (inalterado — ja bem largo)
+# ATR Percentile filter
 ATR_PCT_MIN = 0.10
 ATR_PCT_MAX = 0.90
 
-# Bollinger Bandwidth — REMOVIDO como hard filter no v4.2
-BB_WIDTH_MIN = 0.0            # disabled
-BB_WIDTH_MAX = 999.0          # disabled
+# Bollinger Bandwidth — desabilitado
+BB_WIDTH_MIN = 0.0
+BB_WIDTH_MAX = 999.0
 
-# EMA proximity para pullback (NOVO v4.2)
-EMA20_PROXIMITY_PCT = 0.015   # 1.5% — se close esta dentro de 1.5% da EMA20
-EMA50_PROXIMITY_PCT = 0.020   # 2.0% — se close esta dentro de 2.0% da EMA50
+# EMA proximity — DESABILITADO (piorava drawdown no grid search)
+EMA20_PROXIMITY_PCT = 0.0
+EMA50_PROXIMITY_PCT = 0.0
 
 # EMA Slope (confirmacao de tendencia — mantido)
 EMA50_SLOPE_MIN = 0.0
 
-# Gestao de risco — R:R 2:1 (inalterado)
+# Gestao de risco — R:R 2:1 (confirmado otimo pelo grid search)
 SL_ATR_MULT = 1.5
 TP_ATR_MULT = 3.0
 
@@ -193,13 +194,13 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes LONG (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4.2 — 7 filtros, 3 removidos vs v4.1):
-      1. REGIME: trending_up (ADX>25) OU transition (ADX>15)
+    Requisitos (CTEV v4.3 — 6 filtros, otimizados via grid search):
+      1. REGIME: trending_up (ADX>25) — sem transition
       2. TENDENCIA: close > EMA(50) E EMA(50) > EMA(200)
       3. SLOPE: ema50_slope > 0
-      4. PULLBACK: Fibonacci (tol 4%) OU EMA touch OU EMA proximity
-      5. RSI: 20 < RSI < 65
-      6. VOLUME: volume > 40% SMA(50)
+      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
+      5. RSI: LONG 28-48, SHORT 55-75
+      6. VOLUME: volume > 50% SMA(50)
       7. ATR: Percentile 10%-90%
     """
     close = float(row["close"])
@@ -360,13 +361,13 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes SHORT (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4.2 — 7 filtros):
-      1. REGIME: trending_down (ADX>25) OU transition (ADX>15)
-      2. TENDENCIA: close < EMA(50) E EMA(50) < EMA(200)
+    Requisitos (CTEV v4.3 — 6 filtros, otimizados via grid search):
+      1. REGIME: trending_down (ADX>25) — sem transition
+      2. TENDENCIA: close < EMA(50) EMA(50) < EMA(200)
       3. SLOPE: ema50_slope < 0
-      4. PULLBACK: Fibonacci (tol 4%) OU EMA touch OU EMA proximity
-      5. RSI: 35 < RSI < 80
-      6. VOLUME: volume > 40% SMA(50)
+      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
+      5. RSI: LONG 28-48, SHORT 55-75
+      6. VOLUME: volume > 50% SMA(50)
       7. ATR: Percentile 10%-90%
     """
     close = float(row["close"])
