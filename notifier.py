@@ -106,14 +106,14 @@ def _format_signal_message(signal: Signal, symbol: str) -> str:
     if is_long:
         header = (
             f"COMPRA (LONG) detectada no {symbol}\n\n"
-            "O sistema encontrou uma boa oportunidade de compra.\n"
-            "Veja a analise detalhada abaixo."
+            f"O sistema encontrou uma boa oportunidade de compra.\n"
+            f"Veja a analise detalhada abaixo."
         )
     else:
         header = (
             f"VENDA (SHORT) detectada no {symbol}\n\n"
-            "O sistema encontrou uma boa oportunidade de venda.\n"
-            "Veja a analise detalhada abaixo."
+            f"O sistema encontrou uma boa oportunidade de venda.\n"
+            f"Veja a analise detalhada abaixo."
         )
 
     # Explicacao das condicoes
@@ -132,19 +132,19 @@ def _format_signal_message(signal: Signal, symbol: str) -> str:
 
     prices = (
         f"\nValores da operacao:\n"
-        f"Entrada: ${entry:,.2f}\n"
-        f"Stop Loss (protecao): ${sl:,.2f}\n"
-        f"  → Se atingir, perda maxima: ${risk_usd:,.2f} por BTC\n"
-        f"Take Profit (alvo): ${tp:,.2f}\n"
-        f"  → Se atingir, ganho estimado: ${reward_usd:,.2f} por BTC\n"
-        f"Relacao risco/ganho: 1:{rr:.2f}"
+        f"  Preco de Entrada: ${entry:,.2f}\n"
+        f"  Stop Loss (protecao): ${sl:,.2f}\n"
+        f"    Se atingir, perda maxima: ${risk_usd:,.2f} por BTC\n"
+        f"  Take Profit (alvo): ${tp:,.2f}\n"
+        f"    Se atingir, ganho estimado: ${reward_usd:,.2f} por BTC\n"
+        f"  Relacao risco/ganho: 1:{rr:.2f}"
     )
 
     # Protecoes
     protections = f"\n{_explain_risk_management()}"
 
     # Footer
-    footer = "\nAnalise automatica by CTEV v3.0"
+    footer = "\n\nAnalise automatica by CTEV v3.0"
 
     return (
         f"{header}\n\n"
@@ -270,10 +270,10 @@ class TelegramNotifier:
         risk_pct = position_info.get("risk_pct", 0)
 
         sizing = (
-            f"Posicao aberta:\n"
-            f"Quantidade: {pos_size:.8f} BTC\n"
-            f"Valor total: ${pos_usd:,.2f}\n"
-            f"Risco maximo: ${risk_usd:,.2f} ({risk_pct * 100:.1f}% do saldo)\n\n"
+            f"Dados da posicao:\n"
+            f"  Quantidade: {pos_size:.8f} BTC\n"
+            f"  Valor total: ${pos_usd:,.2f}\n"
+            f"  Risco maximo: ${risk_usd:,.2f} ({risk_pct * 100:.1f}% do saldo)\n\n"
         )
 
         # MTF em linguagem simples
@@ -313,9 +313,9 @@ class TelegramNotifier:
                 text=(
                     f"Posicao de {direction} ABERTA\n\n"
                     f"{sizing}{mtf_str}{mode_str}\n"
-                    f"Entrada: ${signal.entry_price:,.2f}\n"
-                    f"Stop Loss: ${signal.stop_loss:,.2f}\n"
-                    f"Take Profit: ${signal.take_profit:,.2f}"
+                    f"  Preco de Entrada: ${signal.entry_price:,.2f}\n"
+                    f"  Stop Loss: ${signal.stop_loss:,.2f}\n"
+                    f"  Take Profit: ${signal.take_profit:,.2f}"
                 ),
                 parse_mode=ParseMode.MARKDOWN,
             )

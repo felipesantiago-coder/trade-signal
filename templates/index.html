@@ -50,23 +50,23 @@
 
     <!-- Guia rapido -->
     <section class="bg-brand-900/20 rounded-xl border border-brand-800/40 p-5">
-        <details>
+        <details open>
             <summary class="cursor-pointer text-base font-semibold text-brand-300 flex items-center gap-2">
                 <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Guia Rapido — Como usar este painel
             </summary>
             <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-300">
                 <div class="bg-gray-800/50 rounded-lg p-4">
-                    <div class="font-semibold text-emerald-400 mb-2">1. Monitorar</div>
-                    <p class="text-xs text-gray-400 leading-relaxed">O bot analisa o Bitcoin automaticamente a cada hora. Quando encontra uma boa oportunidade, envia um alerta pelo Telegram e registra um sinal aqui no painel.</p>
+                    <div class="font-semibold text-emerald-400 mb-2">1. Acompanhar</div>
+                    <p class="text-xs text-gray-400 leading-relaxed">O bot analisa o Bitcoin automaticamente a cada hora. Quando encontra uma boa oportunidade, envia um alerta pelo Telegram e registra o sinal aqui no painel. Voce nao precisa fazer nada — basta acompanhar.</p>
                 </div>
                 <div class="bg-gray-800/50 rounded-lg p-4">
                     <div class="font-semibold text-amber-400 mb-2">2. Entender os sinais</div>
-                    <p class="text-xs text-gray-400 leading-relaxed"><b>LONG (Compra)</b>: o sistema detectou que o preco caiu temporariamente numa tendencia de alta - boa hora para comprar.<br><b>SHORT (Venda)</b>: o preco subiu temporariamente numa tendencia de baixa - boa hora para vender.</p>
+                    <p class="text-xs text-gray-400 leading-relaxed"><b>LONG (Compra)</b>: o sistema detectou que o preco recuou temporariamente numa tendencia de alta — boa oportunidade para comprar mais barato.<br><b>SHORT (Venda)</b>: o preco subiu temporariamente numa tendencia de baixa — boa oportunidade para vender mais caro.</p>
                 </div>
                 <div class="bg-gray-800/50 rounded-lg p-4">
                     <div class="font-semibold text-purple-400 mb-2">3. Controles</div>
-                    <p class="text-xs text-gray-400 leading-relaxed"><b>Iniciar/Pausar</b>: liga ou desliga a analise automatica.<br><b>Kill Switch</b>: botao de emergencia que para tudo.<br><b>Dry-Run</b>: modo simulacao (nenhuma ordem real).<br><b>Backtest</b>: testa a estrategia nos ultimos 2 anos.</p>
+                    <p class="text-xs text-gray-400 leading-relaxed"><b>Iniciar/Pausar</b>: liga ou desliga a analise automatica.<br><b>Para Tudo</b>: botao de emergencia que interrompe todas as operacoes.<br><b>Dry-Run</b>: modo simulacao — nenhuma ordem real e enviada.<br><b>Backtest</b>: simula como a estrategia teria se comportado nos ultimos 2 anos.</p>
                 </div>
             </div>
         </details>
@@ -78,7 +78,7 @@
             <div>
                 <h2 class="text-base font-semibold mb-1">Controle do Bot</h2>
                 <p class="text-xs text-gray-500 mb-1">Ligue ou pause a analise automatica do Bitcoin.</p>
-                <p id="statusMessage" class="text-sm text-gray-400">Aguardando primeiro ciclo...</p>
+                <p id="statusMessage" class="text-sm text-gray-400">Aguardando primeiro ciclo de analise...</p>
             </div>
             <div class="flex gap-2">
                 <button id="btnStart" onclick="controlBot('start')"
@@ -104,26 +104,26 @@
     <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Perda Hoje</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Perda Diaria</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
             </div>
             <div id="riskDailyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
             <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
                 <div id="riskDailyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
             </div>
-            <div id="riskDailySub" class="text-xs text-gray-500 mt-1">Limite: 3.0%</div>
+            <div id="riskDailySub" class="text-xs text-gray-500 mt-1">Limite diario: 3.0%</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Perda na Semana</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Perda Semanal</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
             </div>
             <div id="riskWeeklyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
             <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
                 <div id="riskWeeklyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
             </div>
-            <div id="riskWeeklySub" class="text-xs text-gray-500 mt-1">Limite: 6.0%</div>
+            <div id="riskWeeklySub" class="text-xs text-gray-500 mt-1">Limite semanal: 6.0%</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -132,7 +132,7 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
             </div>
             <div id="riskFiltered" class="text-2xl font-semibold font-mono">0</div>
-            <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Pelo protetor de capital</div>
+            <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Sinais bloqueados pelo protetor de capital</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -141,7 +141,7 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
             </div>
             <div id="riskConsecutive" class="text-2xl font-semibold font-mono">0</div>
-            <div id="riskConsecutiveSub" class="text-xs text-gray-500 mt-1">0 / 5 max</div>
+            <div id="riskConsecutiveSub" class="text-xs text-gray-500 mt-1">0 de 5 max (pausa automatica)</div>
         </div>
     </section>
 
@@ -196,7 +196,7 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
             </div>
             <div id="kpiCycles" class="text-2xl font-semibold">0</div>
-            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">ciclos de analise</div>
+            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">ciclos de analise concluidos</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -214,7 +214,7 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
             <div id="kpiBalance" class="text-2xl font-semibold font-mono">—</div>
-            <div id="kpiBalanceSub" class="text-xs text-gray-500 mt-1">Risk/trade: —</div>
+            <div id="kpiBalanceSub" class="text-xs text-gray-500 mt-1">Risco por operacao: —</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -223,16 +223,18 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             </div>
             <div id="kpiPnL" class="text-2xl font-semibold font-mono">—</div>
-            <div id="kpiPnLSub" class="text-xs text-gray-500 mt-1">WR: — | 0 trades</div>
+            <div id="kpiPnLSub" class="text-xs text-gray-500 mt-1">Taxa de acerto: — | 0 operacoes</div>
         </div>
     </section>
 
     <!-- Posição Aberta -->
     <section id="openPositionSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 p-5">
         <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-semibold">Posição Aberta</h2>
-            <p class="text-xs text-gray-500 mt-1">Operacao atualmente em andamento. O bot gerencia automaticamente o stop loss e take profit.</p>
-            <button onclick="closePositions()" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium">Fechar Posição</button>
+            <div>
+                <h2 class="text-base font-semibold">Posicao Aberta</h2>
+                <p class="text-xs text-gray-500">Operacao em andamento — o bot gerencia stop loss e take profit automaticamente.</p>
+            </div>
+            <button onclick="closePositions()" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium">Fechar Posicao</button>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
             <div>
@@ -240,15 +242,15 @@
                 <div id="posType" class="font-semibold text-emerald-400">—</div>
             </div>
             <div>
-                <span class="text-gray-500 text-xs">Entrada</span>
+                <span class="text-gray-500 text-xs">Preco de Entrada</span>
                 <div id="posEntry" class="font-mono">—</div>
             </div>
             <div>
-                <span class="text-gray-500 text-xs">SL (atual)</span>
+                <span class="text-gray-500 text-xs">Stop Loss (protecao)</span>
                 <div id="posSL" class="font-mono text-red-300">—</div>
             </div>
             <div>
-                <span class="text-gray-500 text-xs">TP</span>
+                <span class="text-gray-500 text-xs">Take Profit (alvo)</span>
                 <div id="posTP" class="font-mono text-emerald-300">—</div>
             </div>
             <div>
@@ -257,10 +259,10 @@
             </div>
         </div>
         <div class="mt-3 flex gap-4 text-xs text-gray-500">
-            <span>Size: <span id="posSize" class="text-gray-300 font-mono">—</span></span>
-            <span>USD: <span id="posUSD" class="text-gray-300 font-mono">—</span></span>
-            <span>BE: <span id="posBE" class="text-gray-300">—</span></span>
-            <span>Trail: <span id="posTrail" class="text-gray-300">—</span></span>
+            <span>Tamanho: <span id="posSize" class="text-gray-300 font-mono">—</span></span>
+            <span>Valor: <span id="posUSD" class="text-gray-300 font-mono">—</span></span>
+            <span>Break-Even: <span id="posBE" class="text-gray-300">—</span></span>
+            <span>Trailing: <span id="posTrail" class="text-gray-300">—</span></span>
         </div>
     </section>
 
@@ -281,8 +283,8 @@
                     <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
                         <tr>
                             <th class="px-4 py-3 text-left">Data/Hora</th>
-                            <th class="px-4 py-3 text-left">Tipo</th>
-                            <th class="px-4 py-3 text-right">Entrada</th>
+                            <th class="px-4 py-3 text-left">Direcao</th>
+                            <th class="px-4 py-3 text-right">Preco de Entrada</th>
                             <th class="px-4 py-3 text-right">Stop Loss</th>
                             <th class="px-4 py-3 text-right">Take Profit</th>
                             <th class="px-4 py-3 text-center">RSI</th>
@@ -300,7 +302,7 @@
         <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-800">
                 <h2 class="text-base font-semibold">Log do Sistema</h2>
-                <p class="text-xs text-gray-500">Últimas 50 entradas</p>
+                <p class="text-xs text-gray-500">Registro interno das atividades do bot (ultimas 50 entradas)</p>
             </div>
             <div id="logsBody" class="p-4 max-h-[28rem] overflow-y-auto space-y-2 font-mono text-xs">
                 <div class="text-gray-500 text-center py-8">Sem logs.</div>
@@ -313,8 +315,8 @@
     <section id="closedTradesSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
-                <h2 class="text-base font-semibold">Trades Fechados</h2>
-                <p class="text-xs text-gray-500">Resultado das operacoes que ja foram fechadas (lucro ou perda)</p>
+                <h2 class="text-base font-semibold">Operacoes Fechadas</h2>
+                <p class="text-xs text-gray-500">Resultado das operacoes que ja foram encerradas (lucro ou perda)</p>
             </div>
             <div class="flex items-center gap-3">
                 <span id="tradesSummaryBadge" class="hidden px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">0 trades</span>
@@ -338,14 +340,14 @@
             <table class="w-full text-sm">
                 <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
                     <tr>
-                        <th class="px-4 py-3 text-left">Entrada</th>
-                        <th class="px-4 py-3 text-left">Saída</th>
-                        <th class="px-4 py-3 text-left">Tipo</th>
-                        <th class="px-4 py-3 text-right">Preço Entrada</th>
-                        <th class="px-4 py-3 text-right">Preço Saída</th>
-                        <th class="px-4 py-3 text-right">PnL</th>
+                        <th class="px-4 py-3 text-left">Inicio</th>
+                        <th class="px-4 py-3 text-left">Fim</th>
+                        <th class="px-4 py-3 text-left">Direcao</th>
+                        <th class="px-4 py-3 text-right">Preco Entrada</th>
+                        <th class="px-4 py-3 text-right">Preco Saida</th>
+                        <th class="px-4 py-3 text-right">Resultado</th>
                         <th class="px-4 py-3 text-left">Motivo</th>
-                        <th class="px-4 py-3 text-center">Tags</th>
+                        <th class="px-4 py-3 text-center">Recursos</th>
                     </tr>
                 </thead>
                 <tbody id="closedTradesBody" class="divide-y divide-gray-800">
@@ -431,7 +433,7 @@
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 class="text-base font-semibold">Multi-Timeframe</h2>
-                <p class="text-xs text-gray-500">Verifica se a tendencia em periodos maiores (4h e diario) confirma o sinal</p>
+                <p class="text-xs text-gray-500">Verifica se a tendencia em periodos maiores confirma o sinal</p>
             </div>
             <span id="mtfBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
                 <span id="mtfStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
@@ -441,7 +443,7 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
             <div class="flex items-center gap-4">
                 <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">H4 Trend</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Tendencia 4H</div>
                     <div class="flex items-center gap-2">
                         <span id="mtfH4Dot" class="w-3 h-3 rounded-full bg-gray-600"></span>
                         <span id="mtfH4" class="text-sm font-semibold font-mono">—</span>
@@ -450,7 +452,7 @@
             </div>
             <div class="flex items-center gap-4">
                 <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">D1 Trend</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Tendencia Diario</div>
                     <div class="flex items-center gap-2">
                         <span id="mtfD1Dot" class="w-3 h-3 rounded-full bg-gray-600"></span>
                         <span id="mtfD1" class="text-sm font-semibold font-mono">—</span>
@@ -459,14 +461,10 @@
             </div>
             <div class="flex items-center gap-4">
                 <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Confluência</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Confluencia</div>
                     <div id="mtfConfluence" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-gray-800 text-gray-400">
                         —
                     </div>
-                </div>
-                <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Cache</div>
-                    <div id="mtfCache" class="text-xs font-mono text-gray-500">—</div>
                 </div>
             </div>
         </div>
@@ -490,11 +488,11 @@
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
             <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Ordens Executadas</div>
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Ordens Enviadas</div>
                 <div id="executorOrders" class="text-2xl font-semibold font-mono">0</div>
             </div>
             <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Último Erro</div>
+                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Ultimo Erro</div>
                 <div id="executorLastError" class="text-sm text-gray-400 truncate">—</div>
             </div>
             <div>
@@ -609,7 +607,7 @@
     </section>
 
     <footer class="text-center text-xs text-gray-600 pt-4 pb-8">
-        CTEV Bot v3.0 · <a href="/health" class="hover:text-brand-400 underline">/health</a> · <a href="/api/status" class="hover:text-brand-400 underline">/api/status</a> · <a href="/docs" class="hover:text-brand-400 underline">/docs</a>
+        CTEV Bot v3.0 — Analise automatizada de Bitcoin
     </footer>
 </main>
 
@@ -1050,7 +1048,7 @@
         const balance = pos.balance || 0;
         const riskPerTrade = pos.risk_per_trade_pct || 0;
         document.getElementById('kpiBalance').textContent = '$' + fmtNum(balance);
-        document.getElementById('kpiBalanceSub').textContent = 'Risk/trade: ' + fmtNum(riskPerTrade) + '%';
+        document.getElementById('kpiBalanceSub').textContent = 'Risco por operacao: ' + fmtNum(riskPerTrade) + '%';
 
         // PnL KPI
         const totalPnl = summary.total_pnl_usd || 0;
@@ -1059,7 +1057,7 @@
         const pnlEl = document.getElementById('kpiPnL');
         pnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + fmtNum(Math.abs(totalPnl));
         pnlEl.className = 'text-2xl font-semibold font-mono ' + (totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400');
-        document.getElementById('kpiPnLSub').textContent = 'WR: ' + fmtNum(winRate, 1) + '% | ' + totalTrades + ' trades';
+        document.getElementById('kpiPnLSub').textContent = 'Taxa de acerto: ' + fmtNum(winRate, 1) + '% | ' + totalTrades + ' operacoes';
 
         // Open position card
         const section = document.getElementById('openPositionSection');
@@ -1097,7 +1095,7 @@
             ctSection.classList.remove('hidden');
             kpis.classList.remove('hidden');
             badge.classList.remove('hidden');
-            badge.textContent = closedTrades.length + ' trades';
+            badge.textContent = closedTrades.length + ' operacoes';
 
             document.getElementById('ctTotal').textContent = closedTrades.length;
             const wr = summary.win_rate || 0;
