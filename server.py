@@ -22,6 +22,9 @@ Nenhum endpoint de execucao de ordens esta disponivel.
 
 O servidor inicializa o background worker (CTEVWorker) no startup e o
 encerra graciosamente no shutdown.
+
+Endpoints de chart data:
+- GET  /api/chart-data -> Dados de precos + indicadores + sinais para graficos
 """
 
 from __future__ import annotations
@@ -49,6 +52,7 @@ from db import (
     list_recent_signals,
     list_recent_trades,
 )
+from indicators import compute_indicators
 from multi_timeframe import get_mtf_filter
 from position_tracker import get_position_tracker
 from risk_manager import get_risk_manager
@@ -316,6 +320,56 @@ async def api_trades(limit: int = 50) -> dict:
         "trades": list_recent_trades(limit=limit),
         "summary": get_trades_summary(),
     }
+
+
+@app.get("/api/chart-data", summary="Dados de precos + indicadores + sinais para graficos")
+async def api_chart_data(bars: int = 100) -> dict:
+    """
+    Retorna dados de precos com indicadores calculados e posicao dos sinais.
+    Usado pelos graficos Chart.js do painel.
+    """
+    try:
+        worker = get_worker()
+        if worker.exchange is None:
+            return {"ok": False, "error": "Exchange nao conectada"}
+        symbol = worker.exchange_info.symbol if worker.exchange_info else get_settings().binance.symbol
+        ohlcv = await worker.exchange.fetch_ohlcv(
+            symbol=symbol,
+            timeframe=get_settings().binance.timeframe,
+            limit=max(50, min(bars, 300)),
+        )
+        if not ohlcv:
+            return {"ok": False, "error": "Sem dados"}
+
+        import pandas as pd
+        df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.set_index("datetime", inplace=True)
+        df.drop(columns=["timestamp"], inplace=True)
+
+        df_ind = compute_indicators(df)
+        signals = list_recent_signals(limit=50)
+
+        candles = []
+        for idx, row in df_ind.iterrows():
+            candles.append({
+                "t": idx.isoformat(),
+                "o": round(float(row["open"]), 2),
+                "h": round(float(row["high"]), 2),
+                "l": round(float(row["low"]), 2),
+                "c": round(float(row["close"]), 2),
+                "v": round(float(row["volume"]), 2),
+                "ema200": round(float(row["ema200"]), 2) if pd.notna(row["ema200"]) else None,
+                "bb_upper": round(float(row["bb_upper"]), 2) if pd.notna(row["bb_upper"]) else None,
+                "bb_lower": round(float(row["bb_lower"]), 2) if pd.notna(row["bb_lower"]) else None,
+                "rsi": round(float(row["rsi"]), 2) if pd.notna(row["rsi"]) else None,
+                "vol_sma20": round(float(row["volume_sma20"]), 2) if pd.notna(row["volume_sma20"]) else None,
+            })
+
+        return {"ok": True, "candles": candles, "signals": signals}
+    except Exception as exc:
+        logger.warning("chart-data falhou: %s", exc)
+        return {"ok": False, "error": str(exc)}
 
 
 # Mount de arquivos estaticos (se houver necessidade futura de CSS/JS externos)

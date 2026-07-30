@@ -3,536 +3,769 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CTEV Bot — Painel de Analise de Sinais</title>
+    <title>CTEV Bot — Painel de Sinais</title>
     <link rel="stylesheet" href="/static/output.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; background: #060a13; }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #080b14; color: #e2e8f0; margin: 0; -webkit-font-smoothing: antialiased; }
+        .font-mono { font-family: 'JetBrains Mono', 'Menlo', monospace; }
 
-        /* Animations */
-        .pulse-dot { animation: pulseDot 2s infinite; }
-        @keyframes pulseDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.4; transform: scale(0.8); }
-        }
-        .fade-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        .slide-up { animation: slideUp 0.5s ease-out; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        .shimmer { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 3s infinite; }
-
-        /* Glass cards */
-        .glass { background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(55, 65, 81, 0.4); }
-        .glass-bright { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(55, 65, 81, 0.5); }
-
-        /* Gradient accents */
-        .gradient-text { background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .gradient-border { border-image: linear-gradient(135deg, #3b82f6, #8b5cf6) 1; }
-        .glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 60px rgba(59, 130, 246, 0.05); }
-        .glow-green { box-shadow: 0 0 15px rgba(16, 185, 129, 0.15); }
-        .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); }
-
-        /* Confidence bar */
-        .confidence-bar { height: 4px; border-radius: 2px; background: rgba(55, 65, 81, 0.5); overflow: hidden; }
-        .confidence-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
-
-        /* Gauge */
-        .gauge-ring { transition: stroke-dashoffset 0.8s ease; }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(55, 65, 81, 0.5); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(75, 85, 99, 0.7); }
+        ::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.25); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.4); }
 
-        /* Signal card hover */
-        .signal-card { transition: all 0.2s ease; }
-        .signal-card:hover { border-color: rgba(96, 165, 250, 0.3); transform: translateY(-1px); }
+        /* ── Animations ── */
+        .pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
+        @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .fade-in { animation: fadeIn 0.35s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
 
-        /* Sparkline canvas */
-        .sparkline-canvas { display: block; }
+        /* ── Cards ── */
+        .card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(51, 65, 85, 0.35);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .card-body { padding: 18px; }
 
-        /* TradingView container */
-        .tv-container { min-height: 400px; border-radius: 0.75rem; overflow: hidden; }
-        @media (max-width: 768px) { .tv-container { min-height: 280px; } }
+        /* ── Tabs ── */
+        .tab-bar { display: flex; gap: 2px; background: rgba(15, 23, 42, 0.4); border-radius: 10px; padding: 3px; }
+        .tab-item {
+            padding: 7px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .tab-item:hover { color: #e2e8f0; background: rgba(51, 65, 85, 0.2); }
+        .tab-item.active { color: #f1f5f9; background: rgba(59, 130, 246, 0.15); }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
 
-        /* KPI card */
-        .kpi-card { position: relative; overflow: hidden; }
-        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
-        .kpi-card.blue::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
-        .kpi-card.green::before { background: linear-gradient(90deg, #10b981, #34d399); }
-        .kpi-card.amber::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-        .kpi-card.purple::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
-        .kpi-card.red::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+        /* ── KPI mini cards ── */
+        .kpi {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.3);
+            border-radius: 10px;
+            padding: 14px 16px;
+            position: relative;
+        }
+        .kpi-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 8px; }
+        .kpi-value { font-size: 20px; font-weight: 700; line-height: 1; }
+        .kpi-sub { font-size: 10px; color: #64748b; margin-top: 6px; }
 
-        /* Status badge */
-        .status-live { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); }
-        .status-paused { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); }
-        .status-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); }
+        /* ── Status dot ── */
+        .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .dot-green { background: #22c55e; }
+        .dot-amber { background: #f59e0b; }
+        .dot-red { background: #ef4444; }
+        .dot-gray { background: #475569; }
 
-        /* Metric separator */
-        .metric-sep { width: 1px; background: rgba(55, 65, 81, 0.4); }
+        /* ── Gauge ring ── */
+        .gauge-track { fill: none; stroke: rgba(51, 65, 85, 0.2); stroke-width: 7; }
+        .gauge-fill { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease, stroke 0.5s ease; }
+
+        /* ── Signal card ── */
+        .sig-card {
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid;
+            transition: transform 0.15s ease;
+        }
+        .sig-card:hover { transform: translateY(-1px); }
+        .sig-long { background: rgba(5, 150, 105, 0.06); border-color: rgba(5, 150, 105, 0.2); }
+        .sig-short { background: rgba(220, 38, 38, 0.06); border-color: rgba(220, 38, 38, 0.2); }
+
+        /* ── Progress bar ── */
+        .bar-track { height: 4px; border-radius: 2px; background: rgba(51, 65, 85, 0.3); overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+        /* ── Tooltip ── */
+        .tooltip-trigger { position: relative; cursor: help; }
+        .tooltip-trigger::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            border: 1px solid rgba(51, 65, 85, 0.4);
+            color: #e2e8f0;
+            font-size: 11px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            z-index: 100;
+        }
+        .tooltip-trigger:hover::after { opacity: 1; }
+
+        /* ── Collapsible ── */
+        .collapse-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+        .collapse-body.open { max-height: 2000px; }
+        .collapse-toggle { cursor: pointer; user-select: none; }
+        .collapse-chevron { transition: transform 0.2s ease; }
+        .collapse-chevron.open { transform: rotate(180deg); }
+
+        /* ── Header separator ── */
+        .sep { width: 1px; height: 24px; background: rgba(51, 65, 85, 0.3); flex-shrink: 0; }
+
+        /* ── Table ── */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .data-table thead th {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #64748b;
+            padding: 10px 14px;
+            text-align: left;
+            background: rgba(15, 23, 42, 0.6);
+            border-bottom: 1px solid rgba(51, 65, 85, 0.25);
+        }
+        .data-table thead th:last-child,
+        .data-table thead th:nth-child(n+3) { text-align: right; }
+        .data-table tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.12);
+            color: #cbd5e1;
+        }
+        .data-table tbody td:last-child,
+        .data-table tbody td:nth-child(n+3) { text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+        .data-table tbody tr:hover { background: rgba(255,255,255,0.015); }
+
+        /* ── Badge ── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* ── Button ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: white;
+        }
+        .btn-primary { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+        .btn-primary:hover { opacity: 0.85; }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-ghost { background: rgba(51, 65, 85, 0.3); color: #94a3b8; }
+        .btn-ghost:hover { background: rgba(51, 65, 85, 0.5); color: #e2e8f0; }
+
+        /* ── Chart containers ── */
+        .chart-wrap { position: relative; width: 100%; }
+        .chart-wrap canvas { width: 100% !important; }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 1000;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(51, 65, 85, 0.4);
+            backdrop-filter: blur(12px);
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        /* ── Info grid ── */
+        .info-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        /* ── Mobile responsive ── */
+        @media (max-width: 768px) {
+            .hide-mobile { display: none !important; }
+            .mobile-col { grid-column: span 1 !important; }
+        }
     </style>
 </head>
-<body class="text-gray-100 min-h-screen">
+<body>
 
 <!-- ═══════════════════ HEADER ═══════════════════ -->
-<header class="sticky top-0 z-40 border-b border-gray-800/60" style="background:rgba(6,10,19,0.85);backdrop-filter:blur(16px)">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between" style="height:4rem">
-            <!-- Logo -->
-            <div class="flex items-center gap-3">
-                <div class="rounded-lg flex items-center justify-center font-bold text-white text-base" style="width:2.25rem;height:2.25rem;background:linear-gradient(135deg,#3b82f6,#8b5cf6)">C</div>
-                <div>
-                    <h1 class="text-sm font-bold leading-tight tracking-tight">CTEV Signal Bot</h1>
-                    <p class="text-[10px] text-gray-500 leading-tight">Analise Automatizada de Bitcoin</p>
-                </div>
+<header style="position:sticky;top:0;z-index:50;background:rgba(8,11,20,0.88);backdrop-filter:blur(16px);border-bottom:1px solid rgba(51,65,85,0.25)">
+    <div style="max-width:1360px;margin:0 auto;padding:0 20px;height:56px;display:flex;align-items:center;justify-content:space-between">
+        <!-- Logo -->
+        <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:white">C</div>
+            <div>
+                <div style="font-size:13px;font-weight:700;line-height:1.2">CTEV Signal Bot</div>
+                <div style="font-size:10px;color:#64748b;line-height:1.2">Bitcoin 1H · Apenas Analise</div>
             </div>
+        </div>
 
-            <!-- Center: BTC Price Ticker -->
-            <div class="hidden md:flex items-center gap-6">
-                <div class="flex items-center gap-2">
-                    <div class="rounded-full flex items-center justify-center font-bold text-amber-400" style="width:1.5rem;height:1.5rem;background:rgba(245,158,11,0.2);font-size:10px">B</div>
-                    <div>
-                        <span id="headerPrice" class="text-sm font-semibold font-mono text-white">—</span>
-                    </div>
-                </div>
-                <div class="metric-sep h-8"></div>
-                <div class="flex items-center gap-4 text-xs text-gray-400">
-                    <div class="flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-                        <span>Sinais hoje: <b id="headerSignalsToday" class="text-gray-200">0</b></span>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span>Ultima: <b id="headerLastCheck" class="text-gray-200">—</b></span>
-                    </div>
-                </div>
+        <!-- Center metrics (desktop) -->
+        <div class="hide-mobile" style="display:flex;align-items:center;gap:20px">
+            <div style="display:flex;align-items:center;gap:6px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                <span id="hPrice" class="font-mono" style="font-size:13px;font-weight:600">—</span>
             </div>
+            <div class="sep"></div>
+            <div style="font-size:11px;color:#64748b">Sinais hoje: <b id="hSignals" style="color:#e2e8f0">0</b></div>
+            <div class="sep"></div>
+            <div style="font-size:11px;color:#64748b">Ultima: <b id="hLastCheck" style="color:#e2e8f0">—</b></div>
+        </div>
 
-            <!-- Right: Status + Refresh -->
-            <div class="flex items-center gap-3">
-                <div id="headerBadge" class="status-live flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium">
-                    <span id="headerDot" class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
-                    <span id="headerStatusText" class="text-emerald-400">Online</span>
-                </div>
-                <button onclick="fetchAll()" class="p-2 rounded-lg hover:bg-gray-800/60 transition text-gray-400 hover:text-white">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                </button>
+        <!-- Right -->
+        <div style="display:flex;align-items:center;gap:8px">
+            <div id="hBadge" class="badge" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#4ade80">
+                <span id="hDot" class="dot dot-green pulse-dot"></span>
+                <span id="hStatusText">Online</span>
             </div>
+            <button onclick="fetchAll()" class="btn-ghost" style="padding:6px;border-radius:6px;background:transparent;border:none;color:#64748b;cursor:pointer;font-size:16px" title="Atualizar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            </button>
         </div>
     </div>
 </header>
 
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<main style="max-width:1360px;margin:0 auto;padding:20px 20px 40px">
 
-    <!-- ═══════════════════ ANALYSIS MODE BANNER ═══════════════════ -->
-    <div class="glass rounded-xl px-4 py-2.5 flex items-center gap-3">
-        <div class="w-7 h-7 rounded-md flex items-center justify-center bg-blue-500/10">
-            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+    <!-- ── KPI Strip ── -->
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px" class="mobile-col" id="kpiGrid">
+        <div class="kpi" style="border-top:2px solid #3b82f6">
+            <div class="kpi-label">Status</div>
+            <div id="kStatus" class="kpi-value" style="color:#4ade80">—</div>
+            <div id="kStatusSub" class="kpi-sub">—</div>
         </div>
-        <div class="flex-1">
-            <span class="text-xs font-semibold text-blue-300">Modo: Apenas Analise</span>
-            <span class="text-[11px] text-gray-500 hidden sm:inline ml-2">O sistema analisa o mercado 24/7 e envia alertas via Telegram. Nenhuma operacao e executada automaticamente.</span>
+        <div class="kpi" style="border-top:2px solid #22c55e">
+            <div class="kpi-label">Sinais Hoje</div>
+            <div id="kSignals" class="kpi-value font-mono">0</div>
+            <div id="kSignalsSub" class="kpi-sub">—</div>
         </div>
-        <span id="symbolLabel" class="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">BTC/USDT · 1H</span>
+        <div class="kpi" style="border-top:2px solid #8b5cf6">
+            <div class="kpi-label">Ciclos</div>
+            <div id="kCycles" class="kpi-value font-mono">0</div>
+            <div id="kCyclesSub" class="kpi-sub">analises</div>
+        </div>
+        <div class="kpi" style="border-top:2px solid #0ea5e9">
+            <div class="kpi-label">Ultima Analise</div>
+            <div id="kLastCheck" class="font-mono" style="font-size:14px;font-weight:600">—</div>
+            <div id="kLastSignal" class="kpi-sub">—</div>
+        </div>
+        <div class="kpi" style="border-top:2px solid #f59e0b">
+            <div class="kpi-label">Filtrados</div>
+            <div id="kFiltered" class="kpi-value font-mono">0</div>
+            <div class="kpi-sub">pela protecao</div>
+        </div>
+        <div class="kpi" style="border-top:2px solid #22c55e">
+            <div class="kpi-label">Sistema</div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <span id="kSysDot" class="dot dot-green pulse-dot"></span>
+                <span id="kSysStatus" style="font-size:14px;font-weight:600;color:#4ade80">Normal</span>
+            </div>
+            <div id="kSysSub" class="kpi-sub">tudo ok</div>
+        </div>
     </div>
 
-    <!-- ═══════════════════ CHART + SIGNAL FEED ═══════════════════ -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- ── Tabs Navigation ── -->
+    <div class="tab-bar" style="margin-bottom:20px;overflow-x:auto;-webkit-overflow-scrolling:touch" id="mainTabBar">
+        <div class="tab-item active" data-tab="overview" onclick="switchTab('overview')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            Visao Geral
+        </div>
+        <div class="tab-item" data-tab="charts" onclick="switchTab('charts')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Graficos
+        </div>
+        <div class="tab-item" data-tab="signals" onclick="switchTab('signals')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4m0 4h.01"/><circle cx="12" cy="12" r="10"/></svg>
+            Sinais
+        </div>
+        <div class="tab-item" data-tab="backtest" onclick="switchTab('backtest')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Backtest
+        </div>
+        <div class="tab-item" data-tab="risk" onclick="switchTab('risk')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Risco
+        </div>
+        <div class="tab-item" data-tab="help" onclick="switchTab('help')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Guia
+        </div>
+    </div>
 
-        <!-- TradingView Chart (2/3) -->
-        <div class="lg:col-span-2 glass-bright rounded-xl overflow-hidden">
-            <div class="px-4 py-3 border-b border-gray-800/50 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-blue-500"></div>
-                    <h2 class="text-sm font-semibold">Grafico em Tempo Real</h2>
+    <!-- ═══════════════ TAB: OVERVIEW ═══════════════ -->
+    <div class="tab-panel active" id="panel-overview">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px" class="mobile-col">
+
+            <!-- Price Chart (main area) -->
+            <div class="card">
+                <div class="card-header">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <div class="dot dot-blue" style="background:#3b82f6"></div>
+                        <span style="font-size:13px;font-weight:600">Preco BTC/USDT</span>
+                    </div>
+                    <span class="font-mono" style="font-size:10px;color:#64748b">1H · Binance</span>
                 </div>
-                <span class="text-[10px] text-gray-500 font-mono">BTC/USDT · 1H · Binance</span>
+                <div style="padding:16px">
+                    <div class="chart-wrap" style="height:380px">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
             </div>
-            <div class="tv-container">
-                <div class="tradingview-widget-container" style="height:100%;width:100%">
-                    <div id="tradingview_chart" style="height:100%;width:100%"></div>
+
+            <!-- Signal Feed -->
+            <div class="card" style="display:flex;flex-direction:column;max-height:470px">
+                <div class="card-header">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <div class="dot dot-green pulse-dot"></div>
+                        <span style="font-size:13px;font-weight:600">Sinais Recentes</span>
+                    </div>
+                    <span id="sigCount" class="font-mono" style="font-size:10px;color:#64748b">0</span>
+                </div>
+                <div id="sigFeed" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px">
+                    <div style="text-align:center;color:#64748b;font-size:11px;padding:40px 0">Aguardando sinais...</div>
                 </div>
             </div>
         </div>
 
-        <!-- Signal Feed (1/3) -->
-        <div class="glass-bright rounded-xl overflow-hidden flex flex-col">
-            <div class="px-4 py-3 border-b border-gray-800/50 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></div>
-                    <h2 class="text-sm font-semibold">Sinais Recentes</h2>
+        <!-- Overview bottom row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" class="mobile-col">
+            <!-- Multi-Timeframe -->
+            <div class="card">
+                <div class="card-header">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6m0 0a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14"/></svg>
+                        <span style="font-size:13px;font-weight:600">Multi-Timeframe</span>
+                    </div>
+                    <div id="mtfBadge" class="badge" style="background:rgba(100,116,139,0.15);color:#94a3b8;font-size:10px">
+                        <span id="mtfDot" class="dot" style="width:6px;height:6px;background:#475569"></span>
+                        <span id="mtfLabel">—</span>
+                    </div>
                 </div>
-                <span id="signalCount" class="text-[10px] text-gray-500 font-mono">0 sinais</span>
-            </div>
-            <div id="signalFeed" class="flex-1 overflow-y-auto p-3 space-y-2" style="max-height:440px">
-                <div class="text-center text-gray-500 text-xs py-10">Aguardando sinais...</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════════════ KPI CARDS ═══════════════════ -->
-    <section class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div class="kpi-card blue glass rounded-xl p-4">
-            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Status</div>
-            <div id="kpiStatus" class="text-xl font-bold">—</div>
-            <div id="kpiStatusSub" class="text-[10px] text-gray-500 mt-1">—</div>
-        </div>
-        <div class="kpi-card green glass rounded-xl p-4">
-            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Sinais Hoje</div>
-            <div id="kpiSignalsToday" class="text-xl font-bold font-mono">0</div>
-            <div id="kpiSignalsBreakdown" class="text-[10px] text-gray-500 mt-1">—</div>
-        </div>
-        <div class="kpi-card purple glass rounded-xl p-4">
-            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Ciclos</div>
-            <div id="kpiCycles" class="text-xl font-bold font-mono">0</div>
-            <div id="kpiErrors" class="text-[10px] text-gray-500 mt-1">analises concluidas</div>
-        </div>
-        <div class="kpi-card blue glass rounded-xl p-4">
-            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Ultima Analise</div>
-            <div id="kpiLastCheck" class="text-base font-mono font-semibold">—</div>
-            <div id="kpiLastSignal" class="text-[10px] text-gray-500 mt-1">—</div>
-        </div>
-        <div class="kpi-card amber glass rounded-xl p-4">
-            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Sinais Bloqueados</div>
-            <div id="riskFiltered" class="text-xl font-bold font-mono">0</div>
-            <div class="text-[10px] text-gray-500 mt-1">pela protecao automatica</div>
-        </div>
-        <div class="kpi-card red glass rounded-xl p-4">
-            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Sistema</div>
-            <div class="flex items-center gap-2">
-                <span id="riskSysDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot"></span>
-                <span id="riskSysStatus" class="text-base font-semibold text-emerald-400">Normal</span>
-            </div>
-            <div id="riskSysSub" class="text-[10px] text-gray-500 mt-1">tudo funcionando</div>
-        </div>
-    </section>
-
-    <!-- ═══════════════════ CHARTS ROW ═══════════════════ -->
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <!-- Price Sparkline -->
-        <div class="glass rounded-xl p-4">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-xs font-semibold text-gray-300">Historico de Precos dos Sinais</h3>
-                <span class="text-[10px] text-gray-500 font-mono">sparkline</span>
-            </div>
-            <canvas id="sparklineCanvas" class="sparkline-canvas w-full" height="100"></canvas>
-            <div class="flex justify-between mt-2 text-[10px] text-gray-500 font-mono">
-                <span id="sparkOldest">—</span>
-                <span id="sparkNewest">—</span>
-            </div>
-        </div>
-
-        <!-- RSI Distribution -->
-        <div class="glass rounded-xl p-4">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-xs font-semibold text-gray-300">Distribuicao RSI</h3>
-                <span class="text-[10px] text-gray-500 font-mono">ultimos sinais</span>
-            </div>
-            <canvas id="rsiCanvas" class="sparkline-canvas w-full" height="100"></canvas>
-        </div>
-
-        <!-- Signal Type Split -->
-        <div class="glass rounded-xl p-4">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-xs font-semibold text-gray-300">Composicao dos Sinais</h3>
-                <span id="splitTotal" class="text-[10px] text-gray-500 font-mono">0 total</span>
-            </div>
-            <div class="flex items-center gap-4 mt-4">
-                <canvas id="donutCanvas" width="90" height="90" class="sparkline-canvas shrink-0"></canvas>
-                <div class="flex-1 space-y-3">
-                    <div>
-                        <div class="flex items-center justify-between text-xs mb-1">
-                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Compra (LONG)</span>
-                            <span id="splitLongPct" class="font-mono font-semibold text-emerald-400">0%</span>
+                <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Tendencia 4H</span>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span id="mtfH4Dot" class="dot" style="width:7px;height:7px;background:#475569"></span>
+                            <span id="mtfH4" class="font-mono" style="font-size:12px;font-weight:600;color:#94a3b8">—</span>
                         </div>
-                        <div class="confidence-bar"><div id="splitLongBar" class="confidence-fill bg-emerald-500" style="width:0%"></div></div>
                     </div>
-                    <div>
-                        <div class="flex items-center justify-between text-xs mb-1">
-                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>Venda (SHORT)</span>
-                            <span id="splitShortPct" class="font-mono font-semibold text-red-400">0%</span>
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Tendencia Diario</span>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span id="mtfD1Dot" class="dot" style="width:7px;height:7px;background:#475569"></span>
+                            <span id="mtfD1" class="font-mono" style="font-size:12px;font-weight:600;color:#94a3b8">—</span>
                         </div>
-                        <div class="confidence-bar"><div id="splitShortBar" class="confidence-fill bg-red-500" style="width:0%"></div></div>
+                    </div>
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Confluencia</span>
+                        <span id="mtfConf" class="badge" style="background:rgba(100,116,139,0.15);color:#94a3b8;font-size:11px">—</span>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
 
-    <!-- ═══════════════════ RISK GAUGES ═══════════════════ -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <!-- Drawdown Gauges -->
-        <div class="glass rounded-xl p-5">
-            <div class="flex items-center gap-2 mb-4">
-                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                <h2 class="text-sm font-semibold">Protecao de Capital</h2>
-            </div>
-            <div class="grid grid-cols-2 gap-6">
-                <!-- Daily -->
-                <div class="text-center">
-                    <svg viewBox="0 0 120 120" width="100" height="100" class="mx-auto">
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(55,65,81,0.3)" stroke-width="8"/>
-                        <circle id="gaugeDaily" cx="60" cy="60" r="50" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round"
-                            stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)" class="gauge-ring"/>
-                        <text x="60" y="55" text-anchor="middle" fill="white" font-size="18" font-weight="700" font-family="JetBrains Mono,monospace" id="gaugeDailyVal">0%</text>
-                        <text x="60" y="72" text-anchor="middle" fill="#6b7280" font-size="9" font-family="Inter,sans-serif">DIARIO</text>
-                    </svg>
-                    <div class="text-[10px] text-gray-500 mt-1">Limite: <span id="gaugeDailyMax">3.0%</span></div>
-                </div>
-                <!-- Weekly -->
-                <div class="text-center">
-                    <svg viewBox="0 0 120 120" width="100" height="100" class="mx-auto">
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(55,65,81,0.3)" stroke-width="8"/>
-                        <circle id="gaugeWeekly" cx="60" cy="60" r="50" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round"
-                            stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)" class="gauge-ring"/>
-                        <text x="60" y="55" text-anchor="middle" fill="white" font-size="18" font-weight="700" font-family="JetBrains Mono,monospace" id="gaugeWeeklyVal">0%</text>
-                        <text x="60" y="72" text-anchor="middle" fill="#6b7280" font-size="9" font-family="Inter,sans-serif">SEMANAL</text>
-                    </svg>
-                    <div class="text-[10px] text-gray-500 mt-1">Limite: <span id="gaugeWeeklyMax">6.0%</span></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Multi-Timeframe -->
-        <div class="glass rounded-xl p-5">
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                    <h2 class="text-sm font-semibold">Tendencias Multi-Timeframe</h2>
-                </div>
-                <span id="mtfBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono" style="background:rgba(55,65,81,0.3)">
-                    <span id="mtfDot" class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
-                    <span id="mtfText" class="text-gray-400">—</span>
-                </span>
-            </div>
-            <div class="space-y-4">
-                <div class="flex items-center justify-between p-3 rounded-lg" style="background:rgba(17,24,39,0.5)">
-                    <span class="text-xs text-gray-400">Tendencia 4 Horas</span>
-                    <div class="flex items-center gap-2">
-                        <span id="mtfH4Dot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
-                        <span id="mtfH4" class="text-sm font-semibold font-mono">—</span>
+            <!-- Activity Log -->
+            <div class="card" style="display:flex;flex-direction:column">
+                <div class="card-header">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span style="font-size:13px;font-weight:600">Atividade</span>
                     </div>
                 </div>
-                <div class="flex items-center justify-between p-3 rounded-lg" style="background:rgba(17,24,39,0.5)">
-                    <span class="text-xs text-gray-400">Tendencia Diario</span>
-                    <div class="flex items-center gap-2">
-                        <span id="mtfD1Dot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
-                        <span id="mtfD1" class="text-sm font-semibold font-mono">—</span>
-                    </div>
-                </div>
-                <div class="flex items-center justify-between p-3 rounded-lg" style="background:rgba(17,24,39,0.5)">
-                    <span class="text-xs text-gray-400">Confluencia</span>
-                    <span id="mtfConfluence" class="px-2.5 py-0.5 rounded-md text-xs font-semibold font-mono" style="background:rgba(55,65,81,0.3)">—</span>
+                <div id="logsBody" class="font-mono" style="flex:1;overflow-y:auto;padding:12px;max-height:180px;font-size:11px;display:flex;flex-direction:column;gap:3px">
+                    <div style="text-align:center;color:#64748b;padding:24px 0;font-size:11px">Sem registros.</div>
                 </div>
             </div>
         </div>
-    </section>
+    </div>
 
-    <!-- ═══════════════════ SIGNALS TABLE ═══════════════════ -->
-    <section class="glass-bright rounded-xl overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800/50 flex items-center justify-between">
-            <div>
-                <h2 class="text-sm font-semibold">Todos os Sinais</h2>
-                <p class="text-[11px] text-gray-500 mt-0.5">Historico completo com niveis de referencia</p>
+    <!-- ═══════════════ TAB: CHARTS ═══════════════ -->
+    <div class="tab-panel" id="panel-charts">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="mobile-col">
+            <!-- RSI Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <span style="font-size:13px;font-weight:600">RSI (14)</span>
+                    <span style="font-size:10px;color:#64748b">Ultimos 100 candles</span>
+                </div>
+                <div style="padding:16px">
+                    <div class="chart-wrap" style="height:240px"><canvas id="rsiChart"></canvas></div>
+                </div>
             </div>
-            <span id="tableCount" class="text-[10px] text-gray-500 font-mono">0 registros</span>
+            <!-- Volume Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <span style="font-size:13px;font-weight:600">Volume</span>
+                    <span style="font-size:10px;color:#64748b">Com SMA(20)</span>
+                </div>
+                <div style="padding:16px">
+                    <div class="chart-wrap" style="height:240px"><canvas id="volChart"></canvas></div>
+                </div>
+            </div>
+            <!-- Signal Distribution -->
+            <div class="card">
+                <div class="card-header">
+                    <span style="font-size:13px;font-weight:600">Distribuicao dos Sinais</span>
+                    <span id="distTotal" style="font-size:10px;color:#64748b">0 total</span>
+                </div>
+                <div style="padding:16px">
+                    <div class="chart-wrap" style="height:240px"><canvas id="distChart"></canvas></div>
+                </div>
+            </div>
+            <!-- Signal Price History -->
+            <div class="card">
+                <div class="card-header">
+                    <span style="font-size:13px;font-weight:600">Precos dos Sinais</span>
+                    <span style="font-size:10px;color:#64748b">Entrada por sinal</span>
+                </div>
+                <div style="padding:16px">
+                    <div class="chart-wrap" style="height:240px"><canvas id="sigPriceChart"></canvas></div>
+                </div>
+            </div>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead style="background:rgba(17,24,39,0.8)">
-                    <tr class="text-[10px] uppercase tracking-widest text-gray-500">
-                        <th class="px-4 py-3 text-left font-medium">Data</th>
-                        <th class="px-4 py-3 text-left font-medium">Tipo</th>
-                        <th class="px-4 py-3 text-right font-medium">Entrada</th>
-                        <th class="px-4 py-3 text-right font-medium">Stop Loss</th>
-                        <th class="px-4 py-3 text-right font-medium">Take Profit</th>
-                        <th class="px-4 py-3 text-center font-medium">RSI</th>
-                        <th class="px-4 py-3 text-center font-medium">Forca</th>
-                        <th class="px-4 py-3 text-center font-medium">TG</th>
-                    </tr>
-                </thead>
-                <tbody id="signalsTableBody" class="divide-y divide-gray-800/40">
-                    <tr><td colspan="8" class="px-4 py-10 text-center text-gray-500 text-xs">Nenhum sinal registrado.</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </section>
+    </div>
 
-    <!-- ═══════════════════ BACKTEST ═══════════════════ -->
-    <section class="glass-bright rounded-xl overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800/50 flex items-center justify-between">
-            <div>
-                <h2 class="text-sm font-semibold">Simulacao Historica (Backtest)</h2>
-                <p class="text-[11px] text-gray-500 mt-0.5">Desempenho da estrategia nos ultimos 2 anos</p>
+    <!-- ═══════════════ TAB: SIGNALS ═══════════════ -->
+    <div class="tab-panel" id="panel-signals">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Historico de Sinais</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px">Todos os sinais gerados com niveis de referencia</div>
+                </div>
+                <span id="tableCount" class="font-mono" style="font-size:10px;color:#64748b">0 registros</span>
             </div>
-            <div class="flex items-center gap-3">
-                <span id="btStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono" style="background:rgba(55,65,81,0.3)">
-                    <span id="btStatusDot" class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
-                    <span id="btStatusText" class="text-gray-400">idle</span>
-                </span>
-                <button id="btnRunBt" onclick="runBacktest()" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:white" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-                    Rodar Simulacao
-                </button>
-            </div>
-        </div>
-        <div id="btResults" class="hidden">
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-0 border-b border-gray-800/40">
-                <div class="p-4 text-center border-r border-gray-800/40">
-                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Total Sinais</div>
-                    <div id="btTrades" class="text-lg font-bold font-mono">—</div>
-                </div>
-                <div class="p-4 text-center border-r border-gray-800/40">
-                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Taxa de Acerto</div>
-                    <div id="btWR" class="text-lg font-bold font-mono">—</div>
-                </div>
-                <div class="p-4 text-center border-r border-gray-800/40">
-                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Fator Lucro</div>
-                    <div id="btPF" class="text-lg font-bold font-mono">—</div>
-                </div>
-                <div class="p-4 text-center border-r border-gray-800/40">
-                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Maior Queda</div>
-                    <div id="btDD" class="text-lg font-bold font-mono">—</div>
-                </div>
-                <div class="p-4 text-center border-r border-gray-800/40">
-                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Resultado</div>
-                    <div id="btPnL" class="text-lg font-bold font-mono">—</div>
-                </div>
-                <div class="p-4 text-center">
-                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Buy & Hold</div>
-                    <div id="btBH" class="text-lg font-bold font-mono">—</div>
-                </div>
-            </div>
-            <div class="overflow-x-auto" style="max-height:16rem;overflow-y:auto">
-                <table class="w-full text-sm">
-                    <thead style="background:rgba(17,24,39,0.8)">
-                        <tr class="text-[10px] uppercase tracking-widest text-gray-500">
-                            <th class="px-4 py-2.5 text-left">Entrada</th>
-                            <th class="px-4 py-2.5 text-left">Saida</th>
-                            <th class="px-4 py-2.5 text-left">Tipo</th>
-                            <th class="px-4 py-2.5 text-right">Preco E.</th>
-                            <th class="px-4 py-2.5 text-right">Preco S.</th>
-                            <th class="px-4 py-2.5 text-right">Resultado</th>
-                            <th class="px-4 py-2.5 text-left">Motivo</th>
+            <div style="overflow-x:auto;max-height:500px;overflow-y:auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Tipo</th>
+                            <th>Entrada</th>
+                            <th>Stop Loss</th>
+                            <th>Take Profit</th>
+                            <th style="text-align:center">RSI</th>
+                            <th style="text-align:center">Forca</th>
+                            <th style="text-align:center">TG</th>
                         </tr>
                     </thead>
-                    <tbody id="btTradesBody" class="divide-y divide-gray-800/40">
-                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500 text-xs">Aguardando simulacao.</td></tr>
+                    <tbody id="sigTableBody">
+                        <tr><td colspan="8" style="text-align:center;color:#64748b;padding:40px">Nenhum sinal registrado.</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
-    </section>
+    </div>
 
-    <!-- ═══════════════════ ACTIVITY LOG ═══════════════════ -->
-    <section class="glass rounded-xl overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-800/50 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <h2 class="text-sm font-semibold">Atividade do Sistema</h2>
+    <!-- ═══════════════ TAB: BACKTEST ═══════════════ -->
+    <div class="tab-panel" id="panel-backtest">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Simulacao Historica</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px">Desempenho da estrategia nos ultimos 2 anos</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div id="btBadge" class="badge" style="background:rgba(100,116,139,0.15);color:#94a3b8;font-size:10px">
+                        <span id="btDot" class="dot" style="width:6px;height:6px;background:#475569"></span>
+                        <span id="btText">idle</span>
+                    </div>
+                    <button id="btBtn" onclick="runBacktest()" class="btn btn-primary">Rodar Simulacao</button>
+                </div>
             </div>
-        </div>
-        <div id="logsBody" class="p-3 space-y-1.5 font-mono text-[11px] overflow-y-auto" style="max-height:200px">
-            <div class="text-gray-500 text-center py-6 text-xs">Sem registros.</div>
-        </div>
-    </section>
 
-    <!-- ═══════════════════ HOW IT WORKS ═══════════════════ -->
-    <section class="glass rounded-xl p-5">
-        <div class="flex items-center gap-2 mb-4">
-            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <h2 class="text-sm font-semibold">Como o Sistema Decide?</h2>
-        </div>
-        <p class="text-[11px] text-gray-500 mb-4">Um sinal so e gerado quando TODAS as condicoes abaixo sao atendidas simultaneamente.</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="rounded-lg p-4" style="background:rgba(6,78,59,0.1);border:1px solid rgba(6,78,59,0.25)">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-emerald-400 text-sm">LONG</span>
-                    <span class="text-xs font-semibold text-emerald-300">Sinal de Compra</span>
+            <!-- Results metrics strip -->
+            <div id="btResults" style="display:none">
+                <div style="display:grid;grid-template-columns:repeat(6,1fr);border-bottom:1px solid rgba(51,65,85,0.2)" class="mobile-col">
+                    <div style="padding:16px;text-align:center;border-right:1px solid rgba(51,65,85,0.15)">
+                        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:6px">Total Sinais</div>
+                        <div id="btTrades" class="font-mono" style="font-size:18px;font-weight:700">—</div>
+                    </div>
+                    <div style="padding:16px;text-align:center;border-right:1px solid rgba(51,65,85,0.15)">
+                        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:6px">Taxa Acerto</div>
+                        <div id="btWR" class="font-mono" style="font-size:18px;font-weight:700">—</div>
+                    </div>
+                    <div style="padding:16px;text-align:center;border-right:1px solid rgba(51,65,85,0.15)">
+                        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:6px">Fator Lucro</div>
+                        <div id="btPF" class="font-mono" style="font-size:18px;font-weight:700">—</div>
+                    </div>
+                    <div style="padding:16px;text-align:center;border-right:1px solid rgba(51,65,85,0.15)">
+                        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:6px">Max DD</div>
+                        <div id="btDD" class="font-mono" style="font-size:18px;font-weight:700">—</div>
+                    </div>
+                    <div style="padding:16px;text-align:center;border-right:1px solid rgba(51,65,85,0.15)">
+                        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:6px">Resultado</div>
+                        <div id="btPnL" class="font-mono" style="font-size:18px;font-weight:700">—</div>
+                    </div>
+                    <div style="padding:16px;text-align:center">
+                        <div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:6px">Buy & Hold</div>
+                        <div id="btBH" class="font-mono" style="font-size:18px;font-weight:700">—</div>
+                    </div>
                 </div>
-                <p class="text-[11px] text-gray-400 mb-3">Bitcoin em tendencia de alta com recuo temporario — oportunidade de compra.</p>
-                <ul class="space-y-1 text-[11px] text-gray-400">
-                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>Preco acima da media 200 periodos</li>
-                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>Pullback tocou faixa inferior (Bollinger)</li>
-                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>RSI abaixo de 35 (exaustao de venda)</li>
-                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>Volume 1.5x acima da media</li>
-                </ul>
-            </div>
-            <div class="rounded-lg p-4" style="background:rgba(127,29,29,0.1);border:1px solid rgba(127,29,29,0.25)">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-red-400 text-sm">SHORT</span>
-                    <span class="text-xs font-semibold text-red-300">Sinal de Venda</span>
+
+                <!-- Equity curve chart -->
+                <div style="padding:16px">
+                    <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:500">Curva de Equity</div>
+                    <div class="chart-wrap" style="height:220px"><canvas id="equityChart"></canvas></div>
                 </div>
-                <p class="text-[11px] text-gray-400 mb-3">Bitcoin em tendencia de baixa com alta temporaria — oportunidade de venda.</p>
-                <ul class="space-y-1 text-[11px] text-gray-400">
-                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>Preco abaixo da media 200 periodos</li>
-                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>Pullback tocou faixa superior (Bollinger)</li>
-                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>RSI acima de 65 (exaustao de compra)</li>
-                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>Volume 1.5x acima da media</li>
-                </ul>
+
+                <!-- Trades table -->
+                <div style="border-top:1px solid rgba(51,65,85,0.2);max-height:280px;overflow-y:auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Entrada</th><th>Saida</th><th>Tipo</th><th>Preco E.</th><th>Preco S.</th><th>Resultado</th><th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="btTableBody">
+                            <tr><td colspan="7" style="text-align:center;color:#64748b;padding:30px">Aguardando simulacao.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="btPlaceholder" style="padding:60px;text-align:center;color:#64748b;font-size:12px">
+                Clique em <b style="color:#93c5fd">"Rodar Simulacao"</b> para ver o desempenho historico da estrategia.
             </div>
         </div>
-    </section>
+    </div>
+
+    <!-- ═══════════════ TAB: RISK ═══════════════ -->
+    <div class="tab-panel" id="panel-risk">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="mobile-col">
+            <!-- Drawdown Gauges -->
+            <div class="card">
+                <div class="card-header">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        <span style="font-size:13px;font-weight:600">Protecao de Capital</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;text-align:center">
+                        <div>
+                            <svg viewBox="0 0 120 120" width="110" height="110" style="display:block;margin:0 auto">
+                                <circle cx="60" cy="60" r="50" class="gauge-track"/>
+                                <circle id="gDaily" cx="60" cy="60" r="50" class="gauge-fill" stroke="#22c55e" stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)"/>
+                                <text x="60" y="56" text-anchor="middle" fill="#f1f5f9" font-size="18" font-weight="700" font-family="JetBrains Mono,monospace" id="gDailyVal">0%</text>
+                                <text x="60" y="72" text-anchor="middle" fill="#64748b" font-size="9" font-family="Inter,sans-serif">DIARIO</text>
+                            </svg>
+                            <div style="font-size:10px;color:#64748b;margin-top:6px">Limite: <span id="gDailyMax" class="font-mono">5.0%</span></div>
+                        </div>
+                        <div>
+                            <svg viewBox="0 0 120 120" width="110" height="110" style="display:block;margin:0 auto">
+                                <circle cx="60" cy="60" r="50" class="gauge-track"/>
+                                <circle id="gWeekly" cx="60" cy="60" r="50" class="gauge-fill" stroke="#22c55e" stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)"/>
+                                <text x="60" y="56" text-anchor="middle" fill="#f1f5f9" font-size="18" font-weight="700" font-family="JetBrains Mono,monospace" id="gWeeklyVal">0%</text>
+                                <text x="60" y="72" text-anchor="middle" fill="#64748b" font-size="9" font-family="Inter,sans-serif">SEMANAL</text>
+                            </svg>
+                            <div style="font-size:10px;color:#64748b;margin-top:6px">Limite: <span id="gWeeklyMax" class="font-mono">10.0%</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Stats -->
+            <div class="card">
+                <div class="card-header">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <span style="font-size:13px;font-weight:600">Estatisticas de Risco</span>
+                    </div>
+                </div>
+                <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Perdas Consecutivas</span>
+                        <span id="riskConsLosses" class="font-mono" style="font-size:12px;font-weight:600">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Total de Sinais</span>
+                        <span id="riskTotalSigs" class="font-mono" style="font-size:12px;font-weight:600">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Sinais Filtrados</span>
+                        <span id="riskFilteredVal" class="font-mono" style="font-size:12px;font-weight:600">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Circuit Breaker</span>
+                        <span id="riskCB" class="badge" style="background:rgba(34,197,94,0.1);color:#4ade80;font-size:11px">Inativo</span>
+                    </div>
+                    <div class="info-row">
+                        <span style="font-size:12px;color:#94a3b8">Cooldown</span>
+                        <span id="riskCooldown" class="badge" style="background:rgba(34,197,94,0.1);color:#4ade80;font-size:11px">Nenhum</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ TAB: HELP ═══════════════ -->
+    <div class="tab-panel" id="panel-help">
+        <div class="card">
+            <div class="card-header">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span style="font-size:13px;font-weight:600">Como o Sistema Decide?</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <p style="font-size:12px;color:#94a3b8;margin-bottom:20px;line-height:1.6">Um sinal so e gerado quando <b style="color:#e2e8f0">TODAS</b> as condicoes abaixo sao atendidas simultaneamente. O sistema monitora Bitcoin 24/7 e envia alertas via Telegram.</p>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="mobile-col">
+                    <!-- LONG -->
+                    <div style="border-radius:10px;padding:18px;background:rgba(5,150,105,0.06);border:1px solid rgba(5,150,105,0.2)">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <span style="color:#4ade80;font-size:13px;font-weight:700">LONG</span>
+                            <span style="font-size:11px;font-weight:600;color:#86efac">Sinal de Compra</span>
+                        </div>
+                        <p style="font-size:11px;color:#94a3b8;margin-bottom:14px;line-height:1.5">Bitcoin em tendencia de alta com recuo temporario — oportunidade de compra.</p>
+                        <div style="display:flex;flex-direction:column;gap:8px">
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#4ade80;margin-top:1px">&#10003;</span> Preco acima da media 200 periodos
+                            </div>
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#4ade80;margin-top:1px">&#10003;</span> Pullback tocou faixa inferior (Bollinger)
+                            </div>
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#4ade80;margin-top:1px">&#10003;</span> RSI abaixo de 35 (exaustao de venda)
+                            </div>
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#4ade80;margin-top:1px">&#10003;</span> Volume 1.5x acima da media
+                            </div>
+                        </div>
+                    </div>
+                    <!-- SHORT -->
+                    <div style="border-radius:10px;padding:18px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2)">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <span style="color:#f87171;font-size:13px;font-weight:700">SHORT</span>
+                            <span style="font-size:11px;font-weight:600;color:#fca5a5">Sinal de Venda</span>
+                        </div>
+                        <p style="font-size:11px;color:#94a3b8;margin-bottom:14px;line-height:1.5">Bitcoin em tendencia de baixa com alta temporaria — oportunidade de venda.</p>
+                        <div style="display:flex;flex-direction:column;gap:8px">
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#f87171;margin-top:1px">&#10003;</span> Preco abaixo da media 200 periodos
+                            </div>
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#f87171;margin-top:1px">&#10003;</span> Pullback tocou faixa superior (Bollinger)
+                            </div>
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#f87171;margin-top:1px">&#10003;</span> RSI acima de 65 (exaustao de compra)
+                            </div>
+                            <div style="display:flex;align-items:flex-start;gap:8px;font-size:11px;color:#94a3b8">
+                                <span style="color:#f87171;margin-top:1px">&#10003;</span> Volume 1.5x acima da media
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Glossary -->
+                <div style="margin-top:20px;padding-top:16px;border-top:1px solid rgba(51,65,85,0.2)">
+                    <div style="font-size:12px;font-weight:600;margin-bottom:12px;color:#e2e8f0">Glossario Rapido</div>
+                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px" class="mobile-col">
+                        <div style="display:flex;gap:8px;font-size:11px"><span class="font-mono" style="color:#60a5fa;min-width:50px">EMA 200</span><span style="color:#94a3b8">Media movel de 200 periodos — direcao da tendencia</span></div>
+                        <div style="display:flex;gap:8px;font-size:11px"><span class="font-mono" style="color:#60a5fa;min-width:50px">BB</span><span style="color:#94a3b8">Bandas de Bollinger — volatilidade e suporte/resistencia</span></div>
+                        <div style="display:flex;gap:8px;font-size:11px"><span class="font-mono" style="color:#60a5fa;min-width:50px">RSI</span><span style="color:#94a3b8">Indice de Forca Relativa — sobrecompra/sobrevenda</span></div>
+                        <div style="display:flex;gap:8px;font-size:11px"><span class="font-mono" style="color:#60a5fa;min-width:50px">Vol SMA</span><span style="color:#94a3b8">Media de volume 20 periodos — confirma momentum</span></div>
+                        <div style="display:flex;gap:8px;font-size:11px"><span class="font-mono" style="color:#60a5fa;min-width:50px">ATR</span><span style="color:#94a3b8">Volatilidade media — calcula stop e alvo</span></div>
+                        <div style="display:flex;gap:8px;font-size:11px"><span class="font-mono" style="color:#60a5fa;min-width:50px">MTF</span><span style="color:#94a3b8">Multi-Timeframe — confirma tendencia em 4H e Diario</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Footer -->
-    <footer class="text-center text-[10px] text-gray-600 pt-3 pb-6">
-        CTEV Signal Bot v4.0 — Analise automatizada de Bitcoin · Apenas sinais, sem execucao de ordens
+    <footer style="text-align:center;padding-top:24px;font-size:10px;color:#334155">
+        CTEV Signal Bot v5.0 — Analise automatizada de Bitcoin · Apenas sinais, sem execucao de ordens
     </footer>
 </main>
 
 <!-- Toast -->
-<div id="toast" class="fixed bottom-4 right-4 hidden px-4 py-3 rounded-lg text-xs font-medium z-50" style="background:rgba(17,24,39,0.95);border:1px solid rgba(55,65,81,0.5);backdrop-filter:blur(12px)"></div>
+<div id="toast" class="toast"></div>
 
-<!-- TradingView Widget Script -->
-<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════
-//  CTEV Signal Bot Dashboard — Professional Edition
+//  CTEV Signal Bot Dashboard — Professional v5.0
 // ═══════════════════════════════════════════════════════════
 
-const POLL_MS = 5000;
+const POLL_MS = 8000;
 let pollTimer = null;
 let allSignals = [];
+let charts = {};
 
-// ---------- TradingView Chart ----------
-try {
-    new TradingView.widget({
-        autosize: true,
-        symbol: "BINANCE:BTCUSDT",
-        interval: "60",
-        timezone: "America/Sao_Paulo",
-        theme: "dark",
-        style: "1",
-        locale: "br",
-        enable_publishing: false,
-        hide_top_toolbar: false,
-        hide_legend: false,
-        save_image: false,
-        container_id: "tradingview_chart",
-        backgroundColor: "rgba(6, 10, 19, 1)",
-        gridColor: "rgba(55, 65, 81, 0.2)",
-        allow_symbol_change: false,
-        studies: ["RSI@tv-basicstudies", "BB@tv-basicstudies"],
-        withdateranges: true,
-        details: false,
-        hotlist: false,
-        calendar: false,
-    });
-} catch(e) { console.warn('TradingView widget failed:', e); }
+// ── Chart.js Global Config ──
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = 'rgba(51, 65, 85, 0.2)';
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 10;
+Chart.defaults.plugins.legend.display = false;
+Chart.defaults.animation.duration = 600;
+Chart.defaults.responsive = true;
+Chart.defaults.maintainAspectRatio = false;
 
-// ---------- Helpers ----------
-function showToast(msg, type='info') {
+// ── Tab Navigation ──
+function switchTab(tabId) {
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab-item[data-tab="${tabId}"]`).classList.add('active');
+    document.getElementById(`panel-${tabId}`).classList.add('active');
+    // Redraw charts on tab switch for proper sizing
+    setTimeout(() => {
+        Object.values(charts).forEach(c => { if (c) c.resize(); });
+    }, 50);
+}
+
+// ── Helpers ──
+function showToast(msg, type = 'info') {
     const t = document.getElementById('toast');
-    const colors = { info: '#60a5fa', success: '#34d399', error: '#f87171' };
-    t.style.borderLeftColor = colors[type] || colors.info;
+    const colors = { info: '#3b82f6', success: '#22c55e', error: '#ef4444' };
     t.style.borderLeft = `3px solid ${colors[type] || colors.info}`;
     t.textContent = msg;
-    t.classList.remove('hidden');
-    setTimeout(() => t.classList.add('hidden'), 3500);
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
 }
 
 function fmtDT(iso) {
@@ -544,241 +777,247 @@ function fmtTime(iso) {
     try { return new Date(iso).toLocaleString('pt-BR', { hour12: false, day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); } catch { return iso; }
 }
 function fmtN(n, d=2) {
-    if (n === null || n === undefined) return '—';
+    if (n === null || n === undefined || isNaN(n)) return '—';
     return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
-
-async function api(method, path, body) {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(path, opts);
-    if (!res.ok) throw new Error(`${path} → ${res.status}`);
-    return res.json();
-}
-
 function esc(s) {
     if (!s) return '';
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-
-// ---------- Confidence calculation ----------
-function calcConfidence(s) {
-    const rsiDist = Math.abs(s.rsi - 50) / 50;
-    const volRatio = Math.min((s.volume || 0) / Math.max(s.volume_sma20 || 1, 1), 3);
-    const volScore = Math.min(volRatio / 2.5, 1);
-    return Math.min(Math.round((rsiDist * 0.55 + volScore * 0.45) * 100), 99);
+async function api(method, path) {
+    const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    return res.json();
+}
+function timeAgo(iso) {
+    if (!iso) return '';
+    const d = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (d < 60) return 'agora';
+    if (d < 3600) return Math.floor(d/60) + 'min';
+    if (d < 86400) return Math.floor(d/3600) + 'h';
+    return Math.floor(d/86400) + 'd';
+}
+function calcConf(s) {
+    const rsiD = Math.abs(s.rsi - 50) / 50;
+    const volR = Math.min((s.volume||0) / Math.max(s.volume_sma20||1, 1), 3);
+    return Math.min(Math.round((rsiD * 0.55 + Math.min(volR/2.5,1) * 0.45) * 100), 99);
+}
+function confColor(v) { return v >= 70 ? '#22c55e' : v >= 45 ? '#f59e0b' : '#475569'; }
+function trendColor(t) {
+    const l = (t||'').toLowerCase();
+    return l === 'bullish' ? '#4ade80' : l === 'bearish' ? '#f87171' : '#94a3b8';
 }
 
-function confColor(v) {
-    if (v >= 70) return '#10b981';
-    if (v >= 45) return '#f59e0b';
-    return '#6b7280';
-}
-
-// ---------- Canvas Charts ----------
-function drawSparkline(signals) {
-    const canvas = document.getElementById('sparklineCanvas');
-    if (!canvas || signals.length < 2) return;
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = 100 * dpr;
-    ctx.scale(dpr, dpr);
-    const W = rect.width, H = 100;
-    ctx.clearRect(0, 0, W, H);
-
-    const prices = signals.map(s => s.entry_price).reverse();
-    const min = Math.min(...prices), max = Math.max(...prices);
-    const range = max - min || 1;
-    const pad = 4;
-
-    // Gradient fill
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
-    grad.addColorStop(1, 'rgba(59, 130, 246, 0)');
-
-    ctx.beginPath();
-    prices.forEach((p, i) => {
-        const x = pad + (i / (prices.length - 1)) * (W - pad * 2);
-        const y = H - pad - ((p - min) / range) * (H - pad * 2);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = '#3b82f6';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-
-    // Fill
-    const lastX = pad + (W - pad * 2);
-    ctx.lineTo(lastX, H);
-    ctx.lineTo(pad, H);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Dots on last 3
-    const last3 = prices.slice(-3);
-    last3.forEach((p, i) => {
-        const idx = prices.length - 3 + i;
-        const x = pad + (idx / (prices.length - 1)) * (W - pad * 2);
-        const y = H - pad - ((p - min) / range) * (H - pad * 2);
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = i === last3.length - 1 ? '#3b82f6' : 'rgba(59,130,246,0.4)';
-        ctx.fill();
-    });
-
-    document.getElementById('sparkNewest').textContent = '$' + fmtN(prices[prices.length-1]);
-    document.getElementById('sparkOldest').textContent = '$' + fmtN(prices[0]);
-}
-
-function drawRSIChart(signals) {
-    const canvas = document.getElementById('rsiCanvas');
-    if (!canvas || signals.length < 1) return;
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = 100 * dpr;
-    ctx.scale(dpr, dpr);
-    const W = rect.width, H = 100;
-    ctx.clearRect(0, 0, W, H);
-
-    const rsis = signals.map(s => s.rsi).reverse();
-    const pad = 4;
-
-    // Zones
-    const yOf = v => H - pad - ((v - 0) / 100) * (H - pad * 2);
-
-    // Overbought zone (65-100)
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.06)';
-    ctx.fillRect(pad, yOf(100), W - pad * 2, yOf(65) - yOf(100));
-
-    // Oversold zone (0-35)
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.06)';
-    ctx.fillRect(pad, yOf(35), W - pad * 2, yOf(0) - yOf(35));
-
-    // Lines at 30, 50, 70
-    [30, 50, 70].forEach(v => {
-        ctx.beginPath();
-        ctx.moveTo(pad, yOf(v));
-        ctx.lineTo(W - pad, yOf(v));
-        ctx.strokeStyle = 'rgba(55, 65, 81, 0.3)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-    });
-
-    // Bars
-    const barW = Math.max(2, (W - pad * 2) / rsis.length - 2);
-    rsis.forEach((v, i) => {
-        const x = pad + (i / rsis.length) * (W - pad * 2);
-        const y = yOf(v);
-        const barH = yOf(0) - y;
-        ctx.fillStyle = v < 35 ? 'rgba(16, 185, 129, 0.7)' : v > 65 ? 'rgba(239, 68, 68, 0.7)' : 'rgba(107, 114, 128, 0.4)';
-        ctx.fillRect(x, y, barW, barH);
+// ── Chart Initialization ──
+function initPriceChart() {
+    const ctx = document.getElementById('priceChart');
+    if (!ctx) return;
+    charts.price = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Preco', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)', borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.1, order: 1 },
+                { label: 'EMA 200', data: [], borderColor: '#f59e0b', borderWidth: 1, borderDash: [4,4], pointRadius: 0, fill: false, tension: 0.1, order: 2 },
+                { label: 'BB Upper', data: [], borderColor: 'rgba(139,92,246,0.3)', borderWidth: 0.5, pointRadius: 0, fill: false, tension: 0.1, order: 3 },
+                { label: 'BB Lower', data: [], borderColor: 'rgba(139,92,246,0.3)', borderWidth: 0.5, pointRadius: 0, fill: '-1', backgroundColor: 'rgba(139,92,246,0.04)', tension: 0.1, order: 3 },
+            ]
+        },
+        options: {
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'dd/MM HH:mm' }, tooltipFormat: 'dd/MM/yyyy HH:mm' }, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+                y: { position: 'right', grid: { color: 'rgba(51,65,85,0.15)' }, ticks: { callback: v => '$' + fmtN(v, 0), font: { size: 9, family: 'JetBrains Mono' } } }
+            },
+            plugins: { tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(51,65,85,0.4)', borderWidth: 1, titleFont: { size: 11 }, bodyFont: { size: 11, family: 'JetBrains Mono' }, padding: 10, cornerRadius: 8 } }
+        }
     });
 }
 
-function drawDonut(signals) {
-    const canvas = document.getElementById('donutCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = 90 * dpr; canvas.height = 90 * dpr;
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, 90, 90);
+function initRSIChart() {
+    const ctx = document.getElementById('rsiChart');
+    if (!ctx) return;
+    charts.rsi = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'RSI', data: [], backgroundColor: [], borderRadius: 1, barPercentage: 0.9 }] },
+        options: {
+            scales: {
+                x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } }, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+                y: { min: 0, max: 100, grid: { color: 'rgba(51,65,85,0.12)' }, ticks: { font: { size: 9 } } }
+            },
+            plugins: {
+                tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(51,65,85,0.4)', borderWidth: 1, cornerRadius: 8, padding: 10 },
+                annotation: undefined
+            }
+        }
+    });
+}
 
+function initVolChart() {
+    const ctx = document.getElementById('volChart');
+    if (!ctx) return;
+    charts.vol = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Volume', data: [], backgroundColor: 'rgba(59,130,246,0.35)', borderRadius: 1, barPercentage: 0.9 },
+                { label: 'SMA 20', data: [], type: 'line', borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.3 }
+            ]
+        },
+        options: {
+            scales: {
+                x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } }, grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+                y: { grid: { color: 'rgba(51,65,85,0.12)' }, ticks: { font: { size: 9 } } }
+            },
+            plugins: { tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(51,65,85,0.4)', borderWidth: 1, cornerRadius: 8, padding: 10 } }
+        }
+    });
+}
+
+function initDistChart() {
+    const ctx = document.getElementById('distChart');
+    if (!ctx) return;
+    charts.dist = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['LONG', 'SHORT'],
+            datasets: [{ data: [0, 0], backgroundColor: ['#22c55e', '#ef4444'], borderWidth: 0, borderRadius: 4, spacing: 3 }]
+        },
+        options: {
+            cutout: '65%',
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } },
+                tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(51,65,85,0.4)', borderWidth: 1, cornerRadius: 8, padding: 10 }
+            }
+        }
+    });
+}
+
+function initSigPriceChart() {
+    const ctx = document.getElementById('sigPriceChart');
+    if (!ctx) return;
+    charts.sigPrice = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{ label: 'Preco Entrada', data: [], borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: [], pointBorderColor: [], pointBorderWidth: 2, fill: true, tension: 0.2 }]
+        },
+        options: {
+            scales: {
+                x: { type: 'time', time: { displayFormats: { day: 'dd/MM', hour: 'dd/MM HH:mm' } }, grid: { display: false }, ticks: { maxTicksLimit: 6, font: { size: 9 } } },
+                y: { grid: { color: 'rgba(51,65,85,0.12)' }, ticks: { callback: v => '$' + fmtN(v, 0), font: { size: 9, family: 'JetBrains Mono' } } }
+            },
+            plugins: { tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(51,65,85,0.4)', borderWidth: 1, cornerRadius: 8, padding: 10, bodyFont: { family: 'JetBrains Mono' } } }
+        }
+    });
+}
+
+function initEquityChart() {
+    const ctx = document.getElementById('equityChart');
+    if (!ctx) return;
+    charts.equity = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{ label: 'Equity', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 2, pointRadius: 0, fill: true, tension: 0.2 }]
+        },
+        options: {
+            scales: {
+                x: { grid: { display: false }, ticks: { display: false } },
+                y: { grid: { color: 'rgba(51,65,85,0.12)' }, ticks: { callback: v => v + '%', font: { size: 9, family: 'JetBrains Mono' } } }
+            },
+            plugins: { tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(51,65,85,0.4)', borderWidth: 1, cornerRadius: 8, padding: 10, bodyFont: { family: 'JetBrains Mono' } } }
+        }
+    });
+}
+
+// ── Chart Update Functions ──
+function updatePriceChart(candles) {
+    if (!charts.price || !candles || candles.length === 0) return;
+    const labels = candles.map(c => c.t);
+    charts.price.data.labels = labels;
+    charts.price.data.datasets[0].data = candles.map(c => c.c);
+    charts.price.data.datasets[1].data = candles.map(c => c.ema200);
+    charts.price.data.datasets[2].data = candles.map(c => c.bb_upper);
+    charts.price.data.datasets[3].data = candles.map(c => c.bb_lower);
+    charts.price.update('none');
+}
+
+function updateRSIChart(candles) {
+    if (!charts.rsi || !candles) return;
+    const labels = candles.map(c => c.t);
+    const data = candles.map(c => c.rsi);
+    const colors = data.map(v => v !== null ? (v < 35 ? 'rgba(34,197,94,0.6)' : v > 65 ? 'rgba(239,68,68,0.6)' : 'rgba(100,116,139,0.3)') : 'transparent');
+    charts.rsi.data.labels = labels;
+    charts.rsi.data.datasets[0].data = data;
+    charts.rsi.data.datasets[0].backgroundColor = colors;
+    charts.rsi.update('none');
+}
+
+function updateVolChart(candles) {
+    if (!charts.vol || !candles) return;
+    charts.vol.data.labels = candles.map(c => c.t);
+    charts.vol.data.datasets[0].data = candles.map(c => c.v);
+    charts.vol.data.datasets[1].data = candles.map(c => c.vol_sma20);
+    charts.vol.update('none');
+}
+
+function updateDistChart(signals) {
+    if (!charts.dist) return;
     const longs = signals.filter(s => s.type === 'LONG').length;
     const shorts = signals.filter(s => s.type === 'SHORT').length;
-    const total = longs + shorts || 1;
-
-    const cx = 45, cy = 45, r = 34, lineW = 10;
-
-    // Background ring
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(55, 65, 81, 0.2)';
-    ctx.lineWidth = lineW;
-    ctx.stroke();
-
-    if (total > 0) {
-        const longAngle = (longs / total) * Math.PI * 2;
-        // LONG arc
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + longAngle);
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = lineW;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-        // SHORT arc
-        if (shorts > 0) {
-            ctx.beginPath();
-            ctx.arc(cx, cy, r, -Math.PI / 2 + longAngle + 0.05, -Math.PI / 2 + Math.PI * 2 - 0.05);
-            ctx.strokeStyle = '#ef4444';
-            ctx.lineWidth = lineW;
-            ctx.lineCap = 'round';
-            ctx.stroke();
-        }
-    }
-
-    // Center text
-    ctx.fillStyle = '#f9fafb';
-    ctx.font = '700 16px "JetBrains Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(total, cx, cy - 4);
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '400 8px "Inter", sans-serif';
-    ctx.fillText('sinais', cx, cy + 10);
-
-    document.getElementById('splitTotal').textContent = total + ' total';
-    document.getElementById('splitLongPct').textContent = Math.round(longs / total * 100) + '%';
-    document.getElementById('splitShortPct').textContent = Math.round(shorts / total * 100) + '%';
-    document.getElementById('splitLongBar').style.width = (longs / total * 100) + '%';
-    document.getElementById('splitShortBar').style.width = (shorts / total * 100) + '%';
+    charts.dist.data.datasets[0].data = [longs, shorts];
+    charts.dist.update('none');
+    document.getElementById('distTotal').textContent = (longs + shorts) + ' total';
 }
 
-// ---------- Render Functions ----------
+function updateSigPriceChart(signals) {
+    if (!charts.sigPrice || signals.length === 0) return;
+    const sorted = [...signals].sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    charts.sigPrice.data.labels = sorted.map(s => s.ts);
+    charts.sigPrice.data.datasets[0].data = sorted.map(s => s.entry_price);
+    charts.sigPrice.data.datasets[0].pointBackgroundColor = sorted.map(s => s.type === 'LONG' ? '#22c55e' : '#ef4444');
+    charts.sigPrice.data.datasets[0].pointBorderColor = sorted.map(s => s.type === 'LONG' ? '#22c55e' : '#ef4444');
+    charts.sigPrice.update('none');
+}
+
+// ── Render Functions ──
 function renderStatus(data) {
     const bot = data.bot;
     const running = bot.running;
-    const dot = document.getElementById('headerDot');
-    const badge = document.getElementById('headerBadge');
-    const text = document.getElementById('headerStatusText');
 
+    // Header
+    const dot = document.getElementById('hDot');
+    const badge = document.getElementById('hBadge');
+    const text = document.getElementById('hStatusText');
     if (running) {
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
-        badge.className = 'status-live flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium';
-        text.className = 'text-emerald-400';
+        dot.className = 'dot dot-green pulse-dot';
+        badge.style.background = 'rgba(34,197,94,0.1)'; badge.style.borderColor = 'rgba(34,197,94,0.25)'; badge.style.color = '#4ade80';
         text.textContent = 'Online';
-        document.getElementById('kpiStatus').textContent = 'Online';
-        document.getElementById('kpiStatusSub').textContent = 'Analisando mercado';
+        document.getElementById('kStatus').textContent = 'Online';
+        document.getElementById('kStatus').style.color = '#4ade80';
+        document.getElementById('kStatusSub').textContent = 'Analisando mercado';
     } else {
-        dot.className = 'w-2 h-2 rounded-full bg-amber-500';
-        badge.className = 'status-paused flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium';
-        text.className = 'text-amber-400';
+        dot.className = 'dot dot-amber';
+        badge.style.background = 'rgba(245,158,11,0.1)'; badge.style.borderColor = 'rgba(245,158,11,0.25)'; badge.style.color = '#fbbf24';
         text.textContent = 'Pausado';
-        document.getElementById('kpiStatus').textContent = 'Pausado';
-        document.getElementById('kpiStatusSub').textContent = 'Analise pausada';
+        document.getElementById('kStatus').textContent = 'Pausado';
+        document.getElementById('kStatus').style.color = '#fbbf24';
+        document.getElementById('kStatusSub').textContent = 'Analise pausada';
     }
 
-    // Header price
-    const sigs = data.signals_today || 0;
-    document.getElementById('headerSignalsToday').textContent = sigs;
-    document.getElementById('headerLastCheck').textContent = fmtTime(bot.last_check);
+    document.getElementById('hSignals').textContent = data.signals_today || 0;
+    document.getElementById('hLastCheck').textContent = fmtTime(bot.last_check);
 
     // KPIs
-    document.getElementById('kpiSignalsToday').textContent = sigs;
+    document.getElementById('kSignals').textContent = data.signals_today || 0;
     const byType = data.signals_today_by_type || {};
-    document.getElementById('kpiSignalsBreakdown').textContent = `${byType.LONG || 0} compra / ${byType.SHORT || 0} venda`;
-    document.getElementById('kpiCycles').textContent = bot.cycle_count || 0;
-    document.getElementById('kpiErrors').textContent = (bot.error_count || 0) + ' erros';
-    document.getElementById('kpiLastCheck').textContent = fmtTime(bot.last_check);
-    document.getElementById('kpiLastSignal').textContent = 'Ultimo sinal: ' + fmtTime(bot.last_signal_ts);
-    document.getElementById('symbolLabel').textContent = (data.symbol || 'BTC/USDT') + ' · ' + (data.timeframe || '1H').toUpperCase();
+    document.getElementById('kSignalsSub').textContent = `${byType.LONG||0} compra / ${byType.SHORT||0} venda`;
+    document.getElementById('kCycles').textContent = bot.cycle_count || 0;
+    document.getElementById('kCyclesSub').textContent = (bot.error_count||0) + ' erros';
+    document.getElementById('kLastCheck').textContent = fmtTime(bot.last_check);
+    document.getElementById('kLastSignal').textContent = 'Ultimo sinal: ' + fmtTime(bot.last_signal_ts);
 
     if (data.multitf) renderMTF(data.multitf);
 }
@@ -786,186 +1025,146 @@ function renderStatus(data) {
 function renderSignals(data) {
     const signals = (data.signals || []).reverse();
     allSignals = signals;
-    document.getElementById('signalCount').textContent = signals.length + ' sinais';
+    document.getElementById('sigCount').textContent = signals.length;
     document.getElementById('tableCount').textContent = signals.length + ' registros';
 
     if (signals.length === 0) {
-        document.getElementById('signalFeed').innerHTML = '<div class="text-center text-gray-500 text-xs py-10">Aguardando sinais...</div>';
-        document.getElementById('signalsTableBody').innerHTML = '<tr><td colspan="8" class="px-4 py-10 text-center text-gray-500 text-xs">Nenhum sinal registrado.</td></tr>';
+        document.getElementById('sigFeed').innerHTML = '<div style="text-align:center;color:#64748b;font-size:11px;padding:40px 0">Aguardando sinais...</div>';
+        document.getElementById('sigTableBody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:#64748b;padding:40px">Nenhum sinal registrado.</td></tr>';
         return;
     }
 
-    // Signal Feed (card-based)
-    const feed = document.getElementById('signalFeed');
-    feed.innerHTML = signals.slice(0, 15).map(s => {
-        const isLong = s.type === 'LONG';
-        const conf = calcConfidence(s);
-        const ago = timeAgo(s.ts);
-        return `
-            <div class="signal-card rounded-lg p-3 cursor-default" style="background:${isLong ? 'rgba(6,78,59,0.08)' : 'rgba(127,29,29,0.08)'};border:1px solid ${isLong ? 'rgba(6,78,59,0.2)' : 'rgba(127,29,29,0.2)'}">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full ${isLong ? 'bg-emerald-500' : 'bg-red-500'}"></span>
-                        <span class="text-xs font-bold ${isLong ? 'text-emerald-400' : 'text-red-400'}">${s.type}</span>
-                    </div>
-                    <span class="text-[10px] text-gray-500">${ago}</span>
+    // Signal Feed cards
+    document.getElementById('sigFeed').innerHTML = signals.slice(0, 20).map(s => {
+        const isL = s.type === 'LONG';
+        const conf = calcConf(s);
+        return `<div class="sig-card ${isL?'sig-long':'sig-short'} fade-in">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="dot" style="width:6px;height:6px;background:${isL?'#22c55e':'#ef4444'}"></span>
+                    <span style="font-size:11px;font-weight:700;color:${isL?'#4ade80':'#f87171'}">${s.type}</span>
                 </div>
-                <div class="text-sm font-semibold font-mono mb-1">$${fmtN(s.entry_price)}</div>
-                <div class="confidence-bar mb-1.5">
-                    <div class="confidence-fill" style="width:${conf}%;background:${confColor(conf)}"></div>
-                </div>
-                <div class="flex items-center justify-between text-[10px] text-gray-500">
-                    <span>RSI ${fmtN(s.rsi, 0)}</span>
-                    <span style="color:${confColor(conf)}">Forca ${conf}%</span>
-                </div>
-            </div>`;
+                <span style="font-size:10px;color:#64748b">${timeAgo(s.ts)}</span>
+            </div>
+            <div class="font-mono" style="font-size:14px;font-weight:600;margin-bottom:8px">$${fmtN(s.entry_price)}</div>
+            <div class="bar-track" style="margin-bottom:6px"><div class="bar-fill" style="width:${conf}%;background:${confColor(conf)}"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:#64748b">
+                <span>RSI ${fmtN(s.rsi,0)}</span>
+                <span style="color:${confColor(conf)}">Forca ${conf}%</span>
+            </div>
+        </div>`;
     }).join('');
 
     // Table
-    const tbody = document.getElementById('signalsTableBody');
-    tbody.innerHTML = signals.map(s => {
-        const isLong = s.type === 'LONG';
-        const conf = calcConfidence(s);
-        const tg = s.notified ? '<span class="text-emerald-400">✓</span>' : '<span class="text-gray-600">○</span>';
-        return `
-            <tr class="hover:bg-white/[0.02] transition fade-in">
-                <td class="px-4 py-3 text-gray-400 font-mono text-xs">${fmtDT(s.ts)}</td>
-                <td class="px-4 py-3">
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${isLong ? 'text-emerald-400' : 'text-red-400'}" style="background:${isLong ? 'rgba(6,78,59,0.15)' : 'rgba(127,29,29,0.15)'}">
-                        ${isLong ? '▲' : '▼'} ${s.type}
-                    </span>
-                </td>
-                <td class="px-4 py-3 text-right font-mono text-gray-200 text-xs">$${fmtN(s.entry_price)}</td>
-                <td class="px-4 py-3 text-right font-mono text-red-400/70 text-xs">$${fmtN(s.stop_loss)}</td>
-                <td class="px-4 py-3 text-right font-mono text-emerald-400/70 text-xs">$${fmtN(s.take_profit)}</td>
-                <td class="px-4 py-3 text-center font-mono text-gray-400 text-xs">${fmtN(s.rsi, 0)}</td>
-                <td class="px-4 py-3 text-center">
-                    <div class="flex items-center gap-1.5 justify-center">
-                        <div class="w-12 h-1.5 rounded-full" style="background:rgba(55,65,81,0.3)">
-                            <div class="h-1.5 rounded-full" style="width:${conf}%;background:${confColor(conf)}"></div>
-                        </div>
-                        <span class="text-[10px] font-mono" style="color:${confColor(conf)}">${conf}</span>
-                    </div>
-                </td>
-                <td class="px-4 py-3 text-center text-xs">${tg}</td>
-            </tr>`;
+    document.getElementById('sigTableBody').innerHTML = signals.map(s => {
+        const isL = s.type === 'LONG';
+        const conf = calcConf(s);
+        const tg = s.notified ? '<span style="color:#4ade80">&#10003;</span>' : '<span style="color:#334155">○</span>';
+        return `<tr class="fade-in">
+            <td class="font-mono" style="font-size:11px;color:#94a3b8">${fmtDT(s.ts)}</td>
+            <td><span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;color:${isL?'#4ade80':'#f87171'};background:${isL?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)'}">${isL?'&#9650;':'&#9660;'} ${s.type}</span></td>
+            <td class="font-mono" style="color:#e2e8f0">$${fmtN(s.entry_price)}</td>
+            <td class="font-mono" style="color:rgba(248,113,113,0.6)">$${fmtN(s.stop_loss)}</td>
+            <td class="font-mono" style="color:rgba(74,222,128,0.6)">$${fmtN(s.take_profit)}</td>
+            <td style="text-align:center;font-size:11px;color:#94a3b8">${fmtN(s.rsi,0)}</td>
+            <td style="text-align:center"><div style="display:flex;align-items:center;gap:6px;justify-content:center"><div style="width:40px;height:4px;border-radius:2px;background:rgba(51,65,85,0.3)"><div style="height:100%;border-radius:2px;width:${conf}%;background:${confColor(conf)}"></div></div><span class="font-mono" style="font-size:10px;color:${confColor(conf)}">${conf}</span></div></td>
+            <td style="text-align:center;font-size:12px">${tg}</td>
+        </tr>`;
     }).join('');
 
-    // Draw charts
-    drawSparkline(signals);
-    drawRSIChart(signals);
-    drawDonut(signals);
-}
-
-function timeAgo(iso) {
-    if (!iso) return '';
-    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (diff < 60) return 'agora';
-    if (diff < 3600) return Math.floor(diff / 60) + 'min';
-    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
-    return Math.floor(diff / 86400) + 'd';
+    // Update analysis charts
+    updateDistChart(signals);
+    updateSigPriceChart(signals);
 }
 
 function renderRisk(r) {
+    if (!r) return;
     const dailyPct = Math.abs(r.daily_loss_pct || 0);
-    const dailyMax = r.daily_loss_limit || 3;
+    const dailyMax = r.max_daily_loss_pct || 5;
     const weeklyPct = Math.abs(r.weekly_loss_pct || 0);
-    const weeklyMax = r.weekly_loss_limit || 6;
-    const filtered = r.signals_filtered || 0;
+    const weeklyMax = r.max_weekly_loss_pct || 10;
+    const circ = 314;
+
+    // KPIs
+    document.getElementById('kFiltered').textContent = r.total_filtered || 0;
     const isKilled = r.is_killed || false;
     const cb = r.circuit_breaker_active || false;
-
-    document.getElementById('riskFiltered').textContent = filtered;
-
-    // System status
-    const dot = document.getElementById('riskSysDot');
-    const status = document.getElementById('riskSysStatus');
-    const sub = document.getElementById('riskSysSub');
+    const sysDot = document.getElementById('kSysDot');
+    const sysStatus = document.getElementById('kSysStatus');
+    const sysSub = document.getElementById('kSysSub');
     if (isKilled) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
-        status.textContent = 'Interrompido';
-        status.className = 'text-base font-semibold text-red-400';
-        sub.textContent = 'sistema pausado';
+        sysDot.className = 'dot dot-red'; sysStatus.textContent = 'Parado'; sysStatus.style.color = '#f87171'; sysSub.textContent = 'sistema interrompido';
     } else if (cb) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 pulse-dot';
-        status.textContent = 'Volatil';
-        status.className = 'text-base font-semibold text-amber-400';
-        sub.textContent = 'mercado instavel';
+        sysDot.className = 'dot dot-amber pulse-dot'; sysStatus.textContent = 'Volatil'; sysStatus.style.color = '#fbbf24'; sysSub.textContent = 'circuit breaker';
     } else {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot';
-        status.textContent = 'Normal';
-        status.className = 'text-base font-semibold text-emerald-400';
-        sub.textContent = 'tudo funcionando';
+        sysDot.className = 'dot dot-green pulse-dot'; sysStatus.textContent = 'Normal'; sysStatus.style.color = '#4ade80'; sysSub.textContent = 'tudo ok';
     }
 
     // Gauges
-    const circ = 314; // 2 * PI * 50
     const dRatio = Math.min(dailyPct / dailyMax, 1);
     const wRatio = Math.min(weeklyPct / weeklyMax, 1);
-    const dColor = dRatio > 0.8 ? '#ef4444' : dRatio > 0.5 ? '#f59e0b' : '#10b981';
-    const wColor = wRatio > 0.8 ? '#ef4444' : wRatio > 0.5 ? '#f59e0b' : '#10b981';
+    const dCol = dRatio > 0.8 ? '#ef4444' : dRatio > 0.5 ? '#f59e0b' : '#22c55e';
+    const wCol = wRatio > 0.8 ? '#ef4444' : wRatio > 0.5 ? '#f59e0b' : '#22c55e';
 
-    document.getElementById('gaugeDaily').setAttribute('stroke-dashoffset', circ * (1 - dRatio));
-    document.getElementById('gaugeDaily').setAttribute('stroke', dColor);
-    document.getElementById('gaugeDailyVal').textContent = fmtN(dailyPct) + '%';
-    document.getElementById('gaugeDailyMax').textContent = fmtN(dailyMax) + '%';
+    document.getElementById('gDaily').setAttribute('stroke-dashoffset', circ * (1 - dRatio));
+    document.getElementById('gDaily').setAttribute('stroke', dCol);
+    document.getElementById('gDailyVal').textContent = fmtN(dailyPct) + '%';
+    document.getElementById('gDailyMax').textContent = fmtN(dailyMax) + '%';
 
-    document.getElementById('gaugeWeekly').setAttribute('stroke-dashoffset', circ * (1 - wRatio));
-    document.getElementById('gaugeWeekly').setAttribute('stroke', wColor);
-    document.getElementById('gaugeWeeklyVal').textContent = fmtN(weeklyPct) + '%';
-    document.getElementById('gaugeWeeklyMax').textContent = fmtN(weeklyMax) + '%';
+    document.getElementById('gWeekly').setAttribute('stroke-dashoffset', circ * (1 - wRatio));
+    document.getElementById('gWeekly').setAttribute('stroke', wCol);
+    document.getElementById('gWeeklyVal').textContent = fmtN(weeklyPct) + '%';
+    document.getElementById('gWeeklyMax').textContent = fmtN(weeklyMax) + '%';
+
+    // Risk stats
+    document.getElementById('riskConsLosses').textContent = r.consecutive_losses || 0;
+    document.getElementById('riskTotalSigs').textContent = r.total_signals || 0;
+    document.getElementById('riskFilteredVal').textContent = r.total_filtered || 0;
+    const cbEl = document.getElementById('riskCB');
+    if (cb) { cbEl.textContent = 'Ativo'; cbEl.style.background = 'rgba(239,68,68,0.1)'; cbEl.style.color = '#f87171'; }
+    else { cbEl.textContent = 'Inativo'; cbEl.style.background = 'rgba(34,197,94,0.1)'; cbEl.style.color = '#4ade80'; }
+    const cdEl = document.getElementById('riskCooldown');
+    if (r.consecutive_pause_until) { cdEl.textContent = 'Ativo'; cdEl.style.background = 'rgba(245,158,11,0.1)'; cdEl.style.color = '#fbbf24'; }
+    else { cdEl.textContent = 'Nenhum'; cdEl.style.background = 'rgba(34,197,94,0.1)'; cdEl.style.color = '#4ade80'; }
 }
 
 function renderMTF(mtf) {
-    const enabled = mtf.enabled;
     const dot = document.getElementById('mtfDot');
-    const text = document.getElementById('mtfText');
-    if (enabled) {
-        dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot';
-        text.textContent = 'ativo';
-        text.className = 'text-emerald-400';
-    } else {
-        dot.className = 'w-1.5 h-1.5 rounded-full bg-gray-500';
-        text.textContent = 'desativado';
-        text.className = 'text-gray-400';
-    }
+    const label = document.getElementById('mtfLabel');
+    if (mtf.enabled) { dot.style.background = '#22c55e'; dot.classList.add('pulse-dot'); label.textContent = 'ativo'; label.style.color = '#4ade80'; }
+    else { dot.style.background = '#475569'; label.textContent = 'off'; label.style.color = '#94a3b8'; }
 
-    const renderTrend = (id, trend) => {
+    const setTrend = (id, trend) => {
         const d = document.getElementById(id + 'Dot');
         const t = document.getElementById(id);
         t.textContent = trend;
-        if ((trend||'').toLowerCase() === 'bullish') {
-            d.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500'; t.className = 'text-sm font-semibold font-mono text-emerald-400';
-        } else if ((trend||'').toLowerCase() === 'bearish') {
-            d.className = 'w-2.5 h-2.5 rounded-full bg-red-500'; t.className = 'text-sm font-semibold font-mono text-red-400';
-        } else {
-            d.className = 'w-2.5 h-2.5 rounded-full bg-gray-600'; t.className = 'text-sm font-semibold font-mono text-gray-400';
-        }
+        const c = trendColor(trend);
+        d.style.background = c; t.style.color = c;
     };
-    renderTrend('mtfH4', mtf.h4_trend);
-    renderTrend('mtfD1', mtf.d1_trend);
+    setTrend('mtfH4', mtf.h4_trend);
+    setTrend('mtfD1', mtf.d1_trend);
 
-    const conf = mtf.confluence || '';
-    const el = document.getElementById('mtfConfluence');
-    el.textContent = conf;
-    if (conf.toLowerCase() === 'bullish') { el.style.background = 'rgba(6,78,59,0.2)'; el.style.color = '#34d399'; }
-    else if (conf.toLowerCase() === 'bearish') { el.style.background = 'rgba(127,29,29,0.2)'; el.style.color = '#f87171'; }
-    else if (conf.toLowerCase() === 'mixed') { el.style.background = 'rgba(120,53,15,0.2)'; el.style.color = '#fbbf24'; }
-    else { el.style.background = 'rgba(55,65,81,0.3)'; el.style.color = '#9ca3af'; }
+    const conf = document.getElementById('mtfConf');
+    const cv = (mtf.confluence || '').toLowerCase();
+    conf.textContent = mtf.confluence || '—';
+    if (cv === 'bullish') { conf.style.background = 'rgba(34,197,94,0.12)'; conf.style.color = '#4ade80'; }
+    else if (cv === 'bearish') { conf.style.background = 'rgba(239,68,68,0.12)'; conf.style.color = '#f87171'; }
+    else if (cv === 'mixed') { conf.style.background = 'rgba(245,158,11,0.12)'; conf.style.color = '#fbbf24'; }
+    else { conf.style.background = 'rgba(100,116,139,0.15)'; conf.style.color = '#94a3b8'; }
 }
 
 function renderLogs(data) {
     const body = document.getElementById('logsBody');
     const logs = data.logs || [];
-    if (logs.length === 0) { body.innerHTML = '<div class="text-gray-500 text-center py-6 text-xs">Sem registros.</div>'; return; }
-    const lc = { INFO: '#60a5fa', WARNING: '#fbbf24', ERROR: '#f87171', DEBUG: '#6b7280' };
-    body.innerHTML = logs.slice(0, 30).map(l => {
+    if (logs.length === 0) { body.innerHTML = '<div style="text-align:center;color:#64748b;padding:24px 0;font-size:11px">Sem registros.</div>'; return; }
+    const lc = { INFO: '#60a5fa', WARNING: '#fbbf24', ERROR: '#f87171', DEBUG: '#64748b' };
+    body.innerHTML = logs.slice(0, 25).map(l => {
         const time = fmtTime(l.ts).split(' ')[1] || l.ts;
-        return `<div class="flex gap-2 fade-in py-0.5"><span class="text-gray-600 shrink-0">${time}</span><span style="color:${lc[l.level]||'#9ca3af'}" class="shrink-0 font-semibold">[${l.level}]</span><span class="text-gray-400 break-words">${esc(l.message)}</span></div>`;
+        return `<div style="display:flex;gap:8px;padding:2px 0" class="fade-in"><span style="color:#334155;flex-shrink:0">${time}</span><span style="color:${lc[l.level]||'#94a3b8'};flex-shrink:0;font-weight:600">[${l.level}]</span><span style="color:#94a3b8;overflow-wrap:break-word">${esc(l.message)}</span></div>`;
     }).join('');
 }
 
-// ---------- Fetch All ----------
+// ── Fetch ──
 async function fetchAll() {
     try {
         const [status, signals, logs, risk] = await Promise.all([
@@ -978,104 +1177,145 @@ async function fetchAll() {
         renderSignals(signals);
         renderLogs(logs);
         if (risk) renderRisk(risk);
+        fetchChartData();
         fetchMTF();
     } catch (err) {
         console.error('Poll fail:', err);
-        document.getElementById('headerStatusText').textContent = 'Erro';
-        document.getElementById('headerDot').className = 'w-2 h-2 rounded-full bg-red-500';
+        document.getElementById('hStatusText').textContent = 'Erro';
+        document.getElementById('hDot').className = 'dot dot-red';
     }
+}
+
+async function fetchChartData() {
+    try {
+        const data = await api('GET', '/api/chart-data?bars=100');
+        if (data.ok && data.candles) {
+            updatePriceChart(data.candles);
+            updateRSIChart(data.candles);
+            updateVolChart(data.candles);
+            // Update header price from last candle
+            const last = data.candles[data.candles.length - 1];
+            if (last) document.getElementById('hPrice').textContent = '$' + fmtN(last.c);
+        }
+    } catch (e) { /* silent */ }
 }
 
 async function fetchMTF() {
     try { renderMTF(await api('GET', '/api/mtf')); } catch(e) {}
 }
 
-// ---------- Backtest ----------
+// ── Backtest ──
 let btPoll = null;
 async function runBacktest() {
-    const btn = document.getElementById('btnRunBt');
-    const dot = document.getElementById('btStatusDot');
-    const txt = document.getElementById('btStatusText');
-    btn.disabled = true; btn.style.opacity = '0.5';
-    dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot';
+    const btn = document.getElementById('btBtn');
+    const dot = document.getElementById('btDot');
+    const txt = document.getElementById('btText');
+    btn.disabled = true; btn.style.opacity = '0.4';
+    dot.style.background = '#f59e0b'; dot.classList.add('pulse-dot');
     txt.textContent = 'calculando...';
-    document.getElementById('btResults').classList.add('hidden');
+    document.getElementById('btResults').style.display = 'none';
+    document.getElementById('btPlaceholder').style.display = 'block';
     try {
         const res = await api('POST', '/api/backtest?days=730');
-        if (res.status === 'running') btPoll = setInterval(checkBt, 3000);
-        else if (res.status === 'done') renderBt(res);
-        else { showToast('Resposta inesperada', 'info'); resetBt(); }
+        if (res.ok !== false) { btPoll = setInterval(checkBt, 3000); }
+        else { showToast(res.error || 'Falha', 'error'); resetBt(); }
     } catch(e) { showToast('Falha: ' + e.message, 'error'); resetBt(); }
 }
 async function checkBt() {
     try {
         const r = await api('GET', '/api/backtest/status');
-        if (r.status === 'done') { clearInterval(btPoll); btPoll = null; renderBt(r); }
+        if (r.status === 'done') { clearInterval(btPoll); btPoll = null; renderBt(r.result); }
     } catch(e) { clearInterval(btPoll); btPoll = null; resetBt(); }
 }
 function renderBt(res) {
-    const dot = document.getElementById('btStatusDot');
-    const txt = document.getElementById('btStatusText');
-    dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
+    if (!res || !res.ok) { showToast('Backtest falhou', 'error'); resetBt(); return; }
+    const dot = document.getElementById('btDot');
+    const txt = document.getElementById('btText');
+    dot.style.background = '#22c55e'; dot.classList.remove('pulse-dot');
     txt.textContent = 'concluido';
-    document.getElementById('btnRunBt').disabled = false;
-    document.getElementById('btnRunBt').style.opacity = '1';
+    document.getElementById('btBtn').disabled = false;
+    document.getElementById('btBtn').style.opacity = '1';
 
-    const r = res.results || res;
-    document.getElementById('btTrades').textContent = r.total_trades || 0;
-    document.getElementById('btWR').textContent = fmtN(r.win_rate, 1) + '%';
-    document.getElementById('btPF').textContent = fmtN(r.profit_factor, 2);
+    const m = res.metrics || {};
+    document.getElementById('btTrades').textContent = m.total_trades || 0;
+    document.getElementById('btWR').textContent = fmtN(m.win_rate, 1) + '%';
+    document.getElementById('btWR').style.color = (m.win_rate || 0) >= 50 ? '#4ade80' : '#f87171';
+    document.getElementById('btPF').textContent = fmtN(m.profit_factor, 2);
+    document.getElementById('btPF').style.color = (m.profit_factor || 0) >= 1 ? '#4ade80' : '#f87171';
     const dd = document.getElementById('btDD');
-    dd.textContent = fmtN(r.max_drawdown_pct, 2) + '%';
-    dd.style.color = r.max_drawdown_pct < 0 ? '#f87171' : '#f9fafb';
+    dd.textContent = fmtN(m.max_drawdown_pct, 2) + '%';
+    dd.style.color = (m.max_drawdown_pct || 0) < 0 ? '#f87171' : '#e2e8f0';
     const pnl = document.getElementById('btPnL');
-    pnl.textContent = (r.total_pnl_pct >= 0 ? '+' : '') + fmtN(r.total_pnl_pct, 2) + '%';
-    pnl.style.color = r.total_pnl_pct >= 0 ? '#34d399' : '#f87171';
+    pnl.textContent = (m.total_pnl_pct >= 0 ? '+' : '') + fmtN(m.total_pnl_pct, 2) + '%';
+    pnl.style.color = (m.total_pnl_pct || 0) >= 0 ? '#4ade80' : '#f87171';
     const bh = document.getElementById('btBH');
-    bh.textContent = fmtN(r.buy_hold_pct, 2) + '%';
-    bh.style.color = r.buy_hold_pct >= 0 ? '#34d399' : '#f87171';
+    bh.textContent = fmtN(m.buy_hold_pct, 2) + '%';
+    bh.style.color = (m.buy_hold_pct || 0) >= 0 ? '#4ade80' : '#f87171';
 
-    const trades = (r.trades || []).slice(-10).reverse();
-    document.getElementById('btTradesBody').innerHTML = trades.length === 0
-        ? '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500 text-xs">Nenhum sinal.</td></tr>'
+    // Equity curve
+    if (m.equity_curve && charts.equity) {
+        const eqData = typeof m.equity_curve === 'string' ? JSON.parse(m.equity_curve) : m.equity_curve;
+        charts.equity.data.labels = eqData.map(e => e[0]);
+        charts.equity.data.datasets[0].data = eqData.map(e => e[1]);
+        const isProfit = eqData.length > 0 && eqData[eqData.length-1][1] >= 0;
+        charts.equity.data.datasets[0].borderColor = isProfit ? '#22c55e' : '#ef4444';
+        charts.equity.data.datasets[0].backgroundColor = isProfit ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)';
+        charts.equity.update();
+    }
+
+    // Trades table
+    const trades = (res.trades || []).slice(-15).reverse();
+    document.getElementById('btTableBody').innerHTML = trades.length === 0
+        ? '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:30px">Nenhum sinal.</td></tr>'
         : trades.map(t => {
             const p = t.pnl_pct || 0;
-            const c = p >= 0 ? '#34d399' : '#f87171';
-            return `<tr class="hover:bg-white/[0.02] transition fade-in">
-                <td class="px-4 py-2 text-gray-400 font-mono text-xs">${fmtDT(t.entry_ts||t.entry_date)}</td>
-                <td class="px-4 py-2 text-gray-400 font-mono text-xs">${fmtDT(t.exit_ts||t.exit_date)}</td>
-                <td class="px-4 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${(t.type==='LONG'?'text-emerald-400':'text-red-400')}">${t.type}</span></td>
-                <td class="px-4 py-2 text-right font-mono text-gray-300 text-xs">$${fmtN(t.entry_price)}</td>
-                <td class="px-4 py-2 text-right font-mono text-gray-300 text-xs">$${fmtN(t.exit_price)}</td>
-                <td class="px-4 py-2 text-right font-mono font-semibold text-xs" style="color:${c}">${p>=0?'+':''}${fmtN(p)}%</td>
-                <td class="px-4 py-2 text-gray-500 text-xs">${esc(t.reason||'—')}</td>
+            const c = p >= 0 ? '#4ade80' : '#f87171';
+            return `<tr class="fade-in">
+                <td class="font-mono" style="font-size:11px;color:#94a3b8">${fmtDT(t.entry_ts)}</td>
+                <td class="font-mono" style="font-size:11px;color:#94a3b8">${fmtDT(t.exit_ts)}</td>
+                <td><span style="padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;color:${t.type==='LONG'?'#4ade80':'#f87171'};background:${t.type==='LONG'?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)'}">${t.type}</span></td>
+                <td class="font-mono" style="color:#cbd5e1">$${fmtN(t.entry_price)}</td>
+                <td class="font-mono" style="color:#cbd5e1">$${fmtN(t.exit_price)}</td>
+                <td class="font-mono" style="font-weight:600;color:${c}">${p>=0?'+':''}${fmtN(p)}%</td>
+                <td style="color:#64748b">${esc(t.exit_reason||'—')}</td>
             </tr>`;
         }).join('');
-    document.getElementById('btResults').classList.remove('hidden');
+
+    document.getElementById('btResults').style.display = 'block';
+    document.getElementById('btPlaceholder').style.display = 'none';
 }
 function resetBt() {
-    document.getElementById('btnRunBt').disabled = false;
-    document.getElementById('btnRunBt').style.opacity = '1';
-    document.getElementById('btStatusDot').className = 'w-1.5 h-1.5 rounded-full bg-gray-500';
-    document.getElementById('btStatusText').textContent = 'idle';
+    document.getElementById('btBtn').disabled = false;
+    document.getElementById('btBtn').style.opacity = '1';
+    document.getElementById('btDot').style.background = '#475569';
+    document.getElementById('btDot').classList.remove('pulse-dot');
+    document.getElementById('btText').textContent = 'idle';
 }
 
-// ---------- Init ----------
+// ── Init ──
+initPriceChart();
+initRSIChart();
+initVolChart();
+initDistChart();
+initSigPriceChart();
+initEquityChart();
 fetchAll();
 pollTimer = setInterval(fetchAll, POLL_MS);
 
-// Redraw charts on resize
-let resizeTimer;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-        if (allSignals.length > 0) {
-            drawSparkline(allSignals);
-            drawRSIChart(allSignals);
-        }
-    }, 250);
-});
+// KPI responsive grid
+function adjustKPIGrid() {
+    const grid = document.getElementById('kpiGrid');
+    if (!grid) return;
+    if (window.innerWidth < 768) {
+        grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    } else if (window.innerWidth < 1024) {
+        grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    } else {
+        grid.style.gridTemplateColumns = 'repeat(6, 1fr)';
+    }
+}
+adjustKPIGrid();
+window.addEventListener('resize', adjustKPIGrid);
 </script>
-
 </body>
 </html>
