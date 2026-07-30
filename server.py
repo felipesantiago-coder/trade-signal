@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from bot_state import get_bot_state
@@ -393,6 +393,12 @@ async def api_toggle_dry_run() -> dict:
         "server",
     )
     return {"ok": True, "dry_run": new_mode}
+
+
+@app.head("/api/status", summary="Health check (HEAD) para UptimeRobot")
+async def api_status_head():
+    """Responde ao método HEAD para compatibilidade com monitores como UptimeRobot."""
+    return Response(status_code=200)
 
 
 @app.get("/api/status", summary="Estado completo do bot")
