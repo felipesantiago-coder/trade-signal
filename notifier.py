@@ -12,8 +12,14 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from telegram import Bot
-from telegram.constants import ParseMode
+try:
+    from telegram import Bot
+    from telegram.constants import ParseMode
+    _HAS_TELEGRAM = True
+except ImportError:
+    _HAS_TELEGRAM = False
+    Bot = None
+    ParseMode = None
 
 from strategy import Signal, SignalType
 
@@ -69,11 +75,18 @@ class TelegramNotifier:
     """Wrapper assíncrono sobre telegram.Bot para envio de sinais."""
 
     def __init__(self, bot_token: str, chat_id: str) -> None:
+        if not bot_token or not chat_id or not _HAS_TELEGRAM:
+            self.bot = None
+            self.chat_id = chat_id
+            logger.info("Telegram desabilitado (token ou chat_id ausente).")
+            return
         self.bot = Bot(token=bot_token)
         self.chat_id = chat_id
 
     async def send_signal(self, signal: Signal, symbol: str) -> None:
         """Envia o sinal formatado para o chat configurado."""
+        if not self.bot:
+            return
         text = _format_signal_message(signal, symbol)
         try:
             await self.bot.send_message(
@@ -98,6 +111,8 @@ class TelegramNotifier:
 
     async def send_text(self, text: str) -> None:
         """Envia uma mensagem de texto livre (útil para notificações de status/erros)."""
+        if not self.bot:
+            return
         try:
             await self.bot.send_message(chat_id=self.chat_id, text=text)
         except Exception as exc:
@@ -105,6 +120,8 @@ class TelegramNotifier:
 
     async def send_position_open(self, signal: Signal, position_info: dict, symbol: str) -> None:
         """Envia notificacao detalhada de abertura de posicao com sizing + MTF."""
+        if not self.bot:
+            return
         base_msg = _format_signal_message(signal, symbol)
         sizing = (
             f"\n"
@@ -146,6 +163,8 @@ class TelegramNotifier:
 
     async def send_trailing_update(self, pos_type: str, trailing_sl: float, entry_price: float) -> None:
         """Envia notificacao de atualizacao de trailing stop."""
+        if not self.bot:
+            return
         emoji = "🟢" if pos_type == "LONG" else "🔴"
         try:
             await self.bot.send_message(
@@ -165,6 +184,8 @@ class TelegramNotifier:
                                be: bool = False, trailing: bool = False,
                                partial: bool = False) -> None:
         """Envia notificacao de fechamento de trade."""
+        if not self.bot:
+            return
         emoji = "🟢" if pos_type == "LONG" else "🔴"
         if reason == "tp":
             icon = "🎯"

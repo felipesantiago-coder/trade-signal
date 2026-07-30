@@ -26,16 +26,20 @@ services:
         value: INFO
       - key: LOOP_INTERVAL_SECONDS
         value: "60"
-      - key: BINANCE_SYMBOL
+      - key: EXCHANGE_ID
+        value: coinbase
+      - key: EXCHANGE_SYMBOL
         value: BTC/USD
-      - key: BINANCE_TIMEFRAME
+      - key: EXCHANGE_TIMEFRAME
         value: 1h
-      # As duas abaixo DEVEM ser configuradas no dashboard:
+      - key: EXCHANGE_DRY_RUN
+        value: "true"
+      # As variáveis abaixo DEVEM ser configuradas no dashboard:
       # - key: TELEGRAM_BOT_TOKEN
       #   sync: false
       # - key: TELEGRAM_CHAT_ID
       #   sync: false
-      # - key: BINANCE_API_KEY
+      # - key: EXCHANGE_API_KEY
       #   sync: false
-      # - key: BINANCE_API_SECRET
+      # - key: EXCHANGE_API_SECRET
       #   sync: false

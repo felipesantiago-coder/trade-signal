@@ -138,8 +138,8 @@ def load_settings() -> Settings:
     _load_env()
 
     telegram = TelegramConfig(
-        token=_require_env("TELEGRAM_BOT_TOKEN"),
-        chat_id=_require_env("TELEGRAM_CHAT_ID"),
+        token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
     )
 
     exchange_id = os.getenv("EXCHANGE_ID", "coinbase").lower()

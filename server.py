@@ -90,7 +90,7 @@ def get_settings() -> Settings:
 # ------------------------------------------------------------------
 @app.on_event("startup")
 async def _on_startup() -> None:
-    """Carrega settings e dispara o background worker."""
+    """Carrega settings e dispara o background worker (nao-bloqueante)."""
     global _worker, _settings
     try:
         _settings = load_settings()
@@ -103,10 +103,9 @@ async def _on_startup() -> None:
         _settings = S(
             telegram=TelegramConfig(token="", chat_id=""),
             binance=BinanceConfig(
-                api_key=None,
-                api_secret=None,
-                symbol=os.getenv("BINANCE_SYMBOL", "BTC/USDT"),
-                timeframe=os.getenv("BINANCE_TIMEFRAME", "1h"),
+                exchange_id=os.getenv("EXCHANGE_ID", "coinbase"),
+                symbol=os.getenv("EXCHANGE_SYMBOL", "BTC/USD"),
+                timeframe=os.getenv("EXCHANGE_TIMEFRAME", "1h"),
             ),
             risk=RiskConfig(),
             position=PositionConfig(),
@@ -122,8 +121,24 @@ async def _on_startup() -> None:
             "server",
         )
 
+    # Worker start com timeout para nao bloquear o startup do servidor
     _worker = CTEVWorker(_settings)
-    await _worker.start()
+    try:
+        await asyncio.wait_for(_worker.start(), timeout=30.0)
+    except asyncio.TimeoutError:
+        logger.warning("Worker start timed out (30s) — servidor iniciando sem worker.")
+        insert_log(
+            "WARNING",
+            "Worker start timed out — servidor iniciando sem exchange conectada.",
+            "server",
+        )
+    except Exception as exc:
+        logger.error("Worker start falhou — servidor iniciando sem worker: %s", exc)
+        insert_log(
+            "ERROR",
+            f"Worker start falhou: {exc} — servidor iniciando sem exchange.",
+            "server",
+        )
     logger.info("Servidor FastAPI pronto.")
 
 
@@ -158,25 +173,6 @@ async def index() -> HTMLResponse:
             status_code=500,
         )
     return HTMLResponse(index_path.read_text(encoding="utf-8"))
-
-
-@app.get("/api/status", summary="Estado completo do bot")
-async def api_status() -> dict:
-    state = get_bot_state().snapshot()
-    risk = get_risk_manager().snapshot()
-    tracker = get_position_tracker()
-    sizer = get_position_sizer()
-    return {
-        "bot": state,
-        "risk": risk,
-        "position": sizer.snapshot(),
-        "positions": tracker.snapshot(),
-        "trades_summary": get_trades_summary(),
-        "symbol": get_settings().binance.symbol,
-        "timeframe": get_settings().binance.timeframe,
-        "signals_today": count_signals_today(),
-        "signals_today_by_type": count_signals_by_type_today(),
-    }
 
 
 @app.get("/api/signals", summary="Lista sinais recentes")
