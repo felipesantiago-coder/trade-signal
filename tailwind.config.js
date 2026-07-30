@@ -9,6 +9,7 @@ module.exports = {
       },
       colors: {
         brand: {
+          300: '#93c5fd',
           400: '#60a5fa',
           500: '#3b82f6',
           600: '#2563eb',
@@ -37,7 +38,9 @@ module.exports = {
     'bg-amber-500', 'bg-amber-600',
     'bg-blue-500', 'bg-blue-600',
     'border-emerald-500', 'border-red-500', 'border-amber-500', 'border-blue-500',
+    // Brand color classes
+    'text-brand-300', 'text-brand-400', 'border-brand-800/40',
     // Opacity variants usadas em badges dinamicos
-    { pattern: /bg-(emerald|red|amber|blue)-900\/(10|40)/ },
+    { pattern: /bg-(emerald|red|amber|blue|brand)-900\/(10|20|40)/ },
   ],
 }
