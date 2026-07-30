@@ -1120,7 +1120,7 @@ def run_backtest(
     if advanced:
         trades, atr_filtered, _diag = simulate_trades_advanced(df_clean, atr_pct_min, atr_pct_max)
     else:
-        trades, atr_filtered = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
+        trades, atr_filtered, _diag = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
 
     _update_progress(
         phase="Calculando metricas", phase_num=5, pct=85,

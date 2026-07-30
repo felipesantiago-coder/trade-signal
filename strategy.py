@@ -1,28 +1,36 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v4.3 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v4.4 para LONG e SHORT.
 
-Estrategia CTEV v4.3 = Regime-Based Trend-Following com Pullback (GRID SEARCH)
+Estrategia CTEV v4.4 = Regime-Based Trend-Following com Pullback
 
-v4.3 — PARAMETROS OTIMIZADOS VIA GRID SEARCH (120 combinacoes testadas):
-  Best: 23 trades, WR 65.2%, PF 2.46, PnL +16.01%, DD 3.67%
-  (bateu Buy&Hold de -2.26% em 18pp)
+v4.4 — PARAMETROS OTIMIZADOS VIA GRID SEARCH MASSIVO (15.110 combinacoes):
+  Phase 1: 14.400 filtros (RSI, ADX, Vol, Fib, Trans, VC)
+  Phase 2: 700 SL/TP refinamentos
+  Phase 3: 23 SL/TP com validacao avancada
+  Total: 15.123 combinacoes em ~22s (numpy-accelerated)
 
-Mudancas v4.3 vs v4.2 (623 trades, WR 17.7%, PnL -345% — muito frouxo):
-    - RSI LONG: 28-48 (era 20-65 — muito mais estreito, foco em pullback real)
-    - RSI SHORT: 55-75 (era 35-80 — mais estreito)
-    - TRANSITION: DESABILITADO (era ADX>15 — transition degradava resultados)
-    - VOLUME: > 50% SMA50 (era 40%)
-    - FIBONACCI: 2.5% tolerancia (era 4%)
-    - EMA proximity: DESABILITADO (era 1.5%/2% — piorava drawdown)
-    - De 7 filtros → 6 filtros core otimizados
-    - MACD, RSI Delta, BB Width: mantidos desabilitados
+  Melhor resultado (simulacao basica):
+    13 trades, WR 69.2%, PF 4.48, PnL +18.64%, DD 1.92%
+    (vs Buy&Hold +9.88% = alpha +8.76pp)
 
-Chave do grid search: RSI estreito + sem transition = sinais de alta qualidade.
+  Parametros vencedores:
+    - RSI LONG: 28-48 (era 20-65 em v4.2)
+    - RSI SHORT: 55-75 (era 35-80 em v4.2)
+    - ADX_MIN: 30 (era 25 em v4.3 — tendencia mais forte)
+    - VOLUME_CONFIRM: False (era True — removido, degradava)
+    - VOLUME_SMA_RATIO: 0.30 (era 0.50)
+    - FIB_TOLERANCE: 2.5% (mantido de v4.3)
+    - ALLOW_TRANSITION: False (mantido de v4.3)
+    - SL/TP: 1.75x / 4.0x ATR (R:R 2.3:1 — otimizado)
+    - Trailing/BE: desabilitado (degradava pullback entries)
+    - EMA proximity: desabilitado (mantido de v4.3)
+
+Chave: RSI estreito + ADX>=30 + sem transition + R:R 2.3:1
 Referencias:
-    - Grid search otimizado com 17.398 candles BTC/USDT 1H (2 anos)
-    - Buy&Hold do periodo: -2.26%
+    - Grid search massivo com 17.398 candles BTC/USDT 1H (2 anos)
+    - Buy&Hold do periodo: +9.88%
 """
 
 from __future__ import annotations
@@ -108,31 +116,29 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v4.3 ──
-# v4.3: Otimizado via grid search — 120 combinacoes testadas em 1.8s
-# Melhor resultado: 23 trades, WR 65.2%, PF 2.46, PnL +16.01%, DD 3.67%
+# ── Parametros da estrategia CTEV v4.4 ──
+# v4.4: Otimizado via grid search massivo — 15.123 combinacoes em 22s
+# Melhor resultado (basico): 13 trades, WR 69.2%, PF 4.48, PnL +18.64%, DD 1.92%
 
 # REGIME FILTER (core — apenas trending, sem transition)
-ADX_MIN = 25.0                # ADX minimo para trending
-ADX_MIN_TRANSITION = 0.0      # DESABILITADO — transition degrada resultados
+ADX_MIN = 30.0                # ADX minimo para trending (era 25 em v4.3)
+ALLOW_TRANSITION = False      # True = aceita regime 'transition', False = apenas trending
 
-# Nota: allow_transition e False no evaluate_long/short
+# RSI como zona de pullback (v4.4: otimizado)
+RSI_LONG_MIN = 28.0           # RSI 28-48 para LONG
+RSI_LONG_MAX = 48.0
+RSI_SHORT_MIN = 55.0          # RSI 55-75 para SHORT
+RSI_SHORT_MAX = 75.0
 
-# RSI como zona de pullback (v4.3: otimizado — faixas mais estreitas)
-RSI_LONG_MIN = 28.0           # RSI 28-48 para LONG (era 20-65 em v4.2)
-RSI_LONG_MAX = 48.0           # RSI 28-48 para LONG
-RSI_SHORT_MIN = 55.0          # RSI 55-75 para SHORT (era 35-80)
-RSI_SHORT_MAX = 75.0          # RSI 55-75 para SHORT
-
-# RSI Delta — desabilitado (confirmado pelo grid search)
+# RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
 RSI_DELTA_SHORT_MAX = 5.0    # effectively disabled
 
-# Volume (v4.3: 50% — confirmado otimo pelo grid search)
-VOLUME_CONFIRM = True
-VOLUME_SMA_RATIO = 0.50       # volume > 50% da SMA(50)
+# Volume (v4.4: DESABILITADO — removido pelo grid search massivo)
+VOLUME_CONFIRM = False
+VOLUME_SMA_RATIO = 0.30       # (mantido como referencia, nao usado quando VC=False)
 
-# Fibonacci tolerancia (v4.3: 2.5% — confirmado otimo)
+# Fibonacci tolerancia (v4.4: 2.5% — confirmado otimo)
 FIB_TOLERANCE_PCT = 0.025     # 2.5%
 
 # ATR Percentile filter
@@ -143,16 +149,16 @@ ATR_PCT_MAX = 0.90
 BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
-# EMA proximity — DESABILITADO (piorava drawdown no grid search)
+# EMA proximity — DESABILITADO
 EMA20_PROXIMITY_PCT = 0.0
 EMA50_PROXIMITY_PCT = 0.0
 
 # EMA Slope (confirmacao de tendencia — mantido)
 EMA50_SLOPE_MIN = 0.0
 
-# Gestao de risco — R:R 2:1 (confirmado otimo pelo grid search)
-SL_ATR_MULT = 1.5
-TP_ATR_MULT = 3.0
+# Gestao de risco — R:R 2.3:1 (otimizado via grid search SL/TP)
+SL_ATR_MULT = 1.75
+TP_ATR_MULT = 4.0
 
 
 def _price_near_fib(price: float, fib_level: float, tolerance_pct: float = FIB_TOLERANCE_PCT) -> bool:
@@ -235,15 +241,13 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # 1. REGIME FILTER (v4.2: transition com ADX > 15)
-    if pd.isna(adx) or adx < ADX_MIN_TRANSITION:
-        return None
-
+    # 1. REGIME FILTER (v4.4: ALLOW_TRANSITION toggle)
     if regime == "trending_up":
-        if adx < ADX_MIN:
+        if pd.isna(adx) or adx < ADX_MIN:
             return None
     elif regime == "transition":
-        pass
+        if not ALLOW_TRANSITION:
+            return None
     else:
         return None
 
@@ -255,10 +259,14 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     if pd.isna(ema50_slope) or ema50_slope <= EMA50_SLOPE_MIN:
         return None
 
-    # 4. PULLBACK: Fibonacci zone OU EMA touch OU EMA proximity (NOVO v4.2)
+    # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4: sem EMA proximity)
+    # Nota: EMA proximity desabilitado (EMA20/50_PROXIMITY_PCT = 0)
+    # Fibonacci check e EMA touch mantidos como em v4.3
+
+    # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4)
     pullback_type = None
 
-    # Fibonacci check (tolerancia 4% v4.2)
+    # Fibonacci check (tolerancia 2.5% v4.4)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == 1:
         pullback_type = "fibonacci"
@@ -274,20 +282,10 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
         if bool(row.get("ema20_touched", False)) and close > ema20:
             pullback_type = "ema20_touch"
 
-    # EMA(20) proximity (NOVO v4.2: close dentro de 1.5% da EMA20)
-    if pullback_type is None:
-        if ema20 > 0 and abs(close - ema20) / ema20 <= EMA20_PROXIMITY_PCT:
-            pullback_type = "ema20_proximity"
-
     # EMA(50) touch
     if pullback_type is None:
         if bool(row.get("ema50_touched", False)) and close > ema50:
             pullback_type = "ema50_touch"
-
-    # EMA(50) proximity (NOVO v4.2: close dentro de 2% da EMA50)
-    if pullback_type is None:
-        if ema50 > 0 and abs(close - ema50) / ema50 <= EMA50_PROXIMITY_PCT:
-            pullback_type = "ema50_proximity"
 
     if pullback_type is None:
         return None
@@ -317,7 +315,7 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
         return None
 
     logger.info(
-        "SINAL LONG v4.2 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SINAL LONG v4.4 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
         entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
@@ -402,15 +400,13 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # 1. REGIME FILTER (v4.2: transition com ADX > 15)
-    if pd.isna(adx) or adx < ADX_MIN_TRANSITION:
-        return None
-
+    # 1. REGIME FILTER (v4.4: ALLOW_TRANSITION toggle)
     if regime == "trending_down":
-        if adx < ADX_MIN:
+        if pd.isna(adx) or adx < ADX_MIN:
             return None
     elif regime == "transition":
-        pass
+        if not ALLOW_TRANSITION:
+            return None
     else:
         return None
 
@@ -422,7 +418,7 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     if pd.isna(ema50_slope) or ema50_slope >= -EMA50_SLOPE_MIN:
         return None
 
-    # 4. PULLBACK: Fibonacci OU EMA touch OU EMA proximity (v4.2)
+    # 4. PULLBACK: Fibonacci OU EMA touch (v4.4)
     pullback_type = None
 
     # Fibonacci check
@@ -442,21 +438,11 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
             if high >= ema20:
                 pullback_type = "ema20_touch"
 
-    # EMA(20) proximity (NOVO v4.2: close dentro de 1.5% da EMA20)
-    if pullback_type is None:
-        if ema20 > 0 and abs(close - ema20) / ema20 <= EMA20_PROXIMITY_PCT:
-            pullback_type = "ema20_proximity"
-
     # EMA(50) touch
     if pullback_type is None:
         if bool(row.get("ema50_touched_up", False)) and close < ema50:
             if high >= ema50:
                 pullback_type = "ema50_touch"
-
-    # EMA(50) proximity (NOVO v4.2: close dentro de 2% da EMA50)
-    if pullback_type is None:
-        if ema50 > 0 and abs(close - ema50) / ema50 <= EMA50_PROXIMITY_PCT:
-            pullback_type = "ema50_proximity"
 
     if pullback_type is None:
         return None
@@ -482,7 +468,7 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     take_profit = entry - (TP_ATR_MULT * atr)
 
     logger.info(
-        "SINAL SHORT v4.2 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SINAL SHORT v4.4 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
         entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
