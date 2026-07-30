@@ -29,7 +29,7 @@ module.exports = {
     // Cores dinamicas usadas via JavaScript template literals
     'text-emerald-300', 'text-emerald-400', 'text-emerald-500',
     'text-red-300', 'text-red-400', 'text-red-500',
-    'text-amber-400', 'text-amber-500',
+    'text-amber-300', 'text-amber-400', 'text-amber-500',
     'text-blue-400', 'text-blue-500',
     'text-gray-300', 'text-gray-400', 'text-gray-500', 'text-gray-600',
     'text-purple-400', 'text-purple-500',
@@ -38,9 +38,11 @@ module.exports = {
     'bg-amber-500', 'bg-amber-600',
     'bg-blue-500', 'bg-blue-600',
     'border-emerald-500', 'border-red-500', 'border-amber-500', 'border-blue-500',
+    'border-amber-700/50',
     // Brand color classes
     'text-brand-300', 'text-brand-400', 'border-brand-800/40',
     // Opacity variants usadas em badges dinamicos
-    { pattern: /bg-(emerald|red|amber|blue|brand)-900\/(10|20|40)/ },
+    { pattern: /bg-(emerald|red|amber|blue|brand)-(900|950)\/\d+/ },
+    { pattern: /bg-amber-\d+\/\d+/ },
   ],
 }

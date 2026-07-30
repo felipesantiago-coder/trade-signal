@@ -262,19 +262,17 @@ class CTEVWorker:
         # ---- CIRCUIT BREAKER ----
         self._check_circuit_breaker(df_ind)
 
-        # ---- NAO gera novo sinal se ja tem posicao aberta (max_open_positions=1) ----
+        # ---- NAO gera novo sinal se ja tem posicao aberta ----
         if self.tracker.has_open_positions:
-            open_count = len(self.tracker.open_positions)
-            if open_count >= self.settings.position.max_open_positions:
-                pos = self.tracker.get_open_position()
-                if pos:
-                    self.state.last_status_message = (
-                        f"Posicao #{pos.id} {pos.type.value} aberta | "
-                        f"SL={pos.trailing_stop if pos.trailing_activated else pos.stop_loss:.2f} | "
-                        f"entry={pos.entry_price:.2f}"
-                    )
-                self.last_processed_ts = closed_candle_ts
-                return
+            pos = self.tracker.get_open_position()
+            if pos:
+                self.state.last_status_message = (
+                    f"Posicao #{pos.id} {pos.type} aberta | "
+                    f"SL={pos.trailing_stop if pos.trailing_activated else pos.stop_loss:.2f} | "
+                    f"entry={pos.entry_price:.2f}"
+                )
+            self.last_processed_ts = closed_candle_ts
+            return
 
         # ---- MULTI-TIMEFRAME ANALYSIS ----
         if self.mtf.enabled:
@@ -358,14 +356,8 @@ class CTEVWorker:
                 self.last_processed_ts = closed_candle_ts
                 return
 
-        # ---- SINAL GERADO — Abrir posicao ----
+        # ---- SINAL GERADO — Registrar e notificar ----
         self.risk.register_signal(str(closed_candle_ts))
-
-        # Position Sizing
-        pos_size = self.sizer.calculate(
-            entry_price=signal.entry_price,
-            stop_loss=signal.stop_loss,
-        )
 
         # Salva sinal no DB
         signal_dict = signal.to_dict()
@@ -377,71 +369,31 @@ class CTEVWorker:
             logger.exception("Erro ao inserir sinal no DB: %s", exc)
             insert_log("ERROR", f"DB insert signal: {exc}", "worker")
 
-        # Abre posicao no tracker
-        position = self.tracker.open_position(
-            type_=signal.type.value,
-            entry_price=signal.entry_price,
-            stop_loss=signal.stop_loss,
-            take_profit=signal.take_profit,
-            atr=signal.atr,
-            entry_ts=str(closed_candle_ts),
-            position_size=pos_size.position_size,
-            position_usd=pos_size.position_usd,
-            be_trigger_atr_mult=self.settings.position.be_trigger_atr_mult,
-            trailing_atr_mult=self.settings.position.trailing_atr_mult,
-            partial_tp_pct=self.settings.position.partial_tp_pct,
-        )
+        # === SINAL GERADO — Apenas notifica, sem executar ordem ===
 
-        # Order Executor: envia ordem real ou simulada
-        order_side = OrderSide.BUY if signal.type.value == "LONG" else OrderSide.SELL
-        order = self.executor.execute_market(
-            symbol=self.settings.binance.symbol,
-            side=order_side,
-            amount=pos_size.position_size,
-            price=signal.entry_price,
-        )
-
-        if order.status.value == "failed" and not self.executor.dry_run:
-            logger.error("Ordem FALHOU na exchange: %s", order.error)
-            insert_log("ERROR", f"Ordem falhou: {order.error}", "worker")
-
-        # Telegram: notificacao completa com sizing + MTF + executor
+        # Telegram: envia sinal detalhado com analise
         if self.notifier is not None:
             try:
-                await self.notifier.send_position_open(
-                    signal,
-                    {
-                        "position_size": pos_size.position_size,
-                        "position_usd": pos_size.position_usd,
-                        "risk_usd": pos_size.risk_usd,
-                        "risk_pct": pos_size.risk_pct,
-                        "leverage": pos_size.leverage,
-                        "mtf": mtf_result.to_dict() if mtf_result else None,
-                        "executor": "DRY-RUN" if self.executor.dry_run else "LIVE",
-                        "order_id": order.id,
-                    },
-                    self.settings.binance.symbol,
-                )
+                await self.notifier.send_signal(signal, self.settings.binance.symbol)
                 signal_dict["notified"] = 1
             except Exception as exc:
                 logger.exception("Erro ao enviar Telegram: %s", exc)
                 insert_log("ERROR", f"Telegram envio: {exc}", "worker")
 
         self.state.last_signal_ts = now_iso
-        exec_mode = "DRY-RUN" if self.executor.dry_run else "LIVE"
         self.state.last_status_message = (
-            f"Posicao #{position.id} {signal.type.value} aberta em {signal.entry_price:.2f} "
+            f"Sinal {signal.type.value} em {signal.entry_price:.2f} "
             f"| SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
-            f"size={pos_size.position_usd:,.2f}USD [{exec_mode}]"
+            f"RSI={signal.rsi:.1f} Vol={signal.volume / max(signal.volume_sma20, 1):.1f}x"
         )
         self.last_processed_ts = closed_candle_ts
 
         insert_log(
             "INFO",
-            f"Posicao #{position.id} {signal.type.value} aberta | "
+            f"Sinal {signal.type.value} emitido | "
             f"entry={signal.entry_price:.2f} SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
-            f"size={pos_size.position_usd:,.2f}USD risk={pos_size.risk_usd:,.2f}USD "
-            f"order={order.id} [{exec_mode}]",
+            f"RSI={signal.rsi:.1f} ATR={signal.atr:.2f} "
+            f"Vol={signal.volume / max(signal.volume_sma20, 1):.1f}xSMA",
             "worker",
         )
 

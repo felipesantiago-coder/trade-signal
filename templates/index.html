@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CTEV Bot — Painel Administrativo</title>
+    <title>CTEV Bot — Painel de Analise de Sinais</title>
     <link rel="stylesheet" href="/static/output.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -34,7 +34,7 @@
             </div>
             <div>
                 <h1 class="text-lg font-semibold leading-tight">CTEV Bot</h1>
-                <p class="text-xs text-gray-500 leading-tight">Confluência de Tendência e Exaustão Volumétrica</p>
+                <p class="text-xs text-gray-500 leading-tight">Analise de Sinais — Bitcoin</p>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -42,13 +42,27 @@
                 <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
                 <span id="statusText" class="font-medium">Carregando...</span>
             </div>
+            <button onclick="fetchAll()"
+                class="px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span class="hidden sm:inline">Atualizar</span>
+            </button>
         </div>
     </div>
 </header>
 
 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-    <!-- Guia rapido -->
+    <!-- Modo de Operacao Banner -->
+    <section class="rounded-xl border border-amber-700/50 bg-amber-950/40 px-5 py-3 flex items-center gap-3">
+        <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div>
+            <span class="text-sm font-medium text-amber-300">Modo: Apenas Analise de Sinais</span>
+            <span class="text-xs text-amber-400/70 hidden sm:inline"> — O sistema analisa o mercado e gera alertas. Nenhuma operacao e executada automaticamente.</span>
+        </div>
+    </section>
+
+    <!-- Guia Rapido -->
     <section class="bg-brand-900/20 rounded-xl border border-brand-800/40 p-5">
         <details open>
             <summary class="cursor-pointer text-base font-semibold text-brand-300 flex items-center gap-2">
@@ -58,120 +72,22 @@
             <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-300">
                 <div class="bg-gray-800/50 rounded-lg p-4">
                     <div class="font-semibold text-emerald-400 mb-2">1. Acompanhar</div>
-                    <p class="text-xs text-gray-400 leading-relaxed">O bot analisa o Bitcoin automaticamente a cada hora. Quando encontra uma boa oportunidade, envia um alerta pelo Telegram e registra o sinal aqui no painel. Voce nao precisa fazer nada — basta acompanhar.</p>
+                    <p class="text-xs text-gray-400 leading-relaxed">O bot analisa o Bitcoin automaticamente. Quando encontra uma boa oportunidade, envia um alerta pelo Telegram e registra o sinal aqui no painel. Voce nao precisa fazer nada — basta acompanhar os sinais.</p>
                 </div>
                 <div class="bg-gray-800/50 rounded-lg p-4">
                     <div class="font-semibold text-amber-400 mb-2">2. Entender os sinais</div>
-                    <p class="text-xs text-gray-400 leading-relaxed"><b>LONG (Compra)</b>: o sistema detectou que o preco recuou temporariamente numa tendencia de alta — boa oportunidade para comprar mais barato.<br><b>SHORT (Venda)</b>: o preco subiu temporariamente numa tendencia de baixa — boa oportunidade para vender mais caro.</p>
+                    <p class="text-xs text-gray-400 leading-relaxed"><b>LONG (Compra)</b>: o sistema detectou que o preco recuou temporariamente numa tendencia de alta — possivel oportunidade de compra.<br><b>SHORT (Venda)</b>: o preco subiu temporariamente numa tendencia de baixa — possivel oportunidade de venda.</p>
                 </div>
                 <div class="bg-gray-800/50 rounded-lg p-4">
-                    <div class="font-semibold text-purple-400 mb-2">3. Controles</div>
-                    <p class="text-xs text-gray-400 leading-relaxed"><b>Iniciar/Pausar</b>: liga ou desliga a analise automatica.<br><b>Para Tudo</b>: botao de emergencia que interrompe todas as operacoes.<br><b>Dry-Run</b>: modo simulacao — nenhuma ordem real e enviada.<br><b>Backtest</b>: simula como a estrategia teria se comportado nos ultimos 2 anos.</p>
+                    <div class="font-semibold text-purple-400 mb-2">3. Usar os niveis</div>
+                    <p class="text-xs text-gray-400 leading-relaxed">Cada sinal inclui niveis de referencia: o <b>Preco de Entrada</b> (nivel atual), <b>Stop Loss</b> (onde proteger se o mercado for contra voce) e <b>Take Profit</b> (alvo de ganho). Use esses niveis como referencia para suas proprias decisoes.</p>
                 </div>
             </div>
         </details>
     </section>
 
-    <!-- Controle rápido -->
-    <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-                <h2 class="text-base font-semibold mb-1">Controle do Bot</h2>
-                <p class="text-xs text-gray-500 mb-1">Ligue ou pause a analise automatica do Bitcoin.</p>
-                <p id="statusMessage" class="text-sm text-gray-400">Aguardando primeiro ciclo de analise...</p>
-            </div>
-            <div class="flex gap-2">
-                <button id="btnStart" onclick="controlBot('start')"
-                    class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M6 4l10 6-10 6V4z"/></svg>
-                    Iniciar
-                </button>
-                <button id="btnStop" onclick="controlBot('stop')"
-                    class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4h4v12H5V4zm6 0h4v12h-4V4z"/></svg>
-                    Pausar
-                </button>
-                <button id="btnRefresh" onclick="fetchAll()"
-                    class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Atualizar
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- Risk Management KPIs -->
-    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Perda Diaria</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-            </div>
-            <div id="riskDailyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
-            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                <div id="riskDailyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
-            </div>
-            <div id="riskDailySub" class="text-xs text-gray-500 mt-1">Limite diario: 3.0%</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Perda Semanal</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
-            </div>
-            <div id="riskWeeklyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
-            <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                <div id="riskWeeklyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
-            </div>
-            <div id="riskWeeklySub" class="text-xs text-gray-500 mt-1">Limite semanal: 6.0%</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Bloqueados</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
-            </div>
-            <div id="riskFiltered" class="text-2xl font-semibold font-mono">0</div>
-            <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Sinais bloqueados pelo protetor de capital</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Perdas Seguidas</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
-            </div>
-            <div id="riskConsecutive" class="text-2xl font-semibold font-mono">0</div>
-            <div id="riskConsecutiveSub" class="text-xs text-gray-500 mt-1">0 de 5 max (pausa automatica)</div>
-        </div>
-    </section>
-
-    <!-- Kill Switch -->
-    <section id="killSwitchSection" class="rounded-xl border p-5 transition-all duration-300">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <span id="killSwitchEmoji" class="text-2xl">✅</span>
-                <div>
-                    <h2 id="killSwitchTitle" class="text-base font-semibold">Tudo Funcionando Normalmente</h2>
-                    <p id="killSwitchMsg" class="text-sm opacity-80">O bot esta monitorando o mercado e gerando sinais quando encontrar boas oportunidades.</p>
-                </div>
-            </div>
-            <div class="flex gap-2">
-                <button id="btnKillSwitch" onclick="killSwitch()"
-                    class="px-5 py-2.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.724 5.111a6 6 0 008.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/></svg>
-                    PARA TUDO (Emergencia)
-                </button>
-                <button id="btnResurrect" onclick="resurrectSwitch()" class="hidden
-                    px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition flex items-center gap-2 shadow-lg">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-                    Reativar o Bot
-                </button>
-            </div>
-        </div>
-    </section>
-
-    <!-- KPIs -->
-    <section class="grid grid-cols-2 lg:grid-cols-6 gap-4">
+    <!-- KPIs principais -->
+    <section class="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-xs uppercase tracking-wider text-gray-500">Status</span>
@@ -192,77 +108,80 @@
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Ciclos</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Ciclos de Analise</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
             </div>
             <div id="kpiCycles" class="text-2xl font-semibold">0</div>
-            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">ciclos de analise concluidos</div>
+            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">ciclos concluidos</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Última Verificação</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Ultima Verificacao</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
             <div id="kpiLastCheck" class="text-lg font-mono font-semibold">—</div>
-            <div id="kpiLastSignal" class="text-xs text-gray-500 mt-1">Último sinal: —</div>
+            <div id="kpiLastSignal" class="text-xs text-gray-500 mt-1">Ultimo sinal: —</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Saldo da Conta</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-            <div id="kpiBalance" class="text-2xl font-semibold font-mono">—</div>
-            <div id="kpiBalanceSub" class="text-xs text-gray-500 mt-1">Risco por operacao: —</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Lucro/Perda Total</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Par Monitorado</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             </div>
-            <div id="kpiPnL" class="text-2xl font-semibold font-mono">—</div>
-            <div id="kpiPnLSub" class="text-xs text-gray-500 mt-1">Taxa de acerto: — | 0 operacoes</div>
+            <div id="kpiSymbol" class="text-lg font-mono font-semibold">—</div>
+            <div id="kpiTimeframe" class="text-xs text-gray-500 mt-1">timeframe</div>
         </div>
     </section>
 
-    <!-- Posição Aberta -->
-    <section id="openPositionSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 p-5">
-        <div class="flex items-center justify-between mb-3">
-            <div>
-                <h2 class="text-base font-semibold">Posicao Aberta</h2>
-                <p class="text-xs text-gray-500">Operacao em andamento — o bot gerencia stop loss e take profit automaticamente.</p>
-            </div>
-            <button onclick="closePositions()" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium">Fechar Posicao</button>
+    <!-- Protecao de Capital (Risk KPIs) -->
+    <section>
+        <div class="flex items-center gap-2 mb-4">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <h2 class="text-base font-semibold">Protecao Automatica</h2>
         </div>
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
-            <div>
-                <span class="text-gray-500 text-xs">Tipo</span>
-                <div id="posType" class="font-semibold text-emerald-400">—</div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Bloqueados Hoje</span>
+                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                </div>
+                <div id="riskFiltered" class="text-2xl font-semibold font-mono">0</div>
+                <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Sinais filtrados pela protecao</div>
             </div>
-            <div>
-                <span class="text-gray-500 text-xs">Preco de Entrada</span>
-                <div id="posEntry" class="font-mono">—</div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs uppercase tracking-wider text-gray-500">Sistema</span>
+                    <span id="riskSystemDot" class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                </div>
+                <div id="riskSystemStatus" class="text-lg font-semibold">Normal</div>
+                <div id="riskSystemSub" class="text-xs text-gray-500 mt-1">Tudo funcionando normalmente</div>
             </div>
-            <div>
-                <span class="text-gray-500 text-xs">Stop Loss (protecao)</span>
-                <div id="posSL" class="font-mono text-red-300">—</div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs uppercase tracking-wider text-gray-500">Perda Diaria</span>
+                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                </div>
+                <div id="riskDailyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
+                <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                    <div id="riskDailyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
+                </div>
+                <div id="riskDailySub" class="text-xs text-gray-500 mt-1">Limite diario: 3.0%</div>
             </div>
-            <div>
-                <span class="text-gray-500 text-xs">Take Profit (alvo)</span>
-                <div id="posTP" class="font-mono text-emerald-300">—</div>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs uppercase tracking-wider text-gray-500">Perda Semanal</span>
+                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+                </div>
+                <div id="riskWeeklyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
+                <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                    <div id="riskWeeklyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
+                </div>
+                <div id="riskWeeklySub" class="text-xs text-gray-500 mt-1">Limite semanal: 6.0%</div>
             </div>
-            <div>
-                <span class="text-gray-500 text-xs">Status</span>
-                <div id="posStatus" class="font-semibold">—</div>
-            </div>
-        </div>
-        <div class="mt-3 flex gap-4 text-xs text-gray-500">
-            <span>Tamanho: <span id="posSize" class="text-gray-300 font-mono">—</span></span>
-            <span>Valor: <span id="posUSD" class="text-gray-300 font-mono">—</span></span>
-            <span>Break-Even: <span id="posBE" class="text-gray-300">—</span></span>
-            <span>Trailing: <span id="posTrail" class="text-gray-300">—</span></span>
         </div>
     </section>
 
@@ -274,7 +193,7 @@
             <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
                 <div>
                     <h2 class="text-base font-semibold">Sinais Recentes</h2>
-                    <p class="text-xs text-gray-500">Oportunidades de compra ou venda detectadas pelo sistema</p>
+                    <p class="text-xs text-gray-500">Oportunidades detectadas pelo sistema</p>
                 </div>
                 <span id="symbolBadge" class="px-2.5 py-1 rounded-md bg-brand-900/40 text-brand-300 text-xs font-mono">BTC/USDT · 1H</span>
             </div>
@@ -301,66 +220,20 @@
         <!-- Painel de logs (1 coluna) -->
         <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-800">
-                <h2 class="text-base font-semibold">Log do Sistema</h2>
-                <p class="text-xs text-gray-500">Registro interno das atividades do bot (ultimas 50 entradas)</p>
+                <h2 class="text-base font-semibold">Atividade do Sistema</h2>
+                <p class="text-xs text-gray-500">Registro das analises e eventos recentes</p>
             </div>
             <div id="logsBody" class="p-4 max-h-[28rem] overflow-y-auto space-y-2 font-mono text-xs">
-                <div class="text-gray-500 text-center py-8">Sem logs.</div>
+                <div class="text-gray-500 text-center py-8">Sem registros.</div>
             </div>
         </div>
     </section>
 
-
-    <!-- Trades Fechados -->
-    <section id="closedTradesSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-            <div>
-                <h2 class="text-base font-semibold">Operacoes Fechadas</h2>
-                <p class="text-xs text-gray-500">Resultado das operacoes que ja foram encerradas (lucro ou perda)</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <span id="tradesSummaryBadge" class="hidden px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">0 trades</span>
-            </div>
-        </div>
-        <div id="closedTradesKPIs" class="hidden grid grid-cols-3 gap-4 p-4 border-b border-gray-800">
-            <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total</div>
-                <div id="ctTotal" class="text-lg font-semibold font-mono">0</div>
-            </div>
-            <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
-                <div id="ctWinRate" class="text-lg font-semibold font-mono">—</div>
-            </div>
-            <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">PnL Total</div>
-                <div id="ctPnL" class="text-lg font-semibold font-mono">—</div>
-            </div>
-        </div>
-        <div class="overflow-x-auto max-h-[24rem] overflow-y-auto">
-            <table class="w-full text-sm">
-                <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
-                    <tr>
-                        <th class="px-4 py-3 text-left">Inicio</th>
-                        <th class="px-4 py-3 text-left">Fim</th>
-                        <th class="px-4 py-3 text-left">Direcao</th>
-                        <th class="px-4 py-3 text-right">Preco Entrada</th>
-                        <th class="px-4 py-3 text-right">Preco Saida</th>
-                        <th class="px-4 py-3 text-right">Resultado</th>
-                        <th class="px-4 py-3 text-left">Motivo</th>
-                        <th class="px-4 py-3 text-center">Recursos</th>
-                    </tr>
-                </thead>
-                <tbody id="closedTradesBody" class="divide-y divide-gray-800">
-                    <tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">Nenhuma operação fechada.</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </section>
     <!-- Backtest -->
     <section class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
-                <h2 class="text-base font-semibold">Backtest</h2>
+                <h2 class="text-base font-semibold">Simulacao (Backtest)</h2>
                 <p class="text-xs text-gray-500">Testa como a estrategia teria se comportado nos ultimos 2 anos de dados do Bitcoin</p>
             </div>
             <div class="flex items-center gap-3">
@@ -371,7 +244,7 @@
                 <button id="btnRunBacktest" onclick="runBacktest()"
                     class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    Rodar Backtest
+                    Rodar Simulacao
                 </button>
             </div>
         </div>
@@ -380,23 +253,23 @@
         <div id="backtestResults" class="hidden">
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 p-5 border-b border-gray-800">
                 <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Trades</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Sinais</div>
                     <div id="btTotalTrades" class="text-lg font-semibold font-mono">—</div>
                 </div>
                 <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Win Rate</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Taxa de Acerto</div>
                     <div id="btWinRate" class="text-lg font-semibold font-mono">—</div>
                 </div>
                 <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Profit Factor</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Fator de Lucro</div>
                     <div id="btProfitFactor" class="text-lg font-semibold font-mono">—</div>
                 </div>
                 <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Max Drawdown</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Maior Queda</div>
                     <div id="btMaxDD" class="text-lg font-semibold font-mono">—</div>
                 </div>
                 <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total PnL</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Resultado Total</div>
                     <div id="btTotalPnL" class="text-lg font-semibold font-mono">—</div>
                 </div>
                 <div>
@@ -405,35 +278,35 @@
                 </div>
             </div>
             <div class="px-5 py-4 border-b border-gray-800">
-                <h3 class="text-sm font-semibold text-gray-400 mb-3">Últimas 10 Operações</h3>
+                <h3 class="text-sm font-semibold text-gray-400 mb-3">Ultimos 10 Sinais da Simulacao</h3>
             </div>
             <div class="overflow-x-auto max-h-[20rem] overflow-y-auto">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
                         <tr>
                             <th class="px-4 py-3 text-left">Entrada</th>
-                            <th class="px-4 py-3 text-left">Saída</th>
+                            <th class="px-4 py-3 text-left">Saida</th>
                             <th class="px-4 py-3 text-left">Tipo</th>
-                            <th class="px-4 py-3 text-right">Preço Entrada</th>
-                            <th class="px-4 py-3 text-right">Preço Saída</th>
-                            <th class="px-4 py-3 text-right">PnL</th>
+                            <th class="px-4 py-3 text-right">Preco Entrada</th>
+                            <th class="px-4 py-3 text-right">Preco Saida</th>
+                            <th class="px-4 py-3 text-right">Resultado</th>
                             <th class="px-4 py-3 text-left">Motivo</th>
                         </tr>
                     </thead>
                     <tbody id="backtestTradesBody" class="divide-y divide-gray-800">
-                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Aguardando backtest...</td></tr>
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Aguardando simulacao...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </section>
 
-    <!-- ========== PHASE 3: Multi-Timeframe Status ========== -->
+    <!-- Multi-Timeframe -->
     <section id="mtfSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
-                <h2 class="text-base font-semibold">Multi-Timeframe</h2>
-                <p class="text-xs text-gray-500">Verifica se a tendencia em periodos maiores confirma o sinal</p>
+                <h2 class="text-base font-semibold">Tendencias em Multiplos Periodos</h2>
+                <p class="text-xs text-gray-500">Verifica se a tendencia em periodos maiores confirma os sinais</p>
             </div>
             <span id="mtfBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
                 <span id="mtfStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
@@ -443,7 +316,7 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
             <div class="flex items-center gap-4">
                 <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Tendencia 4H</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Tendencia 4 Horas</div>
                     <div class="flex items-center gap-2">
                         <span id="mtfH4Dot" class="w-3 h-3 rounded-full bg-gray-600"></span>
                         <span id="mtfH4" class="text-sm font-semibold font-mono">—</span>
@@ -465,103 +338,13 @@
                     <div id="mtfConfluence" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-gray-800 text-gray-400">
                         —
                     </div>
+                    <div id="mtfCache" class="text-xs font-mono text-gray-500 mt-1">—</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- ========== PHASE 3: Executor / Order Management ========== -->
-    <section id="executorSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-            <div>
-                <h2 class="text-base font-semibold">Executor</h2>
-                <p class="text-xs text-gray-500">Dry-Run = simulacao (nenhuma ordem real). Live = ordens reais enviadas a exchange.</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <span id="executorMode" class="px-2.5 py-1 rounded-md bg-amber-900/40 text-amber-300 text-xs font-bold tracking-wider">DRY-RUN</span>
-                <button id="btnToggleDryRun" onclick="toggleDryRun()"
-                    class="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-                    Alternar Modo
-                </button>
-            </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
-            <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Ordens Enviadas</div>
-                <div id="executorOrders" class="text-2xl font-semibold font-mono">0</div>
-            </div>
-            <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Ultimo Erro</div>
-                <div id="executorLastError" class="text-sm text-gray-400 truncate">—</div>
-            </div>
-            <div>
-                <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Status</div>
-                <div id="executorStatus" class="text-sm font-semibold text-gray-300">—</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ========== PHASE 3: Optimizer ========== -->
-    <section id="optimizerSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-            <div>
-                <h2 class="text-base font-semibold">Otimizador de Parâmetros</h2>
-                <p class="text-xs text-gray-500">Testa centenas de combinacoes de parametros para encontrar a melhor configuracao</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <span id="optimizerStatus" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
-                    <span id="optimizerStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
-                    <span id="optimizerStatusText">idle</span>
-                </span>
-                <button id="btnRunOptimizer" onclick="runOptimizer()"
-                    class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-                    Otimizar Parâmetros
-                </button>
-            </div>
-        </div>
-
-        <!-- Optimizer Progress -->
-        <div id="optimizerProgress" class="hidden px-5 py-3 border-b border-gray-800">
-            <div class="flex items-center justify-between text-xs text-gray-400 mb-1.5">
-                <span id="optimizerProgressLabel">Otimizando...</span>
-                <span id="optimizerProgressPct" class="font-mono">0%</span>
-            </div>
-            <div class="w-full bg-gray-700 rounded-full h-2">
-                <div id="optimizerProgressBar" class="h-2 rounded-full bg-purple-500 transition-all duration-500" style="width:0%"></div>
-            </div>
-        </div>
-
-        <!-- Optimizer Results (hidden until done) -->
-        <div id="optimizerResults" class="hidden">
-            <div class="px-5 py-3 border-b border-gray-800">
-                <h3 class="text-sm font-semibold text-gray-400">Top 5 Parâmetros</h3>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 text-center">#</th>
-                            <th class="px-4 py-3 text-center">RSI Long</th>
-                            <th class="px-4 py-3 text-center">RSI Short</th>
-                            <th class="px-4 py-3 text-center">Vol Mult</th>
-                            <th class="px-4 py-3 text-center">SL Mult</th>
-                            <th class="px-4 py-3 text-center">TP Mult</th>
-                            <th class="px-4 py-3 text-right">Score</th>
-                            <th class="px-4 py-3 text-right">WR</th>
-                            <th class="px-4 py-3 text-right">PF</th>
-                        </tr>
-                    </thead>
-                    <tbody id="optimizerResultsBody" class="divide-y divide-gray-800">
-                        <tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">Aguardando otimização...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <!-- Regras da estrategia em linguagem acessivel -->
+    <!-- Como o Sistema Decide? -->
     <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
         <h2 class="text-base font-semibold mb-1">Como o Sistema Decide?</h2>
         <p class="text-xs text-gray-500 mb-4">O bot so gera um sinal quando TODAS as condicoes abaixo sao atendidas ao mesmo tempo.</p>
@@ -577,7 +360,7 @@
                     <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Pullback</b> — o preco recuou e tocou a faixa inferior (Bollinger)</span></li>
                     <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Exaustao da venda</b> — RSI abaixo de 35 (vendedores fracos)</span></li>
                     <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Volume alto</b> — volume 1.5x acima da media (compradores entrando)</span></li>
-                    <li class="mt-2 pt-2 border-t border-emerald-900/30 text-emerald-400 text-xs"><b>Protecao:</b> Stop Loss a 1.5x ATR abaixo | Alvo a 2.0x ATR acima</li>
+                    <li class="mt-2 pt-2 border-t border-emerald-900/30 text-emerald-400 text-xs"><b>Referencia:</b> Stop Loss a 1.5x ATR abaixo | Alvo a 2.0x ATR acima</li>
                 </ul>
             </div>
             <div class="bg-red-900/10 border border-red-900/30 rounded-lg p-4">
@@ -591,23 +374,23 @@
                     <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Pullback para cima</b> — o preco subiu e tocou a faixa superior (Bollinger)</span></li>
                     <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Exaustao da compra</b> — RSI acima de 65 (compradores fracos)</span></li>
                     <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Volume alto</b> — volume 1.5x acima da media (vendedores entrando)</span></li>
-                    <li class="mt-2 pt-2 border-t border-red-900/30 text-red-400 text-xs"><b>Protecao:</b> Stop Loss a 1.5x ATR acima | Alvo a 2.0x ATR abaixo</li>
+                    <li class="mt-2 pt-2 border-t border-red-900/30 text-red-400 text-xs"><b>Referencia:</b> Stop Loss a 1.5x ATR acima | Alvo a 2.0x ATR abaixo</li>
                 </ul>
             </div>
         </div>
         <div class="mt-4 bg-gray-800/50 rounded-lg p-4 text-xs text-gray-400">
-            <div class="font-semibold text-gray-300 mb-2">O que o bot faz automaticamente apos abrir uma posicao:</div>
+            <div class="font-semibold text-gray-300 mb-2">Valores incluidos em cada sinal:</div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div class="flex items-start gap-2"><span class="text-amber-400">1.</span> Se o preco se mover a favor, move o Stop Loss para o preco de entrada (<b>Break-Even</b> — risco zero)</div>
-                <div class="flex items-start gap-2"><span class="text-amber-400">2.</span> Apos o break-even, o Stop Loss acompanha o preco (<b>Trailing Stop</b> — protege lucros)</div>
-                <div class="flex items-start gap-2"><span class="text-amber-400">3.</span> Se o preco atingir o alvo, fecha 50% da posicao (<b>Partial TP</b> — garante lucro parcial)</div>
-                <div class="flex items-start gap-2"><span class="text-amber-400">4.</span> Se o preco atingir o Stop Loss, fecha a posicao automaticamente (<b>Protecao de capital</b>)</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">1.</span> <b>Preco de Entrada</b> — nivel do preco no momento do sinal</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">2.</span> <b>Stop Loss</b> — nivel de protecao contra perdas excessivas</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">3.</span> <b>Take Profit</b> — nivel de alvo para realizacao de ganhos</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">4.</span> <b>RSI</b> — indicador de forca/momentum no momento do sinal</div>
             </div>
         </div>
     </section>
 
     <footer class="text-center text-xs text-gray-600 pt-4 pb-8">
-        CTEV Bot v3.0 — Analise automatizada de Bitcoin
+        CTEV Bot v4.0 — Analise automatizada de Bitcoin | Apenas sinais, sem execucao de ordens
     </footer>
 </main>
 
@@ -645,11 +428,6 @@
         return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     }
 
-    function fmtVolume(n) {
-        if (!n) return '—';
-        return Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
-    }
-
     async function api(method, path, body) {
         const opts = { method, headers: { 'Content-Type': 'application/json' } };
         if (body) opts.body = JSON.stringify(body);
@@ -658,7 +436,7 @@
         return res.json();
     }
 
-    // ---------- Renderização ----------
+    // ---------- Renderizacao ----------
     function renderStatus(data) {
         const bot = data.bot;
         const running = bot.running;
@@ -667,7 +445,6 @@
         const text = document.getElementById('statusText');
         const kpiStatus = document.getElementById('kpiStatus');
         const kpiStatusSub = document.getElementById('kpiStatusSub');
-        const msg = document.getElementById('statusMessage');
         const badge = document.getElementById('botStatusBadge');
 
         if (running) {
@@ -675,47 +452,39 @@
             kpiDot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
             text.textContent = 'Online';
             kpiStatus.textContent = 'Online';
-            kpiStatusSub.textContent = 'Bot ativo';
+            kpiStatusSub.textContent = 'Bot ativo — analisando';
             badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-900/40 text-emerald-300 text-sm';
         } else {
             dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
             kpiDot.className = 'w-2 h-2 rounded-full bg-amber-500';
             text.textContent = 'Pausado';
             kpiStatus.textContent = 'Pausado';
-            kpiStatusSub.textContent = 'Aguardando reativação';
+            kpiStatusSub.textContent = 'Analise pausada';
             badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-900/40 text-amber-300 text-sm';
         }
-
-        msg.textContent = bot.last_status_message || '—';
 
         // KPIs
         document.getElementById('kpiSignalsToday').textContent = data.signals_today || 0;
         const byType = data.signals_today_by_type || { LONG: 0, SHORT: 0 };
         document.getElementById('kpiSignalsBreakdown').textContent =
-            `${byType.LONG || 0} LONG / ${byType.SHORT || 0} SHORT`;
+            `${byType.LONG || 0} compra(s) / ${byType.SHORT || 0} venda(s)`;
 
         document.getElementById('kpiCycles').textContent = bot.cycle_count || 0;
         document.getElementById('kpiErrors').textContent = `${bot.error_count || 0} erros`;
 
         document.getElementById('kpiLastCheck').textContent = fmtDateTime(bot.last_check);
         document.getElementById('kpiLastSignal').textContent =
-            'Último sinal: ' + fmtDateTime(bot.last_signal_ts);
+            'Ultimo sinal: ' + fmtDateTime(bot.last_signal_ts);
+
+        document.getElementById('kpiSymbol').textContent = data.symbol || '—';
+        document.getElementById('kpiTimeframe').textContent = (data.timeframe || '—').toUpperCase();
 
         document.getElementById('symbolBadge').textContent =
             `${data.symbol} · ${data.timeframe.toUpperCase()}`;
 
-        // Botões
-        document.getElementById('btnStart').disabled = running;
-        document.getElementById('btnStop').disabled = !running;
-
         // Multi-Timeframe from status
         if (data.multitf) {
             renderMTFInline(data.multitf);
-        }
-
-        // Executor from status
-        if (data.executor) {
-            renderExecutorInline(data.executor);
         }
     }
 
@@ -734,7 +503,7 @@
             const emoji = isLong ? '🟢' : '🔴';
             const tgIcon = s.notified
                 ? '<span class="text-emerald-400" title="Enviado">✓</span>'
-                : '<span class="text-gray-600" title="Não enviado">○</span>';
+                : '<span class="text-gray-600" title="Nao enviado">○</span>';
             return `
                 <tr class="hover:bg-gray-800/40 transition fade-in">
                     <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(s.ts)}</td>
@@ -757,7 +526,7 @@
         const body = document.getElementById('logsBody');
         const logs = data.logs || [];
         if (logs.length === 0) {
-            body.innerHTML = '<div class="text-gray-500 text-center py-8">Sem logs.</div>';
+            body.innerHTML = '<div class="text-gray-500 text-center py-8">Sem registros.</div>';
             return;
         }
         const levelColors = {
@@ -786,34 +555,26 @@
         }[c]));
     }
 
-    // ---------- Ações ----------
-    let cachedRisk = null;
-
+    // ---------- Acoes ----------
     async function fetchAll() {
         try {
-            const [status, signals, logs, risk, positions] = await Promise.all([
+            const [status, signals, logs, risk] = await Promise.all([
                 api('GET', '/api/status'),
                 api('GET', '/api/signals?limit=50'),
                 api('GET', '/api/logs?limit=50'),
                 api('GET', '/api/risk').catch(() => null),
-                api('GET', '/api/positions').catch(() => ({positions: {open_count: 0, closed_trades: []}}))
             ]);
             renderStatus(status);
             renderSignals(signals);
             renderLogs(logs);
             if (risk) {
-                cachedRisk = risk;
                 renderRisk(risk);
-                renderKillSwitch(risk);
             }
-            renderPositions(positions);
             fetchMTF();
-            fetchExecutor();
-            fetchOptimizerStatus();
         } catch (err) {
             console.error('Polling falhou:', err);
             const text = document.getElementById('statusText');
-            text.textContent = 'Erro de conexão';
+            text.textContent = 'Erro de conexao';
             document.getElementById('statusDot').className = 'w-2.5 h-2.5 rounded-full bg-red-500';
         }
     }
@@ -825,8 +586,33 @@
         const weeklyPct = r.weekly_loss_pct || 0;
         const weeklyMax = r.weekly_loss_limit || 6.0;
         const filtered = r.signals_filtered || 0;
-        const consec = r.consecutive_losses || 0;
-        const consecMax = r.max_consecutive_losses || 5;
+        const isKilled = r.is_killed || false;
+        const circuitBreaker = r.circuit_breaker_active || false;
+
+        // Filtered signals
+        document.getElementById('riskFiltered').textContent = filtered;
+
+        // System status
+        const sysDot = document.getElementById('riskSystemDot');
+        const sysStatus = document.getElementById('riskSystemStatus');
+        const sysSub = document.getElementById('riskSystemSub');
+
+        if (isKilled) {
+            sysDot.className = 'w-3 h-3 rounded-full bg-red-500';
+            sysStatus.textContent = 'Interrompido';
+            sysStatus.className = 'text-lg font-semibold text-red-400';
+            sysSub.textContent = 'Analise interrompida. O sistema precisa ser reativado.';
+        } else if (circuitBreaker) {
+            sysDot.className = 'w-3 h-3 rounded-full bg-amber-500 pulse-dot';
+            sysStatus.textContent = 'Mercado Volatil';
+            sysStatus.className = 'text-lg font-semibold text-amber-400';
+            sysSub.textContent = 'Mercado muito volatil. Analise pausada por seguranca.';
+        } else {
+            sysDot.className = 'w-3 h-3 rounded-full bg-emerald-500 pulse-dot';
+            sysStatus.textContent = 'Normal';
+            sysStatus.className = 'text-lg font-semibold text-emerald-400';
+            sysSub.textContent = 'Tudo funcionando normalmente';
+        }
 
         // Daily drawdown
         const dailyRatio = Math.min((Math.abs(dailyPct) / dailyMax) * 100, 100);
@@ -843,79 +629,9 @@
         document.getElementById('riskWeeklyBar').className = 'h-2 rounded-full transition-all duration-500 ' +
             (weeklyRatio > 80 ? 'bg-red-500' : weeklyRatio > 50 ? 'bg-amber-500' : 'bg-emerald-500');
         document.getElementById('riskWeeklySub').textContent = 'Limite: ' + fmtNum(weeklyMax) + '%';
-
-        // Filtered signals
-        document.getElementById('riskFiltered').textContent = filtered;
-
-        // Consecutive losses
-        document.getElementById('riskConsecutive').textContent = consec;
-        document.getElementById('riskConsecutiveSub').textContent = consec + ' / ' + consecMax + ' max';
     }
 
-    // ---------- Kill Switch Rendering ----------
-    function renderKillSwitch(r) {
-        const section = document.getElementById('killSwitchSection');
-        const emoji = document.getElementById('killSwitchEmoji');
-        const title = document.getElementById('killSwitchTitle');
-        const msg = document.getElementById('killSwitchMsg');
-        const btnKill = document.getElementById('btnKillSwitch');
-        const btnRes = document.getElementById('btnResurrect');
-
-        const isKilled = r.is_killed || false;
-        const circuitBreaker = r.circuit_breaker_active || false;
-
-        if (isKilled) {
-            section.className = 'rounded-xl border border-red-600 bg-red-950/60 p-5 transition-all duration-300';
-            emoji.textContent = '💀';
-            title.textContent = 'Bot Desligado (Emergencia)';
-            title.className = 'text-base font-semibold text-red-300';
-            msg.textContent = 'Todas as operacoes foram interrompidas. Clique em \'Reativar o Bot\' para voltar ao normal.';
-            msg.className = 'text-sm opacity-80 text-red-200';
-            btnKill.classList.add('hidden');
-            btnRes.classList.remove('hidden');
-        } else if (circuitBreaker) {
-            section.className = 'rounded-xl border border-amber-600 bg-amber-950/60 p-5 transition-all duration-300';
-            emoji.textContent = '⚠️';
-            title.textContent = 'Mercado Muito Volatil - Pausado';
-            title.className = 'text-base font-semibold text-amber-300';
-            msg.textContent = 'O preco se moveu muito rapido. O bot pausou por seguranca e retomara automaticamente.';
-            msg.className = 'text-sm opacity-80 text-amber-200';
-            btnKill.classList.remove('hidden');
-            btnRes.classList.add('hidden');
-        } else {
-            section.className = 'rounded-xl border border-emerald-800 bg-emerald-950/30 p-5 transition-all duration-300';
-            emoji.textContent = '✅';
-            title.textContent = 'Tudo Funcionando Normalmente';
-            title.className = 'text-base font-semibold text-emerald-300';
-            msg.textContent = 'O bot esta monitorando o mercado e gerando sinais quando encontrar boas oportunidades.';
-            msg.className = 'text-sm opacity-80 text-emerald-200';
-            btnKill.classList.remove('hidden');
-            btnRes.classList.add('hidden');
-        }
-    }
-
-    // ---------- Kill Switch Actions ----------
-    async function killSwitch() {
-        try {
-            await api('POST', '/api/kill');
-            showToast('Kill Switch ativado 💀', 'error');
-            await fetchAll();
-        } catch (err) {
-            showToast('Falha: ' + err.message, 'error');
-        }
-    }
-
-    async function resurrectSwitch() {
-        try {
-            await api('POST', '/api/resurrect');
-            showToast('Sistema reativado ✓', 'success');
-            await fetchAll();
-        } catch (err) {
-            showToast('Falha: ' + err.message, 'error');
-        }
-    }
-
-    // ---------- Backtest Actions ----------
+    // ---------- Backtest ----------
     let backtestPollTimer = null;
 
     async function runBacktest() {
@@ -925,7 +641,7 @@
 
         btn.disabled = true;
         dot.className = 'w-2 h-2 rounded-full bg-amber-500 pulse-dot';
-        txt.textContent = 'running...';
+        txt.textContent = 'calculando...';
         document.getElementById('backtestResults').classList.add('hidden');
 
         try {
@@ -935,11 +651,11 @@
             } else if (res.status === 'done') {
                 renderBacktestResults(res);
             } else {
-                showToast('Backtest: ' + (res.message || 'resposta inesperada'), 'info');
+                showToast('Simulacao: ' + (res.message || 'resposta inesperada'), 'info');
                 resetBacktestUI();
             }
         } catch (err) {
-            showToast('Falha backtest: ' + err.message, 'error');
+            showToast('Falha na simulacao: ' + err.message, 'error');
             resetBacktestUI();
         }
     }
@@ -954,13 +670,13 @@
             } else if (res.status === 'error') {
                 clearInterval(backtestPollTimer);
                 backtestPollTimer = null;
-                showToast('Backtest erro: ' + (res.message || ''), 'error');
+                showToast('Erro na simulacao: ' + (res.message || ''), 'error');
                 resetBacktestUI();
             }
         } catch (err) {
             clearInterval(backtestPollTimer);
             backtestPollTimer = null;
-            showToast('Falha check backtest: ' + err.message, 'error');
+            showToast('Falha: ' + err.message, 'error');
             resetBacktestUI();
         }
     }
@@ -971,7 +687,7 @@
         const btn = document.getElementById('btnRunBacktest');
 
         dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        txt.textContent = 'done';
+        txt.textContent = 'concluido';
         btn.disabled = false;
 
         const r = res.results || res;
@@ -984,7 +700,7 @@
         ddEl.className = 'text-lg font-semibold font-mono ' + (r.max_drawdown_pct < 0 ? 'text-red-400' : 'text-gray-100');
 
         const pnlEl = document.getElementById('btTotalPnL');
-        pnlEl.textContent = (r.total_pnl >= 0 ? '+' : '') + fmtNum(r.total_pnl_pct, 2) + '%';
+        pnlEl.textContent = (r.total_pnl_pct >= 0 ? '+' : '') + fmtNum(r.total_pnl_pct, 2) + '%';
         pnlEl.className = 'text-lg font-semibold font-mono ' + (r.total_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
 
         const bhEl = document.getElementById('btBuyHold');
@@ -995,7 +711,7 @@
         const trades = (r.trades || []).slice(-10).reverse();
         const tbody = document.getElementById('backtestTradesBody');
         if (trades.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhuma operação.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum sinal na simulacao.</td></tr>';
         } else {
             tbody.innerHTML = trades.map(t => {
                 const isLong = t.type === 'LONG';
@@ -1024,121 +740,6 @@
         document.getElementById('btnRunBacktest').disabled = false;
         document.getElementById('backtestStatusDot').className = 'w-2 h-2 rounded-full bg-gray-500';
         document.getElementById('backtestStatusText').textContent = 'idle';
-    }
-
-    async function controlBot(action) {
-        try {
-            const res = await api('POST', `/api/${action}`);
-            showToast(action === 'start' ? 'Bot ativado ✓' : 'Bot pausado ⏸',
-                       action === 'start' ? 'success' : 'info');
-            await fetchAll();
-        } catch (err) {
-            showToast('Falha: ' + err.message, 'error');
-        }
-    }
-
-    // ---------- Positions Rendering ----------
-    function renderPositions(data) {
-        const pos = data.positions || {};
-        const summary = data.trades_summary || {};
-        const position = pos.open_position || null;
-        const closedTrades = pos.closed_trades || [];
-
-        // Balance KPI
-        const balance = pos.balance || 0;
-        const riskPerTrade = pos.risk_per_trade_pct || 0;
-        document.getElementById('kpiBalance').textContent = '$' + fmtNum(balance);
-        document.getElementById('kpiBalanceSub').textContent = 'Risco por operacao: ' + fmtNum(riskPerTrade) + '%';
-
-        // PnL KPI
-        const totalPnl = summary.total_pnl_usd || 0;
-        const winRate = summary.win_rate || 0;
-        const totalTrades = summary.total_trades || 0;
-        const pnlEl = document.getElementById('kpiPnL');
-        pnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + fmtNum(Math.abs(totalPnl));
-        pnlEl.className = 'text-2xl font-semibold font-mono ' + (totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400');
-        document.getElementById('kpiPnLSub').textContent = 'Taxa de acerto: ' + fmtNum(winRate, 1) + '% | ' + totalTrades + ' operacoes';
-
-        // Open position card
-        const section = document.getElementById('openPositionSection');
-        if (pos.open_count > 0 && position) {
-            section.classList.remove('hidden');
-            const isLong = position.type === 'LONG';
-            const typeEl = document.getElementById('posType');
-            typeEl.textContent = (isLong ? '🟢 ' : '🔴 ') + position.type;
-            typeEl.className = 'font-semibold ' + (isLong ? 'text-emerald-400' : 'text-red-400');
-            document.getElementById('posEntry').textContent = fmtNum(position.entry_price);
-            document.getElementById('posSL').textContent = fmtNum(position.current_sl);
-            document.getElementById('posTP').textContent = fmtNum(position.take_profit);
-            const statusEl = document.getElementById('posStatus');
-            statusEl.textContent = position.status || 'open';
-            statusEl.className = 'font-semibold ' + (position.status === 'trailing' ? 'text-amber-400' : 'text-emerald-300');
-            document.getElementById('posSize').textContent = position.size || '—';
-            document.getElementById('posUSD').textContent = position.usd_value ? '$' + fmtNum(position.usd_value) : '—';
-            document.getElementById('posBE').textContent = position.breakeven ? 'Sim' : 'Não';
-            document.getElementById('posTrail').textContent = position.trailing ? 'Ativo' : 'Não';
-        } else {
-            section.classList.add('hidden');
-        }
-
-        // Closed trades table
-        const tbody = document.getElementById('closedTradesBody');
-        const kpis = document.getElementById('closedTradesKPIs');
-        const badge = document.getElementById('tradesSummaryBadge');
-        const ctSection = document.getElementById('closedTradesSection');
-
-        if (closedTrades.length === 0) {
-            kpis.classList.add('hidden');
-            badge.classList.add('hidden');
-            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">Nenhuma operação fechada.</td></tr>';
-        } else {
-            ctSection.classList.remove('hidden');
-            kpis.classList.remove('hidden');
-            badge.classList.remove('hidden');
-            badge.textContent = closedTrades.length + ' operacoes';
-
-            document.getElementById('ctTotal').textContent = closedTrades.length;
-            const wr = summary.win_rate || 0;
-            document.getElementById('ctWinRate').textContent = fmtNum(wr, 1) + '%';
-            const ctPnlEl = document.getElementById('ctPnL');
-            ctPnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + fmtNum(Math.abs(totalPnl));
-            ctPnlEl.className = 'text-lg font-semibold font-mono ' + (totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400');
-
-            tbody.innerHTML = closedTrades.map(t => {
-                const isLong = t.type === 'LONG';
-                const typeClass = isLong ? 'bg-emerald-900/40 text-emerald-300' : 'bg-red-900/40 text-red-300';
-                const pnlVal = t.pnl_usd || 0;
-                const pnlPct = t.pnl_pct || 0;
-                const pnlColor = pnlVal >= 0 ? 'text-emerald-400' : 'text-red-400';
-                const pnlSign = pnlVal >= 0 ? '+' : '';
-                let tags = '';
-                if (t.breakeven_hit) tags += '<span class="inline-block px-1.5 py-0.5 rounded text-xs bg-amber-900/40 text-amber-300 mr-1">BE</span>';
-                if (t.trailing_hit) tags += '<span class="inline-block px-1.5 py-0.5 rounded text-xs bg-blue-900/40 text-blue-300">Trail</span>';
-                return `
-                    <tr class="hover:bg-gray-800/40 transition fade-in">
-                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">{fmtDateTime(t.entry_ts || t.entry_date)}</td>
-                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">{fmtDateTime(t.exit_ts || t.exit_date)}</td>
-                        <td class="px-4 py-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold {typeClass}">{t.type}</span></td>
-                        <td class="px-4 py-3 text-right font-mono text-gray-200">{fmtNum(t.entry_price)}</td>
-                        <td class="px-4 py-3 text-right font-mono text-gray-200">{fmtNum(t.exit_price)}</td>
-                        <td class="px-4 py-3 text-right font-mono font-semibold {pnlColor}">{pnlSign}${fmtNum(Math.abs(pnlVal))} ({pnlSign}{fmtNum(pnlPct)}%)</td>
-                        <td class="px-4 py-3 text-gray-400 text-xs">{escapeHtml(t.reason || '—')}</td>
-                        <td class="px-4 py-3 text-center">{tags || '—'}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-    }
-
-    // ---------- Close Positions Action ----------
-    async function closePositions() {
-        try {
-            await api('POST', '/api/close-positions');
-            showToast('Posição fechada ✓', 'success');
-            await fetchAll();
-        } catch (err) {
-            showToast('Falha: ' + err.message, 'error');
-        }
     }
 
     // ---------- Multi-Timeframe ----------
@@ -1224,157 +825,7 @@
         } catch(e) {}
     }
 
-    // ---------- Executor ----------
-    function renderExecutorInline(exec) {
-        const dryRun = exec.dry_run !== false;
-        const modeEl = document.getElementById('executorMode');
-        if (dryRun) {
-            modeEl.textContent = 'SIMULACAO';
-            modeEl.className = 'px-2.5 py-1 rounded-md bg-amber-900/40 text-amber-300 text-xs font-bold tracking-wider';
-        } else {
-            modeEl.textContent = 'REAL';
-            modeEl.className = 'px-2.5 py-1 rounded-md bg-red-900/40 text-red-300 text-xs font-bold tracking-wider animate-pulse';
-        }
-
-        document.getElementById('executorOrders').textContent = exec.order_count || 0;
-
-        const errEl = document.getElementById('executorLastError');
-        if (exec.last_error) {
-            errEl.textContent = exec.last_error;
-            errEl.className = 'text-sm text-red-400 truncate';
-        } else {
-            errEl.textContent = 'Nenhum erro';
-            errEl.className = 'text-sm text-emerald-400 truncate';
-        }
-
-        const statusEl = document.getElementById('executorStatus');
-        statusEl.textContent = exec.status || 'conectado';
-        statusEl.className = 'text-sm font-semibold ' + (exec.status === 'error' ? 'text-red-400' : 'text-emerald-300');
-    }
-
-    async function fetchExecutor() {
-        try {
-            const data = await api('GET', '/api/executor');
-            renderExecutorInline(data);
-        } catch(e) {}
-    }
-
-    async function toggleDryRun() {
-        try {
-            const data = await api('POST', '/api/executor/toggle-dry-run');
-            showToast(data.dry_run ? 'Modo SIMULACAO ativado (seguro)' : 'Modo REAL ativado! Ordens reais serao enviadas!', data.dry_run ? 'info' : 'error');
-            fetchExecutor();
-        } catch(e) {
-            showToast('Falha toggle: ' + (e.message || ''), 'error');
-        }
-    }
-
-    // ---------- Optimizer ----------
-    let optimizerPollTimer = null;
-
-    function renderOptimizerResults(res) {
-        const dot = document.getElementById('optimizerStatusDot');
-        const txt = document.getElementById('optimizerStatusText');
-        const btn = document.getElementById('btnRunOptimizer');
-
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        txt.textContent = 'done';
-        btn.disabled = false;
-        document.getElementById('optimizerProgress').classList.add('hidden');
-
-        const best = res.best || [];
-        const tbody = document.getElementById('optimizerResultsBody');
-        if (best.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">Nenhum resultado.</td></tr>';
-        } else {
-            tbody.innerHTML = best.slice(0, 5).map((p, i) => {
-                const score = p.score || 0;
-                const scoreColor = score > 0 ? 'text-emerald-400' : score < 0 ? 'text-red-400' : 'text-gray-300';
-                const wrColor = (p.win_rate || 0) >= 50 ? 'text-emerald-400' : 'text-red-400';
-                const pfColor = (p.profit_factor || 0) >= 1.0 ? 'text-emerald-400' : 'text-red-400';
-                return `
-                    <tr class="hover:bg-gray-800/40 transition fade-in">
-                        <td class="px-4 py-3 text-center font-mono text-gray-500">${i + 1}</td>
-                        <td class="px-4 py-3 text-center font-mono text-gray-200">${fmtNum(p.rsi_long, 0)}</td>
-                        <td class="px-4 py-3 text-center font-mono text-gray-200">${fmtNum(p.rsi_short, 0)}</td>
-                        <td class="px-4 py-3 text-center font-mono text-gray-200">${fmtNum(p.vol_mult, 1)}</td>
-                        <td class="px-4 py-3 text-center font-mono text-gray-200">${fmtNum(p.sl_mult, 1)}</td>
-                        <td class="px-4 py-3 text-center font-mono text-gray-200">${fmtNum(p.tp_mult, 1)}</td>
-                        <td class="px-4 py-3 text-right font-mono font-semibold ${scoreColor}">${fmtNum(score, 2)}</td>
-                        <td class="px-4 py-3 text-right font-mono ${wrColor}">${fmtNum(p.win_rate, 1)}%</td>
-                        <td class="px-4 py-3 text-right font-mono ${pfColor}">${fmtNum(p.profit_factor, 2)}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        document.getElementById('optimizerResults').classList.remove('hidden');
-    }
-
-    async function fetchOptimizerStatus() {
-        try {
-            const data = await api('GET', '/api/optimizer');
-            if (data.running) {
-                const dot = document.getElementById('optimizerStatusDot');
-                const txt = document.getElementById('optimizerStatusText');
-                const btn = document.getElementById('btnRunOptimizer');
-                dot.className = 'w-2 h-2 rounded-full bg-amber-500 pulse-dot';
-                txt.textContent = 'running...';
-                btn.disabled = true;
-
-                // Show progress
-                document.getElementById('optimizerProgress').classList.remove('hidden');
-                const pct = data.progress || 0;
-                document.getElementById('optimizerProgressBar').style.width = pct + '%';
-                document.getElementById('optimizerProgressPct').textContent = Math.round(pct) + '%';
-                document.getElementById('optimizerProgressLabel').textContent =
-                    'Combinação ' + (data.current || 0) + ' / ' + (data.total || '?');
-
-                if (!optimizerPollTimer) {
-                    optimizerPollTimer = setInterval(() => fetchOptimizerStatus(), 3000);
-                }
-            } else {
-                if (optimizerPollTimer) {
-                    clearInterval(optimizerPollTimer);
-                    optimizerPollTimer = null;
-                }
-                if (data.best && data.best.length > 0) {
-                    renderOptimizerResults(data);
-                }
-            }
-        } catch(e) {}
-    }
-
-    async function runOptimizer() {
-        const btn = document.getElementById('btnRunOptimizer');
-        const dot = document.getElementById('optimizerStatusDot');
-        const txt = document.getElementById('optimizerStatusText');
-
-        btn.disabled = true;
-        dot.className = 'w-2 h-2 rounded-full bg-amber-500 pulse-dot';
-        txt.textContent = 'starting...';
-        document.getElementById('optimizerResults').classList.add('hidden');
-        document.getElementById('optimizerProgress').classList.remove('hidden');
-        document.getElementById('optimizerProgressBar').style.width = '0%';
-        document.getElementById('optimizerProgressPct').textContent = '0%';
-        document.getElementById('optimizerProgressLabel').textContent = 'Iniciando otimização...';
-
-        try {
-            await api('POST', '/api/optimizer/run?days=730');
-            showToast('Otimização iniciada...', 'info');
-            if (!optimizerPollTimer) {
-                optimizerPollTimer = setInterval(() => fetchOptimizerStatus(), 3000);
-            }
-        } catch(e) {
-            showToast('Falha otimizador: ' + (e.message || ''), 'error');
-            btn.disabled = false;
-            dot.className = 'w-2 h-2 rounded-full bg-gray-500';
-            txt.textContent = 'idle';
-            document.getElementById('optimizerProgress').classList.add('hidden');
-        }
-    }
-
-    // ---------- Inicialização ----------
+    // ---------- Inicializacao ----------
     fetchAll();
     pollTimer = setInterval(fetchAll, POLL_INTERVAL_MS);
 </script>
