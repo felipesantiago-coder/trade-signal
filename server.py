@@ -32,10 +32,8 @@ Endpoints de chart data:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -210,6 +208,7 @@ async def api_backtest_progress() -> dict:
 @app.get("/api/backtest/stream", summary="SSE de progresso do backtest")
 async def api_backtest_stream():
     """Server-Sent Events com progresso em tempo real do backtest."""
+    import json as _json
     from backtest import get_backtest_progress
 
     async def event_generator():
@@ -217,7 +216,7 @@ async def api_backtest_stream():
         while True:
             try:
                 prog = get_backtest_progress()
-                data = json.dumps(prog, default=str)
+                data = _json.dumps(prog, default=str)
                 if data != last_json:
                     yield f"data: {data}\n\n"
                     last_json = data
