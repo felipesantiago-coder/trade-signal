@@ -6,828 +6,1075 @@
     <title>CTEV Bot — Painel de Analise de Sinais</title>
     <link rel="stylesheet" href="/static/output.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background: #060a13; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
-        .pulse-dot { animation: pulse-dot 2s infinite; }
-        @keyframes pulse-dot {
+
+        /* Animations */
+        .pulse-dot { animation: pulseDot 2s infinite; }
+        @keyframes pulseDot {
             0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.85); }
+            50% { opacity: 0.4; transform: scale(0.8); }
         }
-        .fade-in { animation: fadeIn 0.3s ease-in; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #1f2937; }
-        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-up { animation: slideUp 0.5s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .shimmer { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 3s infinite; }
+
+        /* Glass cards */
+        .glass { background: rgba(17, 24, 39, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(55, 65, 81, 0.4); }
+        .glass-bright { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(55, 65, 81, 0.5); }
+
+        /* Gradient accents */
+        .gradient-text { background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .gradient-border { border-image: linear-gradient(135deg, #3b82f6, #8b5cf6) 1; }
+        .glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 60px rgba(59, 130, 246, 0.05); }
+        .glow-green { box-shadow: 0 0 15px rgba(16, 185, 129, 0.15); }
+        .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.15); }
+
+        /* Confidence bar */
+        .confidence-bar { height: 4px; border-radius: 2px; background: rgba(55, 65, 81, 0.5); overflow: hidden; }
+        .confidence-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+        /* Gauge */
+        .gauge-ring { transition: stroke-dashoffset 0.8s ease; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(55, 65, 81, 0.5); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(75, 85, 99, 0.7); }
+
+        /* Signal card hover */
+        .signal-card { transition: all 0.2s ease; }
+        .signal-card:hover { border-color: rgba(96, 165, 250, 0.3); transform: translateY(-1px); }
+
+        /* Sparkline canvas */
+        .sparkline-canvas { display: block; }
+
+        /* TradingView container */
+        .tv-container { min-height: 400px; border-radius: 0.75rem; overflow: hidden; }
+        @media (max-width: 768px) { .tv-container { min-height: 280px; } }
+
+        /* KPI card */
+        .kpi-card { position: relative; overflow: hidden; }
+        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+        .kpi-card.blue::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+        .kpi-card.green::before { background: linear-gradient(90deg, #10b981, #34d399); }
+        .kpi-card.amber::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .kpi-card.purple::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+        .kpi-card.red::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+        /* Status badge */
+        .status-live { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .status-paused { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .status-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        /* Metric separator */
+        .metric-sep { width: 1px; background: rgba(55, 65, 81, 0.4); }
     </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen">
+<body class="text-gray-100 min-h-screen">
 
-<!-- Header -->
-<header class="border-b border-gray-800 bg-gray-900/50 backdrop-blur sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center font-bold text-white text-lg">
-                C
+<!-- ═══════════════════ HEADER ═══════════════════ -->
+<header class="sticky top-0 z-40 border-b border-gray-800/60" style="background:rgba(6,10,19,0.85);backdrop-filter:blur(16px)">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between" style="height:4rem">
+            <!-- Logo -->
+            <div class="flex items-center gap-3">
+                <div class="rounded-lg flex items-center justify-center font-bold text-white text-base" style="width:2.25rem;height:2.25rem;background:linear-gradient(135deg,#3b82f6,#8b5cf6)">C</div>
+                <div>
+                    <h1 class="text-sm font-bold leading-tight tracking-tight">CTEV Signal Bot</h1>
+                    <p class="text-[10px] text-gray-500 leading-tight">Analise Automatizada de Bitcoin</p>
+                </div>
             </div>
-            <div>
-                <h1 class="text-lg font-semibold leading-tight">CTEV Bot</h1>
-                <p class="text-xs text-gray-500 leading-tight">Analise de Sinais — Bitcoin</p>
+
+            <!-- Center: BTC Price Ticker -->
+            <div class="hidden md:flex items-center gap-6">
+                <div class="flex items-center gap-2">
+                    <div class="rounded-full flex items-center justify-center font-bold text-amber-400" style="width:1.5rem;height:1.5rem;background:rgba(245,158,11,0.2);font-size:10px">B</div>
+                    <div>
+                        <span id="headerPrice" class="text-sm font-semibold font-mono text-white">—</span>
+                    </div>
+                </div>
+                <div class="metric-sep h-8"></div>
+                <div class="flex items-center gap-4 text-xs text-gray-400">
+                    <div class="flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                        <span>Sinais hoje: <b id="headerSignalsToday" class="text-gray-200">0</b></span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>Ultima: <b id="headerLastCheck" class="text-gray-200">—</b></span>
+                    </div>
+                </div>
             </div>
-        </div>
-        <div class="flex items-center gap-3">
-            <div id="botStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800 text-sm">
-                <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
-                <span id="statusText" class="font-medium">Carregando...</span>
+
+            <!-- Right: Status + Refresh -->
+            <div class="flex items-center gap-3">
+                <div id="headerBadge" class="status-live flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium">
+                    <span id="headerDot" class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+                    <span id="headerStatusText" class="text-emerald-400">Online</span>
+                </div>
+                <button onclick="fetchAll()" class="p-2 rounded-lg hover:bg-gray-800/60 transition text-gray-400 hover:text-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
             </div>
-            <button onclick="fetchAll()"
-                class="px-3 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium transition flex items-center gap-1.5">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span class="hidden sm:inline">Atualizar</span>
-            </button>
         </div>
     </div>
 </header>
 
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
 
-    <!-- Modo de Operacao Banner -->
-    <section class="rounded-xl border border-amber-700/50 bg-amber-950/40 px-5 py-3 flex items-center gap-3">
-        <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <div>
-            <span class="text-sm font-medium text-amber-300">Modo: Apenas Analise de Sinais</span>
-            <span class="text-xs text-amber-400/70 hidden sm:inline"> — O sistema analisa o mercado e gera alertas. Nenhuma operacao e executada automaticamente.</span>
+    <!-- ═══════════════════ ANALYSIS MODE BANNER ═══════════════════ -->
+    <div class="glass rounded-xl px-4 py-2.5 flex items-center gap-3">
+        <div class="w-7 h-7 rounded-md flex items-center justify-center bg-blue-500/10">
+            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
         </div>
-    </section>
+        <div class="flex-1">
+            <span class="text-xs font-semibold text-blue-300">Modo: Apenas Analise</span>
+            <span class="text-[11px] text-gray-500 hidden sm:inline ml-2">O sistema analisa o mercado 24/7 e envia alertas via Telegram. Nenhuma operacao e executada automaticamente.</span>
+        </div>
+        <span id="symbolLabel" class="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">BTC/USDT · 1H</span>
+    </div>
 
-    <!-- Guia Rapido -->
-    <section class="bg-brand-900/20 rounded-xl border border-brand-800/40 p-5">
-        <details open>
-            <summary class="cursor-pointer text-base font-semibold text-brand-300 flex items-center gap-2">
-                <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Guia Rapido — Como usar este painel
-            </summary>
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-300">
-                <div class="bg-gray-800/50 rounded-lg p-4">
-                    <div class="font-semibold text-emerald-400 mb-2">1. Acompanhar</div>
-                    <p class="text-xs text-gray-400 leading-relaxed">O bot analisa o Bitcoin automaticamente. Quando encontra uma boa oportunidade, envia um alerta pelo Telegram e registra o sinal aqui no painel. Voce nao precisa fazer nada — basta acompanhar os sinais.</p>
+    <!-- ═══════════════════ CHART + SIGNAL FEED ═══════════════════ -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+        <!-- TradingView Chart (2/3) -->
+        <div class="lg:col-span-2 glass-bright rounded-xl overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-800/50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                    <h2 class="text-sm font-semibold">Grafico em Tempo Real</h2>
                 </div>
-                <div class="bg-gray-800/50 rounded-lg p-4">
-                    <div class="font-semibold text-amber-400 mb-2">2. Entender os sinais</div>
-                    <p class="text-xs text-gray-400 leading-relaxed"><b>LONG (Compra)</b>: o sistema detectou que o preco recuou temporariamente numa tendencia de alta — possivel oportunidade de compra.<br><b>SHORT (Venda)</b>: o preco subiu temporariamente numa tendencia de baixa — possivel oportunidade de venda.</p>
-                </div>
-                <div class="bg-gray-800/50 rounded-lg p-4">
-                    <div class="font-semibold text-purple-400 mb-2">3. Usar os niveis</div>
-                    <p class="text-xs text-gray-400 leading-relaxed">Cada sinal inclui niveis de referencia: o <b>Preco de Entrada</b> (nivel atual), <b>Stop Loss</b> (onde proteger se o mercado for contra voce) e <b>Take Profit</b> (alvo de ganho). Use esses niveis como referencia para suas proprias decisoes.</p>
+                <span class="text-[10px] text-gray-500 font-mono">BTC/USDT · 1H · Binance</span>
+            </div>
+            <div class="tv-container">
+                <div class="tradingview-widget-container" style="height:100%;width:100%">
+                    <div id="tradingview_chart" style="height:100%;width:100%"></div>
                 </div>
             </div>
-        </details>
-    </section>
-
-    <!-- KPIs principais -->
-    <section class="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Status</span>
-                <span id="kpiStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
-            </div>
-            <div id="kpiStatus" class="text-2xl font-semibold">—</div>
-            <div id="kpiStatusSub" class="text-xs text-gray-500 mt-1">—</div>
         </div>
 
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Hoje</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-            </div>
-            <div id="kpiSignalsToday" class="text-2xl font-semibold">0</div>
-            <div id="kpiSignalsBreakdown" class="text-xs text-gray-500 mt-1">sinais detectados hoje</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Ciclos de Analise</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-            </div>
-            <div id="kpiCycles" class="text-2xl font-semibold">0</div>
-            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">ciclos concluidos</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Ultima Verificacao</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-            <div id="kpiLastCheck" class="text-lg font-mono font-semibold">—</div>
-            <div id="kpiLastSignal" class="text-xs text-gray-500 mt-1">Ultimo sinal: —</div>
-        </div>
-
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Par Monitorado</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-            </div>
-            <div id="kpiSymbol" class="text-lg font-mono font-semibold">—</div>
-            <div id="kpiTimeframe" class="text-xs text-gray-500 mt-1">timeframe</div>
-        </div>
-    </section>
-
-    <!-- Protecao de Capital (Risk KPIs) -->
-    <section>
-        <div class="flex items-center gap-2 mb-4">
-            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            <h2 class="text-base font-semibold">Protecao Automatica</h2>
-        </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Bloqueados Hoje</span>
-                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+        <!-- Signal Feed (1/3) -->
+        <div class="glass-bright rounded-xl overflow-hidden flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800/50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></div>
+                    <h2 class="text-sm font-semibold">Sinais Recentes</h2>
                 </div>
-                <div id="riskFiltered" class="text-2xl font-semibold font-mono">0</div>
-                <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Sinais filtrados pela protecao</div>
+                <span id="signalCount" class="text-[10px] text-gray-500 font-mono">0 sinais</span>
             </div>
-
-            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs uppercase tracking-wider text-gray-500">Sistema</span>
-                    <span id="riskSystemDot" class="w-3 h-3 rounded-full bg-emerald-500"></span>
-                </div>
-                <div id="riskSystemStatus" class="text-lg font-semibold">Normal</div>
-                <div id="riskSystemSub" class="text-xs text-gray-500 mt-1">Tudo funcionando normalmente</div>
-            </div>
-
-            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs uppercase tracking-wider text-gray-500">Perda Diaria</span>
-                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                </div>
-                <div id="riskDailyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
-                <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                    <div id="riskDailyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
-                </div>
-                <div id="riskDailySub" class="text-xs text-gray-500 mt-1">Limite diario: 3.0%</div>
-            </div>
-
-            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs uppercase tracking-wider text-gray-500">Perda Semanal</span>
-                    <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
-                </div>
-                <div id="riskWeeklyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
-                <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
-                    <div id="riskWeeklyBar" class="h-2 rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div>
-                </div>
-                <div id="riskWeeklySub" class="text-xs text-gray-500 mt-1">Limite semanal: 6.0%</div>
+            <div id="signalFeed" class="flex-1 overflow-y-auto p-3 space-y-2" style="max-height:440px">
+                <div class="text-center text-gray-500 text-xs py-10">Aguardando sinais...</div>
             </div>
         </div>
     </section>
 
-    <!-- Grid de sinais e logs -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        <!-- Tabela de sinais (ocupa 2 colunas) -->
-        <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-                <div>
-                    <h2 class="text-base font-semibold">Sinais Recentes</h2>
-                    <p class="text-xs text-gray-500">Oportunidades detectadas pelo sistema</p>
-                </div>
-                <span id="symbolBadge" class="px-2.5 py-1 rounded-md bg-brand-900/40 text-brand-300 text-xs font-mono">BTC/USDT · 1H</span>
+    <!-- ═══════════════════ KPI CARDS ═══════════════════ -->
+    <section class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="kpi-card blue glass rounded-xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Status</div>
+            <div id="kpiStatus" class="text-xl font-bold">—</div>
+            <div id="kpiStatusSub" class="text-[10px] text-gray-500 mt-1">—</div>
+        </div>
+        <div class="kpi-card green glass rounded-xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Sinais Hoje</div>
+            <div id="kpiSignalsToday" class="text-xl font-bold font-mono">0</div>
+            <div id="kpiSignalsBreakdown" class="text-[10px] text-gray-500 mt-1">—</div>
+        </div>
+        <div class="kpi-card purple glass rounded-xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Ciclos</div>
+            <div id="kpiCycles" class="text-xl font-bold font-mono">0</div>
+            <div id="kpiErrors" class="text-[10px] text-gray-500 mt-1">analises concluidas</div>
+        </div>
+        <div class="kpi-card blue glass rounded-xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Ultima Analise</div>
+            <div id="kpiLastCheck" class="text-base font-mono font-semibold">—</div>
+            <div id="kpiLastSignal" class="text-[10px] text-gray-500 mt-1">—</div>
+        </div>
+        <div class="kpi-card amber glass rounded-xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Sinais Bloqueados</div>
+            <div id="riskFiltered" class="text-xl font-bold font-mono">0</div>
+            <div class="text-[10px] text-gray-500 mt-1">pela protecao automatica</div>
+        </div>
+        <div class="kpi-card red glass rounded-xl p-4">
+            <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-2">Sistema</div>
+            <div class="flex items-center gap-2">
+                <span id="riskSysDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot"></span>
+                <span id="riskSysStatus" class="text-base font-semibold text-emerald-400">Normal</span>
             </div>
-            <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 text-left">Data/Hora</th>
-                            <th class="px-4 py-3 text-left">Direcao</th>
-                            <th class="px-4 py-3 text-right">Preco de Entrada</th>
-                            <th class="px-4 py-3 text-right">Stop Loss</th>
-                            <th class="px-4 py-3 text-right">Take Profit</th>
-                            <th class="px-4 py-3 text-center">RSI</th>
-                            <th class="px-4 py-3 text-center">Telegram</th>
-                        </tr>
-                    </thead>
-                    <tbody id="signalsBody" class="divide-y divide-gray-800">
-                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum sinal ainda.</td></tr>
-                    </tbody>
-                </table>
+            <div id="riskSysSub" class="text-[10px] text-gray-500 mt-1">tudo funcionando</div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════ CHARTS ROW ═══════════════════ -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <!-- Price Sparkline -->
+        <div class="glass rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-xs font-semibold text-gray-300">Historico de Precos dos Sinais</h3>
+                <span class="text-[10px] text-gray-500 font-mono">sparkline</span>
+            </div>
+            <canvas id="sparklineCanvas" class="sparkline-canvas w-full" height="100"></canvas>
+            <div class="flex justify-between mt-2 text-[10px] text-gray-500 font-mono">
+                <span id="sparkOldest">—</span>
+                <span id="sparkNewest">—</span>
             </div>
         </div>
 
-        <!-- Painel de logs (1 coluna) -->
-        <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div class="px-5 py-4 border-b border-gray-800">
-                <h2 class="text-base font-semibold">Atividade do Sistema</h2>
-                <p class="text-xs text-gray-500">Registro das analises e eventos recentes</p>
+        <!-- RSI Distribution -->
+        <div class="glass rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-xs font-semibold text-gray-300">Distribuicao RSI</h3>
+                <span class="text-[10px] text-gray-500 font-mono">ultimos sinais</span>
             </div>
-            <div id="logsBody" class="p-4 max-h-[28rem] overflow-y-auto space-y-2 font-mono text-xs">
-                <div class="text-gray-500 text-center py-8">Sem registros.</div>
+            <canvas id="rsiCanvas" class="sparkline-canvas w-full" height="100"></canvas>
+        </div>
+
+        <!-- Signal Type Split -->
+        <div class="glass rounded-xl p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-xs font-semibold text-gray-300">Composicao dos Sinais</h3>
+                <span id="splitTotal" class="text-[10px] text-gray-500 font-mono">0 total</span>
+            </div>
+            <div class="flex items-center gap-4 mt-4">
+                <canvas id="donutCanvas" width="90" height="90" class="sparkline-canvas shrink-0"></canvas>
+                <div class="flex-1 space-y-3">
+                    <div>
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Compra (LONG)</span>
+                            <span id="splitLongPct" class="font-mono font-semibold text-emerald-400">0%</span>
+                        </div>
+                        <div class="confidence-bar"><div id="splitLongBar" class="confidence-fill bg-emerald-500" style="width:0%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>Venda (SHORT)</span>
+                            <span id="splitShortPct" class="font-mono font-semibold text-red-400">0%</span>
+                        </div>
+                        <div class="confidence-bar"><div id="splitShortBar" class="confidence-fill bg-red-500" style="width:0%"></div></div>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
 
-    <!-- Backtest -->
-    <section class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+    <!-- ═══════════════════ RISK GAUGES ═══════════════════ -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Drawdown Gauges -->
+        <div class="glass rounded-xl p-5">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                <h2 class="text-sm font-semibold">Protecao de Capital</h2>
+            </div>
+            <div class="grid grid-cols-2 gap-6">
+                <!-- Daily -->
+                <div class="text-center">
+                    <svg viewBox="0 0 120 120" width="100" height="100" class="mx-auto">
+                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(55,65,81,0.3)" stroke-width="8"/>
+                        <circle id="gaugeDaily" cx="60" cy="60" r="50" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round"
+                            stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)" class="gauge-ring"/>
+                        <text x="60" y="55" text-anchor="middle" fill="white" font-size="18" font-weight="700" font-family="JetBrains Mono,monospace" id="gaugeDailyVal">0%</text>
+                        <text x="60" y="72" text-anchor="middle" fill="#6b7280" font-size="9" font-family="Inter,sans-serif">DIARIO</text>
+                    </svg>
+                    <div class="text-[10px] text-gray-500 mt-1">Limite: <span id="gaugeDailyMax">3.0%</span></div>
+                </div>
+                <!-- Weekly -->
+                <div class="text-center">
+                    <svg viewBox="0 0 120 120" width="100" height="100" class="mx-auto">
+                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(55,65,81,0.3)" stroke-width="8"/>
+                        <circle id="gaugeWeekly" cx="60" cy="60" r="50" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round"
+                            stroke-dasharray="314" stroke-dashoffset="314" transform="rotate(-90 60 60)" class="gauge-ring"/>
+                        <text x="60" y="55" text-anchor="middle" fill="white" font-size="18" font-weight="700" font-family="JetBrains Mono,monospace" id="gaugeWeeklyVal">0%</text>
+                        <text x="60" y="72" text-anchor="middle" fill="#6b7280" font-size="9" font-family="Inter,sans-serif">SEMANAL</text>
+                    </svg>
+                    <div class="text-[10px] text-gray-500 mt-1">Limite: <span id="gaugeWeeklyMax">6.0%</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Multi-Timeframe -->
+        <div class="glass rounded-xl p-5">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <h2 class="text-sm font-semibold">Tendencias Multi-Timeframe</h2>
+                </div>
+                <span id="mtfBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono" style="background:rgba(55,65,81,0.3)">
+                    <span id="mtfDot" class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                    <span id="mtfText" class="text-gray-400">—</span>
+                </span>
+            </div>
+            <div class="space-y-4">
+                <div class="flex items-center justify-between p-3 rounded-lg" style="background:rgba(17,24,39,0.5)">
+                    <span class="text-xs text-gray-400">Tendencia 4 Horas</span>
+                    <div class="flex items-center gap-2">
+                        <span id="mtfH4Dot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
+                        <span id="mtfH4" class="text-sm font-semibold font-mono">—</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between p-3 rounded-lg" style="background:rgba(17,24,39,0.5)">
+                    <span class="text-xs text-gray-400">Tendencia Diario</span>
+                    <div class="flex items-center gap-2">
+                        <span id="mtfD1Dot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
+                        <span id="mtfD1" class="text-sm font-semibold font-mono">—</span>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between p-3 rounded-lg" style="background:rgba(17,24,39,0.5)">
+                    <span class="text-xs text-gray-400">Confluencia</span>
+                    <span id="mtfConfluence" class="px-2.5 py-0.5 rounded-md text-xs font-semibold font-mono" style="background:rgba(55,65,81,0.3)">—</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════ SIGNALS TABLE ═══════════════════ -->
+    <section class="glass-bright rounded-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800/50 flex items-center justify-between">
             <div>
-                <h2 class="text-base font-semibold">Simulacao (Backtest)</h2>
-                <p class="text-xs text-gray-500">Testa como a estrategia teria se comportado nos ultimos 2 anos de dados do Bitcoin</p>
+                <h2 class="text-sm font-semibold">Todos os Sinais</h2>
+                <p class="text-[11px] text-gray-500 mt-0.5">Historico completo com niveis de referencia</p>
+            </div>
+            <span id="tableCount" class="text-[10px] text-gray-500 font-mono">0 registros</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead style="background:rgba(17,24,39,0.8)">
+                    <tr class="text-[10px] uppercase tracking-widest text-gray-500">
+                        <th class="px-4 py-3 text-left font-medium">Data</th>
+                        <th class="px-4 py-3 text-left font-medium">Tipo</th>
+                        <th class="px-4 py-3 text-right font-medium">Entrada</th>
+                        <th class="px-4 py-3 text-right font-medium">Stop Loss</th>
+                        <th class="px-4 py-3 text-right font-medium">Take Profit</th>
+                        <th class="px-4 py-3 text-center font-medium">RSI</th>
+                        <th class="px-4 py-3 text-center font-medium">Forca</th>
+                        <th class="px-4 py-3 text-center font-medium">TG</th>
+                    </tr>
+                </thead>
+                <tbody id="signalsTableBody" class="divide-y divide-gray-800/40">
+                    <tr><td colspan="8" class="px-4 py-10 text-center text-gray-500 text-xs">Nenhum sinal registrado.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- ═══════════════════ BACKTEST ═══════════════════ -->
+    <section class="glass-bright rounded-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800/50 flex items-center justify-between">
+            <div>
+                <h2 class="text-sm font-semibold">Simulacao Historica (Backtest)</h2>
+                <p class="text-[11px] text-gray-500 mt-0.5">Desempenho da estrategia nos ultimos 2 anos</p>
             </div>
             <div class="flex items-center gap-3">
-                <span id="backtestStatus" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
-                    <span id="backtestStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
-                    <span id="backtestStatusText">idle</span>
+                <span id="btStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono" style="background:rgba(55,65,81,0.3)">
+                    <span id="btStatusDot" class="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                    <span id="btStatusText" class="text-gray-400">idle</span>
                 </span>
-                <button id="btnRunBacktest" onclick="runBacktest()"
-                    class="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <button id="btnRunBt" onclick="runBacktest()" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:white" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
                     Rodar Simulacao
                 </button>
             </div>
         </div>
-
-        <!-- Backtest Results (hidden until done) -->
-        <div id="backtestResults" class="hidden">
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 p-5 border-b border-gray-800">
-                <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Total Sinais</div>
-                    <div id="btTotalTrades" class="text-lg font-semibold font-mono">—</div>
+        <div id="btResults" class="hidden">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-0 border-b border-gray-800/40">
+                <div class="p-4 text-center border-r border-gray-800/40">
+                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Total Sinais</div>
+                    <div id="btTrades" class="text-lg font-bold font-mono">—</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Taxa de Acerto</div>
-                    <div id="btWinRate" class="text-lg font-semibold font-mono">—</div>
+                <div class="p-4 text-center border-r border-gray-800/40">
+                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Taxa de Acerto</div>
+                    <div id="btWR" class="text-lg font-bold font-mono">—</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Fator de Lucro</div>
-                    <div id="btProfitFactor" class="text-lg font-semibold font-mono">—</div>
+                <div class="p-4 text-center border-r border-gray-800/40">
+                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Fator Lucro</div>
+                    <div id="btPF" class="text-lg font-bold font-mono">—</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Maior Queda</div>
-                    <div id="btMaxDD" class="text-lg font-semibold font-mono">—</div>
+                <div class="p-4 text-center border-r border-gray-800/40">
+                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Maior Queda</div>
+                    <div id="btDD" class="text-lg font-bold font-mono">—</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Resultado Total</div>
-                    <div id="btTotalPnL" class="text-lg font-semibold font-mono">—</div>
+                <div class="p-4 text-center border-r border-gray-800/40">
+                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Resultado</div>
+                    <div id="btPnL" class="text-lg font-bold font-mono">—</div>
                 </div>
-                <div>
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Buy & Hold</div>
-                    <div id="btBuyHold" class="text-lg font-semibold font-mono">—</div>
+                <div class="p-4 text-center">
+                    <div class="text-[10px] uppercase tracking-widest text-gray-500 mb-1">Buy & Hold</div>
+                    <div id="btBH" class="text-lg font-bold font-mono">—</div>
                 </div>
             </div>
-            <div class="px-5 py-4 border-b border-gray-800">
-                <h3 class="text-sm font-semibold text-gray-400 mb-3">Ultimos 10 Sinais da Simulacao</h3>
-            </div>
-            <div class="overflow-x-auto max-h-[20rem] overflow-y-auto">
+            <div class="overflow-x-auto" style="max-height:16rem;overflow-y:auto">
                 <table class="w-full text-sm">
-                    <thead class="bg-gray-800/50 text-gray-400 text-xs uppercase tracking-wider sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 text-left">Entrada</th>
-                            <th class="px-4 py-3 text-left">Saida</th>
-                            <th class="px-4 py-3 text-left">Tipo</th>
-                            <th class="px-4 py-3 text-right">Preco Entrada</th>
-                            <th class="px-4 py-3 text-right">Preco Saida</th>
-                            <th class="px-4 py-3 text-right">Resultado</th>
-                            <th class="px-4 py-3 text-left">Motivo</th>
+                    <thead style="background:rgba(17,24,39,0.8)">
+                        <tr class="text-[10px] uppercase tracking-widest text-gray-500">
+                            <th class="px-4 py-2.5 text-left">Entrada</th>
+                            <th class="px-4 py-2.5 text-left">Saida</th>
+                            <th class="px-4 py-2.5 text-left">Tipo</th>
+                            <th class="px-4 py-2.5 text-right">Preco E.</th>
+                            <th class="px-4 py-2.5 text-right">Preco S.</th>
+                            <th class="px-4 py-2.5 text-right">Resultado</th>
+                            <th class="px-4 py-2.5 text-left">Motivo</th>
                         </tr>
                     </thead>
-                    <tbody id="backtestTradesBody" class="divide-y divide-gray-800">
-                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Aguardando simulacao...</td></tr>
+                    <tbody id="btTradesBody" class="divide-y divide-gray-800/40">
+                        <tr><td colspan="7" class="px-4 py-8 text-center text-gray-500 text-xs">Aguardando simulacao.</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </section>
 
-    <!-- Multi-Timeframe -->
-    <section id="mtfSection" class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-            <div>
-                <h2 class="text-base font-semibold">Tendencias em Multiplos Periodos</h2>
-                <p class="text-xs text-gray-500">Verifica se a tendencia em periodos maiores confirma os sinais</p>
+    <!-- ═══════════════════ ACTIVITY LOG ═══════════════════ -->
+    <section class="glass rounded-xl overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800/50 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <h2 class="text-sm font-semibold">Atividade do Sistema</h2>
             </div>
-            <span id="mtfBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
-                <span id="mtfStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
-                <span id="mtfStatusText">desativado</span>
-            </span>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
-            <div class="flex items-center gap-4">
-                <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Tendencia 4 Horas</div>
-                    <div class="flex items-center gap-2">
-                        <span id="mtfH4Dot" class="w-3 h-3 rounded-full bg-gray-600"></span>
-                        <span id="mtfH4" class="text-sm font-semibold font-mono">—</span>
-                    </div>
+        <div id="logsBody" class="p-3 space-y-1.5 font-mono text-[11px] overflow-y-auto" style="max-height:200px">
+            <div class="text-gray-500 text-center py-6 text-xs">Sem registros.</div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════ HOW IT WORKS ═══════════════════ -->
+    <section class="glass rounded-xl p-5">
+        <div class="flex items-center gap-2 mb-4">
+            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <h2 class="text-sm font-semibold">Como o Sistema Decide?</h2>
+        </div>
+        <p class="text-[11px] text-gray-500 mb-4">Um sinal so e gerado quando TODAS as condicoes abaixo sao atendidas simultaneamente.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-lg p-4" style="background:rgba(6,78,59,0.1);border:1px solid rgba(6,78,59,0.25)">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-emerald-400 text-sm">LONG</span>
+                    <span class="text-xs font-semibold text-emerald-300">Sinal de Compra</span>
                 </div>
+                <p class="text-[11px] text-gray-400 mb-3">Bitcoin em tendencia de alta com recuo temporario — oportunidade de compra.</p>
+                <ul class="space-y-1 text-[11px] text-gray-400">
+                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>Preco acima da media 200 periodos</li>
+                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>Pullback tocou faixa inferior (Bollinger)</li>
+                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>RSI abaixo de 35 (exaustao de venda)</li>
+                    <li class="flex items-start gap-2"><span class="text-emerald-500">✓</span>Volume 1.5x acima da media</li>
+                </ul>
             </div>
-            <div class="flex items-center gap-4">
-                <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Tendencia Diario</div>
-                    <div class="flex items-center gap-2">
-                        <span id="mtfD1Dot" class="w-3 h-3 rounded-full bg-gray-600"></span>
-                        <span id="mtfD1" class="text-sm font-semibold font-mono">—</span>
-                    </div>
+            <div class="rounded-lg p-4" style="background:rgba(127,29,29,0.1);border:1px solid rgba(127,29,29,0.25)">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-red-400 text-sm">SHORT</span>
+                    <span class="text-xs font-semibold text-red-300">Sinal de Venda</span>
                 </div>
-            </div>
-            <div class="flex items-center gap-4">
-                <div class="flex-1">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Confluencia</div>
-                    <div id="mtfConfluence" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-gray-800 text-gray-400">
-                        —
-                    </div>
-                    <div id="mtfCache" class="text-xs font-mono text-gray-500 mt-1">—</div>
-                </div>
+                <p class="text-[11px] text-gray-400 mb-3">Bitcoin em tendencia de baixa com alta temporaria — oportunidade de venda.</p>
+                <ul class="space-y-1 text-[11px] text-gray-400">
+                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>Preco abaixo da media 200 periodos</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>Pullback tocou faixa superior (Bollinger)</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>RSI acima de 65 (exaustao de compra)</li>
+                    <li class="flex items-start gap-2"><span class="text-red-500">✓</span>Volume 1.5x acima da media</li>
+                </ul>
             </div>
         </div>
     </section>
 
-    <!-- Como o Sistema Decide? -->
-    <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-        <h2 class="text-base font-semibold mb-1">Como o Sistema Decide?</h2>
-        <p class="text-xs text-gray-500 mb-4">O bot so gera um sinal quando TODAS as condicoes abaixo sao atendidas ao mesmo tempo.</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div class="bg-emerald-900/10 border border-emerald-900/30 rounded-lg p-4">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-emerald-400 text-lg">🟢</span>
-                    <span class="font-semibold text-emerald-300">Sinal de COMPRA (LONG)</span>
-                </div>
-                <p class="text-xs text-gray-400 mb-3">Gerado quando o Bitcoin esta em tendencia de alta mas sofreu um recuo temporario — uma oportunidade para comprar mais barato.</p>
-                <ul class="space-y-1.5 text-xs text-gray-400">
-                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Tendencia de alta</b> — o preco esta acima da media dos ultimos 200 periodos</span></li>
-                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Pullback</b> — o preco recuou e tocou a faixa inferior (Bollinger)</span></li>
-                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Exaustao da venda</b> — RSI abaixo de 35 (vendedores fracos)</span></li>
-                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Volume alto</b> — volume 1.5x acima da media (compradores entrando)</span></li>
-                    <li class="mt-2 pt-2 border-t border-emerald-900/30 text-emerald-400 text-xs"><b>Referencia:</b> Stop Loss a 1.5x ATR abaixo | Alvo a 2.0x ATR acima</li>
-                </ul>
-            </div>
-            <div class="bg-red-900/10 border border-red-900/30 rounded-lg p-4">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-red-400 text-lg">🔴</span>
-                    <span class="font-semibold text-red-300">Sinal de VENDA (SHORT)</span>
-                </div>
-                <p class="text-xs text-gray-400 mb-3">Gerado quando o Bitcoin esta em tendencia de baixa mas subiu temporariamente — uma oportunidade para vender mais caro.</p>
-                <ul class="space-y-1.5 text-xs text-gray-400">
-                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Tendencia de baixa</b> — o preco esta abaixo da media dos ultimos 200 periodos</span></li>
-                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Pullback para cima</b> — o preco subiu e tocou a faixa superior (Bollinger)</span></li>
-                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Exaustao da compra</b> — RSI acima de 65 (compradores fracos)</span></li>
-                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Volume alto</b> — volume 1.5x acima da media (vendedores entrando)</span></li>
-                    <li class="mt-2 pt-2 border-t border-red-900/30 text-red-400 text-xs"><b>Referencia:</b> Stop Loss a 1.5x ATR acima | Alvo a 2.0x ATR abaixo</li>
-                </ul>
-            </div>
-        </div>
-        <div class="mt-4 bg-gray-800/50 rounded-lg p-4 text-xs text-gray-400">
-            <div class="font-semibold text-gray-300 mb-2">Valores incluidos em cada sinal:</div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div class="flex items-start gap-2"><span class="text-amber-400">1.</span> <b>Preco de Entrada</b> — nivel do preco no momento do sinal</div>
-                <div class="flex items-start gap-2"><span class="text-amber-400">2.</span> <b>Stop Loss</b> — nivel de protecao contra perdas excessivas</div>
-                <div class="flex items-start gap-2"><span class="text-amber-400">3.</span> <b>Take Profit</b> — nivel de alvo para realizacao de ganhos</div>
-                <div class="flex items-start gap-2"><span class="text-amber-400">4.</span> <b>RSI</b> — indicador de forca/momentum no momento do sinal</div>
-            </div>
-        </div>
-    </section>
-
-    <footer class="text-center text-xs text-gray-600 pt-4 pb-8">
-        CTEV Bot v4.0 — Analise automatizada de Bitcoin | Apenas sinais, sem execucao de ordens
+    <!-- Footer -->
+    <footer class="text-center text-[10px] text-gray-600 pt-3 pb-6">
+        CTEV Signal Bot v4.0 — Analise automatizada de Bitcoin · Apenas sinais, sem execucao de ordens
     </footer>
 </main>
 
-<!-- Toast container -->
-<div id="toast" class="fixed bottom-4 right-4 hidden px-4 py-3 rounded-lg shadow-lg text-sm font-medium z-50"></div>
+<!-- Toast -->
+<div id="toast" class="fixed bottom-4 right-4 hidden px-4 py-3 rounded-lg text-xs font-medium z-50" style="background:rgba(17,24,39,0.95);border:1px solid rgba(55,65,81,0.5);backdrop-filter:blur(12px)"></div>
 
+<!-- TradingView Widget Script -->
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 <script>
-    const POLL_INTERVAL_MS = 5000;
-    let pollTimer = null;
+// ═══════════════════════════════════════════════════════════
+//  CTEV Signal Bot Dashboard — Professional Edition
+// ═══════════════════════════════════════════════════════════
 
-    // ---------- Helpers ----------
-    function showToast(message, type = 'info') {
-        const toast = document.getElementById('toast');
-        const colors = {
-            info: 'bg-gray-800 text-white',
-            success: 'bg-emerald-600 text-white',
-            error: 'bg-red-600 text-white'
-        };
-        toast.className = 'fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg text-sm font-medium z-50 ' + colors[type];
-        toast.textContent = message;
-        toast.classList.remove('hidden');
-        setTimeout(() => toast.classList.add('hidden'), 3000);
-    }
+const POLL_MS = 5000;
+let pollTimer = null;
+let allSignals = [];
 
-    function fmtDateTime(iso) {
-        if (!iso) return '—';
-        try {
-            const d = new Date(iso);
-            return d.toLocaleString('pt-BR', { hour12: false });
-        } catch { return iso; }
-    }
+// ---------- TradingView Chart ----------
+try {
+    new TradingView.widget({
+        autosize: true,
+        symbol: "BINANCE:BTCUSDT",
+        interval: "60",
+        timezone: "America/Sao_Paulo",
+        theme: "dark",
+        style: "1",
+        locale: "br",
+        enable_publishing: false,
+        hide_top_toolbar: false,
+        hide_legend: false,
+        save_image: false,
+        container_id: "tradingview_chart",
+        backgroundColor: "rgba(6, 10, 19, 1)",
+        gridColor: "rgba(55, 65, 81, 0.2)",
+        allow_symbol_change: false,
+        studies: ["RSI@tv-basicstudies", "BB@tv-basicstudies"],
+        withdateranges: true,
+        details: false,
+        hotlist: false,
+        calendar: false,
+    });
+} catch(e) { console.warn('TradingView widget failed:', e); }
 
-    function fmtNum(n, decimals = 2) {
-        if (n === null || n === undefined) return '—';
-        return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    }
+// ---------- Helpers ----------
+function showToast(msg, type='info') {
+    const t = document.getElementById('toast');
+    const colors = { info: '#60a5fa', success: '#34d399', error: '#f87171' };
+    t.style.borderLeftColor = colors[type] || colors.info;
+    t.style.borderLeft = `3px solid ${colors[type] || colors.info}`;
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    setTimeout(() => t.classList.add('hidden'), 3500);
+}
 
-    async function api(method, path, body) {
-        const opts = { method, headers: { 'Content-Type': 'application/json' } };
-        if (body) opts.body = JSON.stringify(body);
-        const res = await fetch(path, opts);
-        if (!res.ok) throw new Error(`${path} → ${res.status}`);
-        return res.json();
-    }
+function fmtDT(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleString('pt-BR', { hour12: false }); } catch { return iso; }
+}
+function fmtTime(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleString('pt-BR', { hour12: false, day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); } catch { return iso; }
+}
+function fmtN(n, d=2) {
+    if (n === null || n === undefined) return '—';
+    return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
 
-    // ---------- Renderizacao ----------
-    function renderStatus(data) {
-        const bot = data.bot;
-        const running = bot.running;
-        const dot = document.getElementById('statusDot');
-        const kpiDot = document.getElementById('kpiStatusDot');
-        const text = document.getElementById('statusText');
-        const kpiStatus = document.getElementById('kpiStatus');
-        const kpiStatusSub = document.getElementById('kpiStatusSub');
-        const badge = document.getElementById('botStatusBadge');
+async function api(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(path, opts);
+    if (!res.ok) throw new Error(`${path} → ${res.status}`);
+    return res.json();
+}
 
-        if (running) {
-            dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot';
-            kpiDot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
-            text.textContent = 'Online';
-            kpiStatus.textContent = 'Online';
-            kpiStatusSub.textContent = 'Bot ativo — analisando';
-            badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-900/40 text-emerald-300 text-sm';
-        } else {
-            dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
-            kpiDot.className = 'w-2 h-2 rounded-full bg-amber-500';
-            text.textContent = 'Pausado';
-            kpiStatus.textContent = 'Pausado';
-            kpiStatusSub.textContent = 'Analise pausada';
-            badge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-900/40 text-amber-300 text-sm';
+function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- Confidence calculation ----------
+function calcConfidence(s) {
+    const rsiDist = Math.abs(s.rsi - 50) / 50;
+    const volRatio = Math.min((s.volume || 0) / Math.max(s.volume_sma20 || 1, 1), 3);
+    const volScore = Math.min(volRatio / 2.5, 1);
+    return Math.min(Math.round((rsiDist * 0.55 + volScore * 0.45) * 100), 99);
+}
+
+function confColor(v) {
+    if (v >= 70) return '#10b981';
+    if (v >= 45) return '#f59e0b';
+    return '#6b7280';
+}
+
+// ---------- Canvas Charts ----------
+function drawSparkline(signals) {
+    const canvas = document.getElementById('sparklineCanvas');
+    if (!canvas || signals.length < 2) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 100 * dpr;
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = 100;
+    ctx.clearRect(0, 0, W, H);
+
+    const prices = signals.map(s => s.entry_price).reverse();
+    const min = Math.min(...prices), max = Math.max(...prices);
+    const range = max - min || 1;
+    const pad = 4;
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
+    grad.addColorStop(1, 'rgba(59, 130, 246, 0)');
+
+    ctx.beginPath();
+    prices.forEach((p, i) => {
+        const x = pad + (i / (prices.length - 1)) * (W - pad * 2);
+        const y = H - pad - ((p - min) / range) * (H - pad * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Fill
+    const lastX = pad + (W - pad * 2);
+    ctx.lineTo(lastX, H);
+    ctx.lineTo(pad, H);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Dots on last 3
+    const last3 = prices.slice(-3);
+    last3.forEach((p, i) => {
+        const idx = prices.length - 3 + i;
+        const x = pad + (idx / (prices.length - 1)) * (W - pad * 2);
+        const y = H - pad - ((p - min) / range) * (H - pad * 2);
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = i === last3.length - 1 ? '#3b82f6' : 'rgba(59,130,246,0.4)';
+        ctx.fill();
+    });
+
+    document.getElementById('sparkNewest').textContent = '$' + fmtN(prices[prices.length-1]);
+    document.getElementById('sparkOldest').textContent = '$' + fmtN(prices[0]);
+}
+
+function drawRSIChart(signals) {
+    const canvas = document.getElementById('rsiCanvas');
+    if (!canvas || signals.length < 1) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 100 * dpr;
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = 100;
+    ctx.clearRect(0, 0, W, H);
+
+    const rsis = signals.map(s => s.rsi).reverse();
+    const pad = 4;
+
+    // Zones
+    const yOf = v => H - pad - ((v - 0) / 100) * (H - pad * 2);
+
+    // Overbought zone (65-100)
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.06)';
+    ctx.fillRect(pad, yOf(100), W - pad * 2, yOf(65) - yOf(100));
+
+    // Oversold zone (0-35)
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.06)';
+    ctx.fillRect(pad, yOf(35), W - pad * 2, yOf(0) - yOf(35));
+
+    // Lines at 30, 50, 70
+    [30, 50, 70].forEach(v => {
+        ctx.beginPath();
+        ctx.moveTo(pad, yOf(v));
+        ctx.lineTo(W - pad, yOf(v));
+        ctx.strokeStyle = 'rgba(55, 65, 81, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    });
+
+    // Bars
+    const barW = Math.max(2, (W - pad * 2) / rsis.length - 2);
+    rsis.forEach((v, i) => {
+        const x = pad + (i / rsis.length) * (W - pad * 2);
+        const y = yOf(v);
+        const barH = yOf(0) - y;
+        ctx.fillStyle = v < 35 ? 'rgba(16, 185, 129, 0.7)' : v > 65 ? 'rgba(239, 68, 68, 0.7)' : 'rgba(107, 114, 128, 0.4)';
+        ctx.fillRect(x, y, barW, barH);
+    });
+}
+
+function drawDonut(signals) {
+    const canvas = document.getElementById('donutCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 90 * dpr; canvas.height = 90 * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, 90, 90);
+
+    const longs = signals.filter(s => s.type === 'LONG').length;
+    const shorts = signals.filter(s => s.type === 'SHORT').length;
+    const total = longs + shorts || 1;
+
+    const cx = 45, cy = 45, r = 34, lineW = 10;
+
+    // Background ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(55, 65, 81, 0.2)';
+    ctx.lineWidth = lineW;
+    ctx.stroke();
+
+    if (total > 0) {
+        const longAngle = (longs / total) * Math.PI * 2;
+        // LONG arc
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + longAngle);
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = lineW;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        // SHORT arc
+        if (shorts > 0) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, -Math.PI / 2 + longAngle + 0.05, -Math.PI / 2 + Math.PI * 2 - 0.05);
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = lineW;
+            ctx.lineCap = 'round';
+            ctx.stroke();
         }
-
-        // KPIs
-        document.getElementById('kpiSignalsToday').textContent = data.signals_today || 0;
-        const byType = data.signals_today_by_type || { LONG: 0, SHORT: 0 };
-        document.getElementById('kpiSignalsBreakdown').textContent =
-            `${byType.LONG || 0} compra(s) / ${byType.SHORT || 0} venda(s)`;
-
-        document.getElementById('kpiCycles').textContent = bot.cycle_count || 0;
-        document.getElementById('kpiErrors').textContent = `${bot.error_count || 0} erros`;
-
-        document.getElementById('kpiLastCheck').textContent = fmtDateTime(bot.last_check);
-        document.getElementById('kpiLastSignal').textContent =
-            'Ultimo sinal: ' + fmtDateTime(bot.last_signal_ts);
-
-        document.getElementById('kpiSymbol').textContent = data.symbol || '—';
-        document.getElementById('kpiTimeframe').textContent = (data.timeframe || '—').toUpperCase();
-
-        document.getElementById('symbolBadge').textContent =
-            `${data.symbol} · ${data.timeframe.toUpperCase()}`;
-
-        // Multi-Timeframe from status
-        if (data.multitf) {
-            renderMTFInline(data.multitf);
-        }
     }
 
-    function renderSignals(data) {
-        const tbody = document.getElementById('signalsBody');
-        const signals = data.signals || [];
-        if (signals.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum sinal ainda.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = signals.map(s => {
-            const isLong = s.type === 'LONG';
-            const typeClass = isLong
-                ? 'bg-emerald-900/40 text-emerald-300'
-                : 'bg-red-900/40 text-red-300';
-            const emoji = isLong ? '🟢' : '🔴';
-            const tgIcon = s.notified
-                ? '<span class="text-emerald-400" title="Enviado">✓</span>'
-                : '<span class="text-gray-600" title="Nao enviado">○</span>';
-            return `
-                <tr class="hover:bg-gray-800/40 transition fade-in">
-                    <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(s.ts)}</td>
-                    <td class="px-4 py-3">
-                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${typeClass}">
-                            ${emoji} ${s.type}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3 text-right font-mono text-gray-200">${fmtNum(s.entry_price)}</td>
-                    <td class="px-4 py-3 text-right font-mono text-red-300">${fmtNum(s.stop_loss)}</td>
-                    <td class="px-4 py-3 text-right font-mono text-emerald-300">${fmtNum(s.take_profit)}</td>
-                    <td class="px-4 py-3 text-center font-mono text-gray-400">${fmtNum(s.rsi)}</td>
-                    <td class="px-4 py-3 text-center">${tgIcon}</td>
-                </tr>
-            `;
-        }).join('');
+    // Center text
+    ctx.fillStyle = '#f9fafb';
+    ctx.font = '700 16px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(total, cx, cy - 4);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '400 8px "Inter", sans-serif';
+    ctx.fillText('sinais', cx, cy + 10);
+
+    document.getElementById('splitTotal').textContent = total + ' total';
+    document.getElementById('splitLongPct').textContent = Math.round(longs / total * 100) + '%';
+    document.getElementById('splitShortPct').textContent = Math.round(shorts / total * 100) + '%';
+    document.getElementById('splitLongBar').style.width = (longs / total * 100) + '%';
+    document.getElementById('splitShortBar').style.width = (shorts / total * 100) + '%';
+}
+
+// ---------- Render Functions ----------
+function renderStatus(data) {
+    const bot = data.bot;
+    const running = bot.running;
+    const dot = document.getElementById('headerDot');
+    const badge = document.getElementById('headerBadge');
+    const text = document.getElementById('headerStatusText');
+
+    if (running) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
+        badge.className = 'status-live flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium';
+        text.className = 'text-emerald-400';
+        text.textContent = 'Online';
+        document.getElementById('kpiStatus').textContent = 'Online';
+        document.getElementById('kpiStatusSub').textContent = 'Analisando mercado';
+    } else {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+        badge.className = 'status-paused flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium';
+        text.className = 'text-amber-400';
+        text.textContent = 'Pausado';
+        document.getElementById('kpiStatus').textContent = 'Pausado';
+        document.getElementById('kpiStatusSub').textContent = 'Analise pausada';
     }
 
-    function renderLogs(data) {
-        const body = document.getElementById('logsBody');
-        const logs = data.logs || [];
-        if (logs.length === 0) {
-            body.innerHTML = '<div class="text-gray-500 text-center py-8">Sem registros.</div>';
-            return;
-        }
-        const levelColors = {
-            INFO: 'text-blue-400',
-            WARNING: 'text-amber-400',
-            ERROR: 'text-red-400',
-            DEBUG: 'text-gray-500'
-        };
-        body.innerHTML = logs.map(l => {
-            const color = levelColors[l.level] || 'text-gray-400';
-            const time = fmtDateTime(l.ts).split(' ')[1] || l.ts;
-            return `
-                <div class="flex gap-2 fade-in">
-                    <span class="text-gray-600 shrink-0">${time}</span>
-                    <span class="${color} shrink-0 font-semibold">[${l.level}]</span>
-                    <span class="text-gray-300 break-words">${escapeHtml(l.message)}</span>
+    // Header price
+    const sigs = data.signals_today || 0;
+    document.getElementById('headerSignalsToday').textContent = sigs;
+    document.getElementById('headerLastCheck').textContent = fmtTime(bot.last_check);
+
+    // KPIs
+    document.getElementById('kpiSignalsToday').textContent = sigs;
+    const byType = data.signals_today_by_type || {};
+    document.getElementById('kpiSignalsBreakdown').textContent = `${byType.LONG || 0} compra / ${byType.SHORT || 0} venda`;
+    document.getElementById('kpiCycles').textContent = bot.cycle_count || 0;
+    document.getElementById('kpiErrors').textContent = (bot.error_count || 0) + ' erros';
+    document.getElementById('kpiLastCheck').textContent = fmtTime(bot.last_check);
+    document.getElementById('kpiLastSignal').textContent = 'Ultimo sinal: ' + fmtTime(bot.last_signal_ts);
+    document.getElementById('symbolLabel').textContent = (data.symbol || 'BTC/USDT') + ' · ' + (data.timeframe || '1H').toUpperCase();
+
+    if (data.multitf) renderMTF(data.multitf);
+}
+
+function renderSignals(data) {
+    const signals = (data.signals || []).reverse();
+    allSignals = signals;
+    document.getElementById('signalCount').textContent = signals.length + ' sinais';
+    document.getElementById('tableCount').textContent = signals.length + ' registros';
+
+    if (signals.length === 0) {
+        document.getElementById('signalFeed').innerHTML = '<div class="text-center text-gray-500 text-xs py-10">Aguardando sinais...</div>';
+        document.getElementById('signalsTableBody').innerHTML = '<tr><td colspan="8" class="px-4 py-10 text-center text-gray-500 text-xs">Nenhum sinal registrado.</td></tr>';
+        return;
+    }
+
+    // Signal Feed (card-based)
+    const feed = document.getElementById('signalFeed');
+    feed.innerHTML = signals.slice(0, 15).map(s => {
+        const isLong = s.type === 'LONG';
+        const conf = calcConfidence(s);
+        const ago = timeAgo(s.ts);
+        return `
+            <div class="signal-card rounded-lg p-3 cursor-default" style="background:${isLong ? 'rgba(6,78,59,0.08)' : 'rgba(127,29,29,0.08)'};border:1px solid ${isLong ? 'rgba(6,78,59,0.2)' : 'rgba(127,29,29,0.2)'}">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full ${isLong ? 'bg-emerald-500' : 'bg-red-500'}"></span>
+                        <span class="text-xs font-bold ${isLong ? 'text-emerald-400' : 'text-red-400'}">${s.type}</span>
+                    </div>
+                    <span class="text-[10px] text-gray-500">${ago}</span>
                 </div>
-            `;
+                <div class="text-sm font-semibold font-mono mb-1">$${fmtN(s.entry_price)}</div>
+                <div class="confidence-bar mb-1.5">
+                    <div class="confidence-fill" style="width:${conf}%;background:${confColor(conf)}"></div>
+                </div>
+                <div class="flex items-center justify-between text-[10px] text-gray-500">
+                    <span>RSI ${fmtN(s.rsi, 0)}</span>
+                    <span style="color:${confColor(conf)}">Forca ${conf}%</span>
+                </div>
+            </div>`;
+    }).join('');
+
+    // Table
+    const tbody = document.getElementById('signalsTableBody');
+    tbody.innerHTML = signals.map(s => {
+        const isLong = s.type === 'LONG';
+        const conf = calcConfidence(s);
+        const tg = s.notified ? '<span class="text-emerald-400">✓</span>' : '<span class="text-gray-600">○</span>';
+        return `
+            <tr class="hover:bg-white/[0.02] transition fade-in">
+                <td class="px-4 py-3 text-gray-400 font-mono text-xs">${fmtDT(s.ts)}</td>
+                <td class="px-4 py-3">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${isLong ? 'text-emerald-400' : 'text-red-400'}" style="background:${isLong ? 'rgba(6,78,59,0.15)' : 'rgba(127,29,29,0.15)'}">
+                        ${isLong ? '▲' : '▼'} ${s.type}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-right font-mono text-gray-200 text-xs">$${fmtN(s.entry_price)}</td>
+                <td class="px-4 py-3 text-right font-mono text-red-400/70 text-xs">$${fmtN(s.stop_loss)}</td>
+                <td class="px-4 py-3 text-right font-mono text-emerald-400/70 text-xs">$${fmtN(s.take_profit)}</td>
+                <td class="px-4 py-3 text-center font-mono text-gray-400 text-xs">${fmtN(s.rsi, 0)}</td>
+                <td class="px-4 py-3 text-center">
+                    <div class="flex items-center gap-1.5 justify-center">
+                        <div class="w-12 h-1.5 rounded-full" style="background:rgba(55,65,81,0.3)">
+                            <div class="h-1.5 rounded-full" style="width:${conf}%;background:${confColor(conf)}"></div>
+                        </div>
+                        <span class="text-[10px] font-mono" style="color:${confColor(conf)}">${conf}</span>
+                    </div>
+                </td>
+                <td class="px-4 py-3 text-center text-xs">${tg}</td>
+            </tr>`;
+    }).join('');
+
+    // Draw charts
+    drawSparkline(signals);
+    drawRSIChart(signals);
+    drawDonut(signals);
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'agora';
+    if (diff < 3600) return Math.floor(diff / 60) + 'min';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+    return Math.floor(diff / 86400) + 'd';
+}
+
+function renderRisk(r) {
+    const dailyPct = Math.abs(r.daily_loss_pct || 0);
+    const dailyMax = r.daily_loss_limit || 3;
+    const weeklyPct = Math.abs(r.weekly_loss_pct || 0);
+    const weeklyMax = r.weekly_loss_limit || 6;
+    const filtered = r.signals_filtered || 0;
+    const isKilled = r.is_killed || false;
+    const cb = r.circuit_breaker_active || false;
+
+    document.getElementById('riskFiltered').textContent = filtered;
+
+    // System status
+    const dot = document.getElementById('riskSysDot');
+    const status = document.getElementById('riskSysStatus');
+    const sub = document.getElementById('riskSysSub');
+    if (isKilled) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+        status.textContent = 'Interrompido';
+        status.className = 'text-base font-semibold text-red-400';
+        sub.textContent = 'sistema pausado';
+    } else if (cb) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500 pulse-dot';
+        status.textContent = 'Volatil';
+        status.className = 'text-base font-semibold text-amber-400';
+        sub.textContent = 'mercado instavel';
+    } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot';
+        status.textContent = 'Normal';
+        status.className = 'text-base font-semibold text-emerald-400';
+        sub.textContent = 'tudo funcionando';
+    }
+
+    // Gauges
+    const circ = 314; // 2 * PI * 50
+    const dRatio = Math.min(dailyPct / dailyMax, 1);
+    const wRatio = Math.min(weeklyPct / weeklyMax, 1);
+    const dColor = dRatio > 0.8 ? '#ef4444' : dRatio > 0.5 ? '#f59e0b' : '#10b981';
+    const wColor = wRatio > 0.8 ? '#ef4444' : wRatio > 0.5 ? '#f59e0b' : '#10b981';
+
+    document.getElementById('gaugeDaily').setAttribute('stroke-dashoffset', circ * (1 - dRatio));
+    document.getElementById('gaugeDaily').setAttribute('stroke', dColor);
+    document.getElementById('gaugeDailyVal').textContent = fmtN(dailyPct) + '%';
+    document.getElementById('gaugeDailyMax').textContent = fmtN(dailyMax) + '%';
+
+    document.getElementById('gaugeWeekly').setAttribute('stroke-dashoffset', circ * (1 - wRatio));
+    document.getElementById('gaugeWeekly').setAttribute('stroke', wColor);
+    document.getElementById('gaugeWeeklyVal').textContent = fmtN(weeklyPct) + '%';
+    document.getElementById('gaugeWeeklyMax').textContent = fmtN(weeklyMax) + '%';
+}
+
+function renderMTF(mtf) {
+    const enabled = mtf.enabled;
+    const dot = document.getElementById('mtfDot');
+    const text = document.getElementById('mtfText');
+    if (enabled) {
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot';
+        text.textContent = 'ativo';
+        text.className = 'text-emerald-400';
+    } else {
+        dot.className = 'w-1.5 h-1.5 rounded-full bg-gray-500';
+        text.textContent = 'desativado';
+        text.className = 'text-gray-400';
+    }
+
+    const renderTrend = (id, trend) => {
+        const d = document.getElementById(id + 'Dot');
+        const t = document.getElementById(id);
+        t.textContent = trend;
+        if ((trend||'').toLowerCase() === 'bullish') {
+            d.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500'; t.className = 'text-sm font-semibold font-mono text-emerald-400';
+        } else if ((trend||'').toLowerCase() === 'bearish') {
+            d.className = 'w-2.5 h-2.5 rounded-full bg-red-500'; t.className = 'text-sm font-semibold font-mono text-red-400';
+        } else {
+            d.className = 'w-2.5 h-2.5 rounded-full bg-gray-600'; t.className = 'text-sm font-semibold font-mono text-gray-400';
+        }
+    };
+    renderTrend('mtfH4', mtf.h4_trend);
+    renderTrend('mtfD1', mtf.d1_trend);
+
+    const conf = mtf.confluence || '';
+    const el = document.getElementById('mtfConfluence');
+    el.textContent = conf;
+    if (conf.toLowerCase() === 'bullish') { el.style.background = 'rgba(6,78,59,0.2)'; el.style.color = '#34d399'; }
+    else if (conf.toLowerCase() === 'bearish') { el.style.background = 'rgba(127,29,29,0.2)'; el.style.color = '#f87171'; }
+    else if (conf.toLowerCase() === 'mixed') { el.style.background = 'rgba(120,53,15,0.2)'; el.style.color = '#fbbf24'; }
+    else { el.style.background = 'rgba(55,65,81,0.3)'; el.style.color = '#9ca3af'; }
+}
+
+function renderLogs(data) {
+    const body = document.getElementById('logsBody');
+    const logs = data.logs || [];
+    if (logs.length === 0) { body.innerHTML = '<div class="text-gray-500 text-center py-6 text-xs">Sem registros.</div>'; return; }
+    const lc = { INFO: '#60a5fa', WARNING: '#fbbf24', ERROR: '#f87171', DEBUG: '#6b7280' };
+    body.innerHTML = logs.slice(0, 30).map(l => {
+        const time = fmtTime(l.ts).split(' ')[1] || l.ts;
+        return `<div class="flex gap-2 fade-in py-0.5"><span class="text-gray-600 shrink-0">${time}</span><span style="color:${lc[l.level]||'#9ca3af'}" class="shrink-0 font-semibold">[${l.level}]</span><span class="text-gray-400 break-words">${esc(l.message)}</span></div>`;
+    }).join('');
+}
+
+// ---------- Fetch All ----------
+async function fetchAll() {
+    try {
+        const [status, signals, logs, risk] = await Promise.all([
+            api('GET', '/api/status'),
+            api('GET', '/api/signals?limit=100'),
+            api('GET', '/api/logs?limit=50'),
+            api('GET', '/api/risk').catch(() => null),
+        ]);
+        renderStatus(status);
+        renderSignals(signals);
+        renderLogs(logs);
+        if (risk) renderRisk(risk);
+        fetchMTF();
+    } catch (err) {
+        console.error('Poll fail:', err);
+        document.getElementById('headerStatusText').textContent = 'Erro';
+        document.getElementById('headerDot').className = 'w-2 h-2 rounded-full bg-red-500';
+    }
+}
+
+async function fetchMTF() {
+    try { renderMTF(await api('GET', '/api/mtf')); } catch(e) {}
+}
+
+// ---------- Backtest ----------
+let btPoll = null;
+async function runBacktest() {
+    const btn = document.getElementById('btnRunBt');
+    const dot = document.getElementById('btStatusDot');
+    const txt = document.getElementById('btStatusText');
+    btn.disabled = true; btn.style.opacity = '0.5';
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot';
+    txt.textContent = 'calculando...';
+    document.getElementById('btResults').classList.add('hidden');
+    try {
+        const res = await api('POST', '/api/backtest?days=730');
+        if (res.status === 'running') btPoll = setInterval(checkBt, 3000);
+        else if (res.status === 'done') renderBt(res);
+        else { showToast('Resposta inesperada', 'info'); resetBt(); }
+    } catch(e) { showToast('Falha: ' + e.message, 'error'); resetBt(); }
+}
+async function checkBt() {
+    try {
+        const r = await api('GET', '/api/backtest/status');
+        if (r.status === 'done') { clearInterval(btPoll); btPoll = null; renderBt(r); }
+    } catch(e) { clearInterval(btPoll); btPoll = null; resetBt(); }
+}
+function renderBt(res) {
+    const dot = document.getElementById('btStatusDot');
+    const txt = document.getElementById('btStatusText');
+    dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
+    txt.textContent = 'concluido';
+    document.getElementById('btnRunBt').disabled = false;
+    document.getElementById('btnRunBt').style.opacity = '1';
+
+    const r = res.results || res;
+    document.getElementById('btTrades').textContent = r.total_trades || 0;
+    document.getElementById('btWR').textContent = fmtN(r.win_rate, 1) + '%';
+    document.getElementById('btPF').textContent = fmtN(r.profit_factor, 2);
+    const dd = document.getElementById('btDD');
+    dd.textContent = fmtN(r.max_drawdown_pct, 2) + '%';
+    dd.style.color = r.max_drawdown_pct < 0 ? '#f87171' : '#f9fafb';
+    const pnl = document.getElementById('btPnL');
+    pnl.textContent = (r.total_pnl_pct >= 0 ? '+' : '') + fmtN(r.total_pnl_pct, 2) + '%';
+    pnl.style.color = r.total_pnl_pct >= 0 ? '#34d399' : '#f87171';
+    const bh = document.getElementById('btBH');
+    bh.textContent = fmtN(r.buy_hold_pct, 2) + '%';
+    bh.style.color = r.buy_hold_pct >= 0 ? '#34d399' : '#f87171';
+
+    const trades = (r.trades || []).slice(-10).reverse();
+    document.getElementById('btTradesBody').innerHTML = trades.length === 0
+        ? '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500 text-xs">Nenhum sinal.</td></tr>'
+        : trades.map(t => {
+            const p = t.pnl_pct || 0;
+            const c = p >= 0 ? '#34d399' : '#f87171';
+            return `<tr class="hover:bg-white/[0.02] transition fade-in">
+                <td class="px-4 py-2 text-gray-400 font-mono text-xs">${fmtDT(t.entry_ts||t.entry_date)}</td>
+                <td class="px-4 py-2 text-gray-400 font-mono text-xs">${fmtDT(t.exit_ts||t.exit_date)}</td>
+                <td class="px-4 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${(t.type==='LONG'?'text-emerald-400':'text-red-400')}">${t.type}</span></td>
+                <td class="px-4 py-2 text-right font-mono text-gray-300 text-xs">$${fmtN(t.entry_price)}</td>
+                <td class="px-4 py-2 text-right font-mono text-gray-300 text-xs">$${fmtN(t.exit_price)}</td>
+                <td class="px-4 py-2 text-right font-mono font-semibold text-xs" style="color:${c}">${p>=0?'+':''}${fmtN(p)}%</td>
+                <td class="px-4 py-2 text-gray-500 text-xs">${esc(t.reason||'—')}</td>
+            </tr>`;
         }).join('');
-    }
+    document.getElementById('btResults').classList.remove('hidden');
+}
+function resetBt() {
+    document.getElementById('btnRunBt').disabled = false;
+    document.getElementById('btnRunBt').style.opacity = '1';
+    document.getElementById('btStatusDot').className = 'w-1.5 h-1.5 rounded-full bg-gray-500';
+    document.getElementById('btStatusText').textContent = 'idle';
+}
 
-    function escapeHtml(s) {
-        if (!s) return '';
-        return String(s).replace(/[&<>"']/g, c => ({
-            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-        }[c]));
-    }
+// ---------- Init ----------
+fetchAll();
+pollTimer = setInterval(fetchAll, POLL_MS);
 
-    // ---------- Acoes ----------
-    async function fetchAll() {
-        try {
-            const [status, signals, logs, risk] = await Promise.all([
-                api('GET', '/api/status'),
-                api('GET', '/api/signals?limit=50'),
-                api('GET', '/api/logs?limit=50'),
-                api('GET', '/api/risk').catch(() => null),
-            ]);
-            renderStatus(status);
-            renderSignals(signals);
-            renderLogs(logs);
-            if (risk) {
-                renderRisk(risk);
-            }
-            fetchMTF();
-        } catch (err) {
-            console.error('Polling falhou:', err);
-            const text = document.getElementById('statusText');
-            text.textContent = 'Erro de conexao';
-            document.getElementById('statusDot').className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+// Redraw charts on resize
+let resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (allSignals.length > 0) {
+            drawSparkline(allSignals);
+            drawRSIChart(allSignals);
         }
-    }
-
-    // ---------- Risk Management Rendering ----------
-    function renderRisk(r) {
-        const dailyPct = r.daily_loss_pct || 0;
-        const dailyMax = r.daily_loss_limit || 3.0;
-        const weeklyPct = r.weekly_loss_pct || 0;
-        const weeklyMax = r.weekly_loss_limit || 6.0;
-        const filtered = r.signals_filtered || 0;
-        const isKilled = r.is_killed || false;
-        const circuitBreaker = r.circuit_breaker_active || false;
-
-        // Filtered signals
-        document.getElementById('riskFiltered').textContent = filtered;
-
-        // System status
-        const sysDot = document.getElementById('riskSystemDot');
-        const sysStatus = document.getElementById('riskSystemStatus');
-        const sysSub = document.getElementById('riskSystemSub');
-
-        if (isKilled) {
-            sysDot.className = 'w-3 h-3 rounded-full bg-red-500';
-            sysStatus.textContent = 'Interrompido';
-            sysStatus.className = 'text-lg font-semibold text-red-400';
-            sysSub.textContent = 'Analise interrompida. O sistema precisa ser reativado.';
-        } else if (circuitBreaker) {
-            sysDot.className = 'w-3 h-3 rounded-full bg-amber-500 pulse-dot';
-            sysStatus.textContent = 'Mercado Volatil';
-            sysStatus.className = 'text-lg font-semibold text-amber-400';
-            sysSub.textContent = 'Mercado muito volatil. Analise pausada por seguranca.';
-        } else {
-            sysDot.className = 'w-3 h-3 rounded-full bg-emerald-500 pulse-dot';
-            sysStatus.textContent = 'Normal';
-            sysStatus.className = 'text-lg font-semibold text-emerald-400';
-            sysSub.textContent = 'Tudo funcionando normalmente';
-        }
-
-        // Daily drawdown
-        const dailyRatio = Math.min((Math.abs(dailyPct) / dailyMax) * 100, 100);
-        document.getElementById('riskDailyLoss').textContent = fmtNum(dailyPct) + '%';
-        document.getElementById('riskDailyBar').style.width = dailyRatio + '%';
-        document.getElementById('riskDailyBar').className = 'h-2 rounded-full transition-all duration-500 ' +
-            (dailyRatio > 80 ? 'bg-red-500' : dailyRatio > 50 ? 'bg-amber-500' : 'bg-emerald-500');
-        document.getElementById('riskDailySub').textContent = 'Limite: ' + fmtNum(dailyMax) + '%';
-
-        // Weekly drawdown
-        const weeklyRatio = Math.min((Math.abs(weeklyPct) / weeklyMax) * 100, 100);
-        document.getElementById('riskWeeklyLoss').textContent = fmtNum(weeklyPct) + '%';
-        document.getElementById('riskWeeklyBar').style.width = weeklyRatio + '%';
-        document.getElementById('riskWeeklyBar').className = 'h-2 rounded-full transition-all duration-500 ' +
-            (weeklyRatio > 80 ? 'bg-red-500' : weeklyRatio > 50 ? 'bg-amber-500' : 'bg-emerald-500');
-        document.getElementById('riskWeeklySub').textContent = 'Limite: ' + fmtNum(weeklyMax) + '%';
-    }
-
-    // ---------- Backtest ----------
-    let backtestPollTimer = null;
-
-    async function runBacktest() {
-        const btn = document.getElementById('btnRunBacktest');
-        const dot = document.getElementById('backtestStatusDot');
-        const txt = document.getElementById('backtestStatusText');
-
-        btn.disabled = true;
-        dot.className = 'w-2 h-2 rounded-full bg-amber-500 pulse-dot';
-        txt.textContent = 'calculando...';
-        document.getElementById('backtestResults').classList.add('hidden');
-
-        try {
-            const res = await api('POST', '/api/backtest?days=730');
-            if (res.status === 'running') {
-                backtestPollTimer = setInterval(() => checkBacktestStatus(), 3000);
-            } else if (res.status === 'done') {
-                renderBacktestResults(res);
-            } else {
-                showToast('Simulacao: ' + (res.message || 'resposta inesperada'), 'info');
-                resetBacktestUI();
-            }
-        } catch (err) {
-            showToast('Falha na simulacao: ' + err.message, 'error');
-            resetBacktestUI();
-        }
-    }
-
-    async function checkBacktestStatus() {
-        try {
-            const res = await api('GET', '/api/backtest/status');
-            if (res.status === 'done') {
-                clearInterval(backtestPollTimer);
-                backtestPollTimer = null;
-                renderBacktestResults(res);
-            } else if (res.status === 'error') {
-                clearInterval(backtestPollTimer);
-                backtestPollTimer = null;
-                showToast('Erro na simulacao: ' + (res.message || ''), 'error');
-                resetBacktestUI();
-            }
-        } catch (err) {
-            clearInterval(backtestPollTimer);
-            backtestPollTimer = null;
-            showToast('Falha: ' + err.message, 'error');
-            resetBacktestUI();
-        }
-    }
-
-    function renderBacktestResults(res) {
-        const dot = document.getElementById('backtestStatusDot');
-        const txt = document.getElementById('backtestStatusText');
-        const btn = document.getElementById('btnRunBacktest');
-
-        dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        txt.textContent = 'concluido';
-        btn.disabled = false;
-
-        const r = res.results || res;
-        document.getElementById('btTotalTrades').textContent = r.total_trades || 0;
-        document.getElementById('btWinRate').textContent = fmtNum(r.win_rate, 1) + '%';
-        document.getElementById('btProfitFactor').textContent = fmtNum(r.profit_factor, 2);
-
-        const ddEl = document.getElementById('btMaxDD');
-        ddEl.textContent = fmtNum(r.max_drawdown_pct, 2) + '%';
-        ddEl.className = 'text-lg font-semibold font-mono ' + (r.max_drawdown_pct < 0 ? 'text-red-400' : 'text-gray-100');
-
-        const pnlEl = document.getElementById('btTotalPnL');
-        pnlEl.textContent = (r.total_pnl_pct >= 0 ? '+' : '') + fmtNum(r.total_pnl_pct, 2) + '%';
-        pnlEl.className = 'text-lg font-semibold font-mono ' + (r.total_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
-
-        const bhEl = document.getElementById('btBuyHold');
-        bhEl.textContent = fmtNum(r.buy_hold_pct, 2) + '%';
-        bhEl.className = 'text-lg font-semibold font-mono ' + (r.buy_hold_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
-
-        // Trades table
-        const trades = (r.trades || []).slice(-10).reverse();
-        const tbody = document.getElementById('backtestTradesBody');
-        if (trades.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500">Nenhum sinal na simulacao.</td></tr>';
-        } else {
-            tbody.innerHTML = trades.map(t => {
-                const isLong = t.type === 'LONG';
-                const pnlVal = t.pnl_pct || 0;
-                const pnlColor = pnlVal >= 0 ? 'text-emerald-400' : 'text-red-400';
-                const pnlSign = pnlVal >= 0 ? '+' : '';
-                const typeClass = isLong ? 'bg-emerald-900/40 text-emerald-300' : 'bg-red-900/40 text-red-300';
-                return `
-                    <tr class="hover:bg-gray-800/40 transition fade-in">
-                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(t.entry_ts || t.entry_date)}</td>
-                        <td class="px-4 py-3 text-gray-300 font-mono text-xs">${fmtDateTime(t.exit_ts || t.exit_date)}</td>
-                        <td class="px-4 py-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${typeClass}">${t.type}</span></td>
-                        <td class="px-4 py-3 text-right font-mono text-gray-200">${fmtNum(t.entry_price)}</td>
-                        <td class="px-4 py-3 text-right font-mono text-gray-200">${fmtNum(t.exit_price)}</td>
-                        <td class="px-4 py-3 text-right font-mono font-semibold ${pnlColor}">${pnlSign}${fmtNum(pnlVal)}%</td>
-                        <td class="px-4 py-3 text-gray-400 text-xs">${escapeHtml(t.reason || '—')}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        document.getElementById('backtestResults').classList.remove('hidden');
-    }
-
-    function resetBacktestUI() {
-        document.getElementById('btnRunBacktest').disabled = false;
-        document.getElementById('backtestStatusDot').className = 'w-2 h-2 rounded-full bg-gray-500';
-        document.getElementById('backtestStatusText').textContent = 'idle';
-    }
-
-    // ---------- Multi-Timeframe ----------
-    function renderMTFInline(mtf) {
-        const enabled = mtf.enabled;
-        const statusDot = document.getElementById('mtfStatusDot');
-        const statusText = document.getElementById('mtfStatusText');
-        const badge = document.getElementById('mtfBadge');
-
-        if (enabled) {
-            statusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 pulse-dot';
-            statusText.textContent = 'ativo';
-            badge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-900/40 text-xs font-mono text-emerald-300';
-        } else {
-            statusDot.className = 'w-2 h-2 rounded-full bg-gray-500';
-            statusText.textContent = 'desativado';
-            badge.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400';
-        }
-
-        // H4 trend
-        const h4 = mtf.h4_trend || '—';
-        const h4Dot = document.getElementById('mtfH4Dot');
-        const h4El = document.getElementById('mtfH4');
-        h4El.textContent = h4;
-        if (h4.toLowerCase() === 'bullish') {
-            h4Dot.className = 'w-3 h-3 rounded-full bg-emerald-500';
-            h4El.className = 'text-sm font-semibold font-mono text-emerald-400';
-        } else if (h4.toLowerCase() === 'bearish') {
-            h4Dot.className = 'w-3 h-3 rounded-full bg-red-500';
-            h4El.className = 'text-sm font-semibold font-mono text-red-400';
-        } else {
-            h4Dot.className = 'w-3 h-3 rounded-full bg-gray-600';
-            h4El.className = 'text-sm font-semibold font-mono text-gray-400';
-        }
-
-        // D1 trend
-        const d1 = mtf.d1_trend || '—';
-        const d1Dot = document.getElementById('mtfD1Dot');
-        const d1El = document.getElementById('mtfD1');
-        d1El.textContent = d1;
-        if (d1.toLowerCase() === 'bullish') {
-            d1Dot.className = 'w-3 h-3 rounded-full bg-emerald-500';
-            d1El.className = 'text-sm font-semibold font-mono text-emerald-400';
-        } else if (d1.toLowerCase() === 'bearish') {
-            d1Dot.className = 'w-3 h-3 rounded-full bg-red-500';
-            d1El.className = 'text-sm font-semibold font-mono text-red-400';
-        } else {
-            d1Dot.className = 'w-3 h-3 rounded-full bg-gray-600';
-            d1El.className = 'text-sm font-semibold font-mono text-gray-400';
-        }
-
-        // Confluence
-        const conf = mtf.confluence || '—';
-        const confEl = document.getElementById('mtfConfluence');
-        confEl.textContent = conf;
-        if (conf.toLowerCase() === 'bullish') {
-            confEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-900/40 text-emerald-300';
-        } else if (conf.toLowerCase() === 'bearish') {
-            confEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-red-900/40 text-red-300';
-        } else if (conf.toLowerCase() === 'mixed') {
-            confEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-amber-900/40 text-amber-300';
-        } else {
-            confEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-gray-800 text-gray-400';
-        }
-
-        // Cache
-        const cacheAge = mtf.cache_age_seconds;
-        const cacheEl = document.getElementById('mtfCache');
-        if (cacheAge !== undefined && cacheAge !== null) {
-            const fresh = cacheAge < 300;
-            cacheEl.textContent = cacheAge + 's';
-            cacheEl.className = 'text-xs font-mono ' + (fresh ? 'text-emerald-400' : 'text-amber-400');
-        } else {
-            cacheEl.textContent = '—';
-            cacheEl.className = 'text-xs font-mono text-gray-500';
-        }
-    }
-
-    async function fetchMTF() {
-        try {
-            const data = await api('GET', '/api/mtf');
-            renderMTFInline(data);
-        } catch(e) {}
-    }
-
-    // ---------- Inicializacao ----------
-    fetchAll();
-    pollTimer = setInterval(fetchAll, POLL_INTERVAL_MS);
+    }, 250);
+});
 </script>
 
 </body>
