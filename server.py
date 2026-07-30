@@ -267,7 +267,10 @@ async def api_backtest(days: int = 730) -> dict:
         global _backtest_result, _backtest_running
         try:
             from backtest import run_backtest
-            metrics, trades = run_backtest(days=days, advanced=True)
+            loop = asyncio.get_event_loop()
+            metrics, trades = await loop.run_in_executor(
+                None, lambda: run_backtest(days=days, advanced=True)
+            )
             _backtest_result = {
                 "ok": True,
                 "metrics": metrics.to_dict(),
