@@ -42,6 +42,8 @@ from strategy import (
     SignalType,
     evaluate_long,
     evaluate_short,
+    ATR_PCT_MIN as _ATR_PCT_MIN_STRATEGY,
+    ATR_PCT_MAX as _ATR_PCT_MAX_STRATEGY,
 )
 
 logger = logging.getLogger("ctev.backtest")
@@ -377,8 +379,11 @@ def simulate_trades(
     while i < n:
         row = df_ind.iloc[i]
 
-        # Verifica NaN nos indicadores criticos
-        critical = ["ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"]
+        # Verifica NaN nos indicadores criticos (v3: adicionado MACD)
+        critical = [
+            "ema50", "ema200", "rsi", "atr", "atr_percentile",
+            "macd", "macd_signal", "macd_hist",
+        ]
         if any(pd.isna(row.get(c)) for c in critical):
             i += 1
             continue
@@ -411,7 +416,7 @@ def simulate_trades(
         exit_reason = None
         bars = 0
 
-        for j in range(i + 1, min(i + 48, n)):  # Max 48 candles (48h)
+        for j in range(i + 1, min(i + 72, n)):  # Max 72 candles (3 dias)
             future = df_ind.iloc[j]
             future_close = float(future["close"])
             future_low = float(future["low"])
@@ -443,7 +448,7 @@ def simulate_trades(
 
         if exit_price is None:
             # Timeout: sai no close do ultimo candle avaliado
-            last_j = min(i + 48, n) - 1
+            last_j = min(i + 72, n) - 1
             exit_price = float(df_ind.iloc[last_j]["close"])
             exit_reason = "timeout"
             bars = last_j - i
@@ -518,7 +523,10 @@ def simulate_trades_advanced(
     while i < n:
         row = df_ind.iloc[i]
 
-        critical = ["ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"]
+        critical = [
+            "ema50", "ema200", "rsi", "atr", "atr_percentile",
+            "macd", "macd_signal", "macd_hist",
+        ]
         if any(pd.isna(row.get(c)) for c in critical):
             i += 1
             continue
@@ -841,9 +849,10 @@ def run_backtest(
     # 2. Calcula indicadores
     df_ind = compute_indicators(df)
 
-    # 3. Remove linhas com NaN
+    # 3. Remove linhas com NaN (v3: adicionado MACD)
     df_clean = df_ind.dropna(subset=[
-        "ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"
+        "ema50", "ema200", "rsi", "atr", "atr_percentile",
+        "macd", "macd_signal", "macd_hist",
     ]).copy()
     logger.info("DataFrame limpo: %d candles (de %d originais)", len(df_clean), len(df_ind))
 
@@ -897,7 +906,8 @@ def run_walk_forward(
     df = fetch_historical_ohlcv(symbol, timeframe, total_days + train_days)
     df_ind = compute_indicators(df)
     df_clean = df_ind.dropna(subset=[
-        "ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile"
+        "ema50", "ema200", "rsi", "atr", "atr_percentile",
+        "macd", "macd_signal", "macd_hist",
     ]).copy()
 
     results: List[WalkForwardResult] = []
