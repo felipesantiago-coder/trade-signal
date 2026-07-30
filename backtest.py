@@ -5,21 +5,23 @@ Modulo de backtesting da estrategia CTEV usando dados historicos da Binance.
 
 Funcionalidades:
     - Download de dados OHLCV historicos via ccxt (ate 1 ano de candles 1H)
-    - Calculo de todos os indicadores CTEV (EMA200, BB, RSI, Volume SMA, ATR)
+    - Calculo de todos os indicadores CTEV v4 (EMA20/50/200, BB, RSI, ADX, Regime, etc.)
     - Simulacao de trades com gestao de risco (SL e TP baseados em ATR)
+    - Modelagem de custos REALISTA (fees + spread + slippage)
     - Simulacao avancada: position sizing, trailing stop, break-even, partial TP
     - Metricas de performance: Win Rate, Profit Factor, Max Drawdown, Sharpe,
-      Total Trades, Avg Win, Avg Loss
+      Total Trades, Avg Win, Avg Loss, Net (apos custos)
     - Walk-Forward Analysis (WFO): janela rolling treino/teste
     - Comparacao com Buy & Hold
     - Curva de equity por trade (para visualizacao no painel)
 
+v4: Cost modeling (fees/spread/slippage), regime-aware indicators,
+    ADX + DI integration, volume SMA(50) filter.
+
 Referencias:
+    - PDF: "O Framework Multi-Timeframe e de Regimes" — cost modeling, WFA
+    - Quantpedia (2025): 355 estrategias — deterioracao mediana Sharpe 43.90%
     - kernc.github.io/backtesting.py — framework Python para backtesting
-    - InteractiveBrokers (2025): "Walk Forward Analysis — sophisticated technique
-      to test and optimize trading strategies"
-    - CoinBureau (2026): "To backtest a crypto strategy, turn the idea into exact
-      trading rules, choose historical data matching the asset and timeframe"
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ from strategy import (
     evaluate_short,
     ATR_PCT_MIN as _ATR_PCT_MIN_STRATEGY,
     ATR_PCT_MAX as _ATR_PCT_MAX_STRATEGY,
+    ADX_MIN as _ADX_MIN_STRATEGY,
 )
 
 logger = logging.getLogger("ctev.backtest")
@@ -352,39 +355,119 @@ def fetch_historical_ohlcv(
 
 
 # ------------------------------------------------------------------
+# Custos de transacao (v4: CRITICO — baseado no PDF)
+# ------------------------------------------------------------------
+# PDF: "Ignorar custos e uma via de mao dupla para resultados enganosos"
+# Fees: 0.025% por trade (Binance maker/taker medio)
+# Spread: 5-10 bps em sessoes liquidas (usamos 10 bps = conservador)
+# Slippage: 15-30 bps para market orders (usamos 20 bps = moderado)
+# Total round-trip: ~0.05% (fees) + 0.10% (spread) + 0.20% (slippage) = 0.35%
+DEFAULT_FEE_PCT = 0.025       # 0.025% por side (Binance)
+DEFAULT_SPREAD_BPS = 10.0    # 10 bps = 0.10%
+DEFAULT_SLIPPAGE_BPS = 20.0  # 20 bps = 0.20%
+
+
+def _apply_costs(entry_price: float, exit_price: float, is_long: bool,
+                 fee_pct: float = DEFAULT_FEE_PCT,
+                 spread_bps: float = DEFAULT_SPREAD_BPS,
+                 slippage_bps: float = DEFAULT_SLIPPAGE_BPS) -> Tuple[float, float, float]:
+    """
+    Aplica custos realistas de transacao ao trade.
+
+    Returns:
+        (adjusted_entry, adjusted_exit, total_cost_pct)
+
+    Modelo de custos (baseado no PDF):
+        1. Spread: entrada piora pelo spread (compra mais cara, vende mais barata)
+        2. Slippage: entrada piora pelo slippage
+        3. Fees: cobrados na entrada e na saida
+    """
+    spread_pct = spread_bps / 10000.0
+    slippage_pct = slippage_bps / 10000.0
+
+    # Entry side cost (spread + slippage)
+    entry_cost_pct = spread_pct + slippage_pct
+    if is_long:
+        adj_entry = entry_price * (1 + entry_cost_pct)
+    else:
+        adj_entry = entry_price * (1 - entry_cost_pct)
+
+    # Exit side cost (spread + slippage)
+    exit_cost_pct = spread_pct + slippage_pct
+    if is_long:
+        adj_exit = exit_price * (1 - exit_cost_pct)
+    else:
+        adj_exit = exit_price * (1 + exit_cost_pct)
+
+    # Fees on both sides
+    fee_on_entry = adj_entry * (fee_pct / 100.0)
+    fee_on_exit = adj_exit * (fee_pct / 100.0)
+    if is_long:
+        adj_entry += fee_on_entry
+        adj_exit -= fee_on_exit
+    else:
+        adj_entry -= fee_on_entry
+        adj_exit += fee_on_exit
+
+    # Total cost as % of entry
+    total_cost_pct = (abs(adj_entry - entry_price) + abs(adj_exit - exit_price)) / entry_price * 100
+
+    return adj_entry, adj_exit, total_cost_pct
+
+
+# ------------------------------------------------------------------
 # Simulacao de trades (basica + avancada)
 # ------------------------------------------------------------------
 def simulate_trades(
     df_ind: pd.DataFrame,
     atr_pct_min: float = 0.20,
     atr_pct_max: float = 0.80,
+    apply_costs_flag: bool = True,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int]:
     """
     Percorre o DataFrame com indicadores calculados e simula trades
-    da estrategia CTEV, respeitando SL e TP baseados em ATR.
+    da estrategia CTEV v4, respeitando SL e TP baseados em ATR.
+
+    v4: Adicionados ADX, regime, volume_sma50, cost modeling.
 
     Parameters:
         df_ind: DataFrame com indicadores (output de compute_indicators)
         atr_pct_min: filtro de volatilidade minimo (default 0.20)
         atr_pct_max: filtro de volatilidade maximo (default 0.80)
+        apply_costs_flag: se True, aplica custos realistas (fees+spread+slippage)
+        fee_pct: fee por side em %
+        spread_bps: spread em basis points
+        slippage_bps: slippage em basis points
 
     Returns:
         Tuple[List[TradeResult], atr_filtered_count]
     """
     trades: List[TradeResult] = []
     atr_filtered = 0
+    regime_filtered = 0
     i = 0
     n = len(df_ind)
 
     while i < n:
         row = df_ind.iloc[i]
 
-        # Verifica NaN nos indicadores criticos (v3: adicionado MACD)
+        # Verifica NaN nos indicadores criticos (v4: adicionado ADX, regime)
         critical = [
-            "ema50", "ema200", "rsi", "atr", "atr_percentile",
+            "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
             "macd", "macd_signal", "macd_hist",
+            "adx", "plus_di", "minus_di", "regime",
         ]
         if any(pd.isna(row.get(c)) for c in critical):
+            i += 1
+            continue
+
+        # Regime filter (contabilizado separadamente)
+        regime = str(row.get("regime", ""))
+        if regime in ("ranging", "volatile"):
+            regime_filtered += 1
             i += 1
             continue
 
@@ -424,40 +507,47 @@ def simulate_trades(
             bars = j - i
 
             if is_long:
-                # SL: low do candle <= stop loss
                 if future_low <= sl:
                     exit_price = sl
                     exit_reason = "sl"
                     break
-                # TP: high do candle >= take profit
                 if future_high >= tp:
                     exit_price = tp
                     exit_reason = "tp"
                     break
             else:
-                # SL: high do candle >= stop loss
                 if future_high >= sl:
                     exit_price = sl
                     exit_reason = "sl"
                     break
-                # TP: low do candle <= take profit
                 if future_low <= tp:
                     exit_price = tp
                     exit_reason = "tp"
                     break
 
         if exit_price is None:
-            # Timeout: sai no close do ultimo candle avaliado
             last_j = min(i + 72, n) - 1
             exit_price = float(df_ind.iloc[last_j]["close"])
             exit_reason = "timeout"
             bars = last_j - i
 
-        # Calcula PnL
-        if is_long:
-            pnl_pct = (exit_price - entry_price) / entry_price * 100
+        # v4: Aplica custos realistas
+        raw_pnl_pct = 0.0
+        if apply_costs_flag:
+            _, adj_exit, cost_pct = _apply_costs(
+                entry_price, exit_price, is_long,
+                fee_pct, spread_bps, slippage_bps,
+            )
+            if is_long:
+                pnl_pct = (adj_exit - entry_price) / entry_price * 100
+            else:
+                pnl_pct = (entry_price - adj_exit) / entry_price * 100
         else:
-            pnl_pct = (entry_price - exit_price) / entry_price * 100
+            cost_pct = 0.0
+            if is_long:
+                pnl_pct = (exit_price - entry_price) / entry_price * 100
+            else:
+                pnl_pct = (entry_price - exit_price) / entry_price * 100
 
         trades.append(TradeResult(
             entry_ts=row.name,
@@ -480,8 +570,8 @@ def simulate_trades(
         i += bars + 1
 
     logger.info(
-        "Simulacao completa: %d trades, %d sinais filtrados por volatilidade",
-        len(trades), atr_filtered,
+        "Simulacao v4 completa: %d trades, %d filtrados volatilidade, %d filtrados regime",
+        len(trades), atr_filtered, regime_filtered,
     )
     return trades, atr_filtered
 
@@ -495,27 +585,18 @@ def simulate_trades_advanced(
     be_trigger_atr_mult: float = 1.0,
     trailing_atr_mult: float = 1.5,
     partial_tp_pct: float = 0.50,
+    apply_costs_flag: bool = True,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int]:
     """
-    Simulacao avancada com position sizing, trailing stop, break-even e partial TP.
-
-    Simula o comportamento real do position_tracker.py no backtest,
-    permitindo avaliar o impacto do gerenciamento de posicoes.
-
-    Parameters:
-        df_ind: DataFrame com indicadores
-        atr_pct_min/max: filtro de volatilidade
-        initial_balance: saldo inicial em USD
-        risk_per_trade_pct: % do balance a arriscar por trade
-        be_trigger_atr_mult: ATR multiplier para ativar break-even
-        trailing_atr_mult: ATR multiplier para distancia do trailing
-        partial_tp_pct: % da posicao a fechar no TP1
-
-    Returns:
-        Tuple[List[TradeResult], atr_filtered_count]
+    Simulacao avancada v4 com position sizing, trailing stop, break-even, partial TP,
+    cost modeling e regime filter.
     """
     trades: List[TradeResult] = []
     atr_filtered = 0
+    regime_filtered = 0
     balance = initial_balance
     i = 0
     n = len(df_ind)
@@ -524,10 +605,17 @@ def simulate_trades_advanced(
         row = df_ind.iloc[i]
 
         critical = [
-            "ema50", "ema200", "rsi", "atr", "atr_percentile",
+            "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
             "macd", "macd_signal", "macd_hist",
+            "adx", "plus_di", "minus_di", "regime",
         ]
         if any(pd.isna(row.get(c)) for c in critical):
+            i += 1
+            continue
+
+        regime = str(row.get("regime", ""))
+        if regime in ("ranging", "volatile"):
+            regime_filtered += 1
             i += 1
             continue
 
@@ -551,20 +639,28 @@ def simulate_trades_advanced(
         atr = signal.atr
         is_long = signal.type == SignalType.LONG
 
-        # Position sizing
-        sl_distance_pct = abs(entry_price - sl) / entry_price if entry_price > 0 else 0
+        # v4: Aplica custos no entry para position sizing
+        if apply_costs_flag:
+            adj_entry, _, _ = _apply_costs(
+                entry_price, entry_price, is_long,
+                fee_pct, spread_bps, slippage_bps,
+            )
+            effective_entry = adj_entry
+        else:
+            effective_entry = entry_price
+
+        sl_distance_pct = abs(effective_entry - sl) / effective_entry if effective_entry > 0 else 0
         risk_usd = balance * risk_per_trade_pct
         if sl_distance_pct > 0:
-            position_size = risk_usd / (sl_distance_pct * entry_price)
+            position_size = risk_usd / (sl_distance_pct * effective_entry)
         else:
             position_size = 0.0
-        position_usd = position_size * entry_price
+        position_usd = position_size * effective_entry
 
-        if position_usd < 10.0:  # Min position
+        if position_usd < 10.0:
             i += 1
             continue
 
-        # Simula com trailing/BE/partial
         current_sl = sl
         be_triggered = False
         trailing_activated = False
@@ -575,20 +671,18 @@ def simulate_trades_advanced(
         bars = 0
         sl_updates = 0
 
-        for j in range(i + 1, min(i + 72, n)):  # Max 72 candles (3 dias)
+        for j in range(i + 1, min(i + 72, n)):
             future = df_ind.iloc[j]
             f_close = float(future["close"])
             f_low = float(future["low"])
             f_high = float(future["high"])
             bars = j - i
 
-            # Atualiza highest favorable
             if is_long:
                 highest_favorable = max(highest_favorable, f_high)
             else:
                 highest_favorable = min(highest_favorable, f_low)
 
-            # Break-even check
             if not be_triggered:
                 fav_dist = abs(highest_favorable - entry_price)
                 if fav_dist >= atr * be_trigger_atr_mult:
@@ -597,7 +691,6 @@ def simulate_trades_advanced(
                     current_sl = entry_price
                     sl_updates += 1
 
-            # Trailing stop update
             if trailing_activated:
                 trail_dist = atr * trailing_atr_mult
                 if is_long:
@@ -611,7 +704,6 @@ def simulate_trades_advanced(
                         current_sl = new_trail
                         sl_updates += 1
 
-            # Check exits
             if is_long:
                 tp_hit = f_high >= tp
                 sl_hit = f_low <= current_sl
@@ -645,21 +737,30 @@ def simulate_trades_advanced(
             exit_reason = "timeout"
             bars = last_j - i
 
-        # PnL
-        if is_long:
-            pnl_pct = (exit_price - entry_price) / entry_price * 100
-            pnl_usd = (exit_price - entry_price) * position_size
+        # v4: Aplica custos no PnL
+        if apply_costs_flag:
+            _, adj_exit, cost_pct = _apply_costs(
+                entry_price, exit_price, is_long,
+                fee_pct, spread_bps, slippage_bps,
+            )
+            if is_long:
+                pnl_pct = (adj_exit - entry_price) / entry_price * 100
+                pnl_usd = (adj_exit - entry_price) * position_size
+            else:
+                pnl_pct = (entry_price - adj_exit) / entry_price * 100
+                pnl_usd = (entry_price - adj_exit) * position_size
         else:
-            pnl_pct = (entry_price - exit_price) / entry_price * 100
-            pnl_usd = (entry_price - exit_price) * position_size
+            cost_pct = 0.0
+            if is_long:
+                pnl_pct = (exit_price - entry_price) / entry_price * 100
+                pnl_usd = (exit_price - entry_price) * position_size
+            else:
+                pnl_pct = (entry_price - exit_price) / entry_price * 100
+                pnl_usd = (entry_price - exit_price) * position_size
 
-        # Se partial TP, PnL total = 50% partial + 50% remaining
         if partial_tp_filled and exit_reason == "tp":
-            # Partial ja capturou 50% do movimento ate TP
-            # Restante fechou no TP tambem (full exit)
-            pass  # PnL calculado normalmente ja esta correto
+            pass
         elif partial_tp_filled:
-            # Partial capturou 50% ate TP, o restante saiu em SL ou timeout
             partial_pnl_pct = ((tp - entry_price) / entry_price * 100) if is_long else (
                 (entry_price - tp) / entry_price * 100)
             remaining_pnl_pct = pnl_pct
@@ -700,8 +801,8 @@ def simulate_trades_advanced(
         i += bars + 1
 
     logger.info(
-        "Simulacao avancada completa: %d trades, %d filtrados, balance final=$%.2f",
-        len(trades), atr_filtered, balance,
+        "Simulacao avancada v4 completa: %d trades, %d filtrados vol, %d regime, balance=$%.2f",
+        len(trades), atr_filtered, regime_filtered, balance,
     )
     return trades, atr_filtered
 
@@ -849,10 +950,11 @@ def run_backtest(
     # 2. Calcula indicadores
     df_ind = compute_indicators(df)
 
-    # 3. Remove linhas com NaN (v3: adicionado MACD)
+    # 3. Remove linhas com NaN (v4: adicionado ADX, regime, ema20, volume_sma50)
     df_clean = df_ind.dropna(subset=[
-        "ema50", "ema200", "rsi", "atr", "atr_percentile",
+        "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
         "macd", "macd_signal", "macd_hist",
+        "adx", "plus_di", "minus_di", "regime",
     ]).copy()
     logger.info("DataFrame limpo: %d candles (de %d originais)", len(df_clean), len(df_ind))
 
@@ -906,8 +1008,9 @@ def run_walk_forward(
     df = fetch_historical_ohlcv(symbol, timeframe, total_days + train_days)
     df_ind = compute_indicators(df)
     df_clean = df_ind.dropna(subset=[
-        "ema50", "ema200", "rsi", "atr", "atr_percentile",
+        "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
         "macd", "macd_signal", "macd_hist",
+        "adx", "plus_di", "minus_di", "regime",
     ]).copy()
 
     results: List[WalkForwardResult] = []
