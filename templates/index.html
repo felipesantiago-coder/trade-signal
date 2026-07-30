@@ -48,11 +48,36 @@
 
 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
+    <!-- Guia rapido -->
+    <section class="bg-brand-900/20 rounded-xl border border-brand-800/40 p-5">
+        <details>
+            <summary class="cursor-pointer text-base font-semibold text-brand-300 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Guia Rapido — Como usar este painel
+            </summary>
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-300">
+                <div class="bg-gray-800/50 rounded-lg p-4">
+                    <div class="font-semibold text-emerald-400 mb-2">1. Monitorar</div>
+                    <p class="text-xs text-gray-400 leading-relaxed">O bot analisa o Bitcoin automaticamente a cada hora. Quando encontra uma boa oportunidade, envia um alerta pelo Telegram e registra um sinal aqui no painel.</p>
+                </div>
+                <div class="bg-gray-800/50 rounded-lg p-4">
+                    <div class="font-semibold text-amber-400 mb-2">2. Entender os sinais</div>
+                    <p class="text-xs text-gray-400 leading-relaxed"><b>LONG (Compra)</b>: o sistema detectou que o preco caiu temporariamente numa tendencia de alta - boa hora para comprar.<br><b>SHORT (Venda)</b>: o preco subiu temporariamente numa tendencia de baixa - boa hora para vender.</p>
+                </div>
+                <div class="bg-gray-800/50 rounded-lg p-4">
+                    <div class="font-semibold text-purple-400 mb-2">3. Controles</div>
+                    <p class="text-xs text-gray-400 leading-relaxed"><b>Iniciar/Pausar</b>: liga ou desliga a analise automatica.<br><b>Kill Switch</b>: botao de emergencia que para tudo.<br><b>Dry-Run</b>: modo simulacao (nenhuma ordem real).<br><b>Backtest</b>: testa a estrategia nos ultimos 2 anos.</p>
+                </div>
+            </div>
+        </details>
+    </section>
+
     <!-- Controle rápido -->
     <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
                 <h2 class="text-base font-semibold mb-1">Controle do Bot</h2>
+                <p class="text-xs text-gray-500 mb-1">Ligue ou pause a analise automatica do Bitcoin.</p>
                 <p id="statusMessage" class="text-sm text-gray-400">Aguardando primeiro ciclo...</p>
             </div>
             <div class="flex gap-2">
@@ -79,7 +104,7 @@
     <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Drawdown Diário</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Perda Hoje</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
             </div>
             <div id="riskDailyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
@@ -91,7 +116,7 @@
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Drawdown Semanal</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Perda na Semana</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
             </div>
             <div id="riskWeeklyLoss" class="text-2xl font-semibold font-mono">0.00%</div>
@@ -103,16 +128,16 @@
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Filtrados</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Sinais Bloqueados</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
             </div>
             <div id="riskFiltered" class="text-2xl font-semibold font-mono">0</div>
-            <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Bloqueados pelo risk manager</div>
+            <div id="riskFilteredSub" class="text-xs text-gray-500 mt-1">Pelo protetor de capital</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Consecutivas</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Perdas Seguidas</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
             </div>
             <div id="riskConsecutive" class="text-2xl font-semibold font-mono">0</div>
@@ -126,20 +151,20 @@
             <div class="flex items-center gap-3">
                 <span id="killSwitchEmoji" class="text-2xl">✅</span>
                 <div>
-                    <h2 id="killSwitchTitle" class="text-base font-semibold">Sistema Normal</h2>
-                    <p id="killSwitchMsg" class="text-sm opacity-80">Todas as operações ativas</p>
+                    <h2 id="killSwitchTitle" class="text-base font-semibold">Tudo Funcionando Normalmente</h2>
+                    <p id="killSwitchMsg" class="text-sm opacity-80">O bot esta monitorando o mercado e gerando sinais quando encontrar boas oportunidades.</p>
                 </div>
             </div>
             <div class="flex gap-2">
                 <button id="btnKillSwitch" onclick="killSwitch()"
                     class="px-5 py-2.5 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg">
                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.724 5.111a6 6 0 008.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/></svg>
-                    KILL SWITCH
+                    PARA TUDO (Emergencia)
                 </button>
                 <button id="btnResurrect" onclick="resurrectSwitch()" class="hidden
                     px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition flex items-center gap-2 shadow-lg">
                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-                    REATIVAR
+                    Reativar o Bot
                 </button>
             </div>
         </div>
@@ -162,7 +187,7 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
             </div>
             <div id="kpiSignalsToday" class="text-2xl font-semibold">0</div>
-            <div id="kpiSignalsBreakdown" class="text-xs text-gray-500 mt-1">0 LONG / 0 SHORT</div>
+            <div id="kpiSignalsBreakdown" class="text-xs text-gray-500 mt-1">sinais detectados hoje</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -171,7 +196,7 @@
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
             </div>
             <div id="kpiCycles" class="text-2xl font-semibold">0</div>
-            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">0 erros</div>
+            <div id="kpiErrors" class="text-xs text-gray-500 mt-1">ciclos de analise</div>
         </div>
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -185,7 +210,7 @@
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">Balance</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Saldo da Conta</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
             <div id="kpiBalance" class="text-2xl font-semibold font-mono">—</div>
@@ -194,7 +219,7 @@
 
         <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs uppercase tracking-wider text-gray-500">PnL Total</span>
+                <span class="text-xs uppercase tracking-wider text-gray-500">Lucro/Perda Total</span>
                 <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
             </div>
             <div id="kpiPnL" class="text-2xl font-semibold font-mono">—</div>
@@ -206,6 +231,7 @@
     <section id="openPositionSection" class="hidden bg-gray-900 rounded-xl border border-gray-800 p-5">
         <div class="flex items-center justify-between mb-3">
             <h2 class="text-base font-semibold">Posição Aberta</h2>
+            <p class="text-xs text-gray-500 mt-1">Operacao atualmente em andamento. O bot gerencia automaticamente o stop loss e take profit.</p>
             <button onclick="closePositions()" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium">Fechar Posição</button>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
@@ -246,7 +272,7 @@
             <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
                 <div>
                     <h2 class="text-base font-semibold">Sinais Recentes</h2>
-                    <p class="text-xs text-gray-500">Histórico dos últimos 50 sinais CTEV</p>
+                    <p class="text-xs text-gray-500">Oportunidades de compra ou venda detectadas pelo sistema</p>
                 </div>
                 <span id="symbolBadge" class="px-2.5 py-1 rounded-md bg-brand-900/40 text-brand-300 text-xs font-mono">BTC/USDT · 1H</span>
             </div>
@@ -288,7 +314,7 @@
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 class="text-base font-semibold">Trades Fechados</h2>
-                <p class="text-xs text-gray-500">Histórico de operações encerradas</p>
+                <p class="text-xs text-gray-500">Resultado das operacoes que ja foram fechadas (lucro ou perda)</p>
             </div>
             <div class="flex items-center gap-3">
                 <span id="tradesSummaryBadge" class="hidden px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">0 trades</span>
@@ -333,7 +359,7 @@
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 class="text-base font-semibold">Backtest</h2>
-                <p class="text-xs text-gray-500">Simulação histórica da estratégia CTEV</p>
+                <p class="text-xs text-gray-500">Testa como a estrategia teria se comportado nos ultimos 2 anos de dados do Bitcoin</p>
             </div>
             <div class="flex items-center gap-3">
                 <span id="backtestStatus" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
@@ -405,7 +431,7 @@
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 class="text-base font-semibold">Multi-Timeframe</h2>
-                <p class="text-xs text-gray-500">Confluência de tendência H4/D1</p>
+                <p class="text-xs text-gray-500">Verifica se a tendencia em periodos maiores (4h e diario) confirma o sinal</p>
             </div>
             <span id="mtfBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
                 <span id="mtfStatusDot" class="w-2 h-2 rounded-full bg-gray-500"></span>
@@ -451,14 +477,14 @@
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 class="text-base font-semibold">Executor</h2>
-                <p class="text-xs text-gray-500">Gestão de ordens e execução</p>
+                <p class="text-xs text-gray-500">Dry-Run = simulacao (nenhuma ordem real). Live = ordens reais enviadas a exchange.</p>
             </div>
             <div class="flex items-center gap-3">
                 <span id="executorMode" class="px-2.5 py-1 rounded-md bg-amber-900/40 text-amber-300 text-xs font-bold tracking-wider">DRY-RUN</span>
                 <button id="btnToggleDryRun" onclick="toggleDryRun()"
                     class="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium transition flex items-center gap-1.5">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-                    Toggle Mode
+                    Alternar Modo
                 </button>
             </div>
         </div>
@@ -483,7 +509,7 @@
         <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
             <div>
                 <h2 class="text-base font-semibold">Otimizador de Parâmetros</h2>
-                <p class="text-xs text-gray-500">Busca pelos melhores parâmetros da estratégia</p>
+                <p class="text-xs text-gray-500">Testa centenas de combinacoes de parametros para encontrar a melhor configuracao</p>
             </div>
             <div class="flex items-center gap-3">
                 <span id="optimizerStatus" class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-xs font-mono text-gray-400">
@@ -537,35 +563,47 @@
         </div>
     </section>
 
-    <!-- Info da estratégia -->
+    <!-- Regras da estrategia em linguagem acessivel -->
     <section class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-        <h2 class="text-base font-semibold mb-3">Regras da Estratégia</h2>
+        <h2 class="text-base font-semibold mb-1">Como o Sistema Decide?</h2>
+        <p class="text-xs text-gray-500 mb-4">O bot so gera um sinal quando TODAS as condicoes abaixo sao atendidas ao mesmo tempo.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div class="bg-emerald-900/10 border border-emerald-900/30 rounded-lg p-4">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="text-emerald-400 text-lg">🟢</span>
-                    <span class="font-semibold text-emerald-300">LONG (Compra)</span>
+                    <span class="font-semibold text-emerald-300">Sinal de COMPRA (LONG)</span>
                 </div>
-                <ul class="space-y-1 text-xs text-gray-400">
-                    <li>• Close &gt; EMA(200)</li>
-                    <li>• Low ou Close ≤ BB Inferior(20, 2)</li>
-                    <li>• RSI(14) &lt; 35</li>
-                    <li>• Volume &gt; 1.5× SMA(20)</li>
-                    <li class="mt-2 pt-2 border-t border-emerald-900/30 text-emerald-400">SL = Entry − 1.5·ATR · TP = Entry + 2.0·ATR</li>
+                <p class="text-xs text-gray-400 mb-3">Gerado quando o Bitcoin esta em tendencia de alta mas sofreu um recuo temporario — uma oportunidade para comprar mais barato.</p>
+                <ul class="space-y-1.5 text-xs text-gray-400">
+                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Tendencia de alta</b> — o preco esta acima da media dos ultimos 200 periodos</span></li>
+                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Pullback</b> — o preco recuou e tocou a faixa inferior (Bollinger)</span></li>
+                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Exaustao da venda</b> — RSI abaixo de 35 (vendedores fracos)</span></li>
+                    <li class="flex items-start gap-2"><span class="text-emerald-500 mt-0.5">✓</span><span><b>Volume alto</b> — volume 1.5x acima da media (compradores entrando)</span></li>
+                    <li class="mt-2 pt-2 border-t border-emerald-900/30 text-emerald-400 text-xs"><b>Protecao:</b> Stop Loss a 1.5x ATR abaixo | Alvo a 2.0x ATR acima</li>
                 </ul>
             </div>
             <div class="bg-red-900/10 border border-red-900/30 rounded-lg p-4">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="text-red-400 text-lg">🔴</span>
-                    <span class="font-semibold text-red-300">SHORT (Venda)</span>
+                    <span class="font-semibold text-red-300">Sinal de VENDA (SHORT)</span>
                 </div>
-                <ul class="space-y-1 text-xs text-gray-400">
-                    <li>• Close &lt; EMA(200)</li>
-                    <li>• High ou Close ≥ BB Superior(20, 2)</li>
-                    <li>• RSI(14) &gt; 65</li>
-                    <li>• Volume &gt; 1.5× SMA(20)</li>
-                    <li class="mt-2 pt-2 border-t border-red-900/30 text-red-400">SL = Entry + 1.5·ATR · TP = Entry − 2.0·ATR</li>
+                <p class="text-xs text-gray-400 mb-3">Gerado quando o Bitcoin esta em tendencia de baixa mas subiu temporariamente — uma oportunidade para vender mais caro.</p>
+                <ul class="space-y-1.5 text-xs text-gray-400">
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Tendencia de baixa</b> — o preco esta abaixo da media dos ultimos 200 periodos</span></li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Pullback para cima</b> — o preco subiu e tocou a faixa superior (Bollinger)</span></li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Exaustao da compra</b> — RSI acima de 65 (compradores fracos)</span></li>
+                    <li class="flex items-start gap-2"><span class="text-red-500 mt-0.5">✓</span><span><b>Volume alto</b> — volume 1.5x acima da media (vendedores entrando)</span></li>
+                    <li class="mt-2 pt-2 border-t border-red-900/30 text-red-400 text-xs"><b>Protecao:</b> Stop Loss a 1.5x ATR acima | Alvo a 2.0x ATR abaixo</li>
                 </ul>
+            </div>
+        </div>
+        <div class="mt-4 bg-gray-800/50 rounded-lg p-4 text-xs text-gray-400">
+            <div class="font-semibold text-gray-300 mb-2">O que o bot faz automaticamente apos abrir uma posicao:</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div class="flex items-start gap-2"><span class="text-amber-400">1.</span> Se o preco se mover a favor, move o Stop Loss para o preco de entrada (<b>Break-Even</b> — risco zero)</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">2.</span> Apos o break-even, o Stop Loss acompanha o preco (<b>Trailing Stop</b> — protege lucros)</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">3.</span> Se o preco atingir o alvo, fecha 50% da posicao (<b>Partial TP</b> — garante lucro parcial)</div>
+                <div class="flex items-start gap-2"><span class="text-amber-400">4.</span> Se o preco atingir o Stop Loss, fecha a posicao automaticamente (<b>Protecao de capital</b>)</div>
             </div>
         </div>
     </section>
@@ -831,27 +869,27 @@
         if (isKilled) {
             section.className = 'rounded-xl border border-red-600 bg-red-950/60 p-5 transition-all duration-300';
             emoji.textContent = '💀';
-            title.textContent = 'KILL SWITCH ATIVADO';
+            title.textContent = 'Bot Desligado (Emergencia)';
             title.className = 'text-base font-semibold text-red-300';
-            msg.textContent = 'Todas as operações foram interrompidas manualmente';
+            msg.textContent = 'Todas as operacoes foram interrompidas. Clique em \'Reativar o Bot\' para voltar ao normal.';
             msg.className = 'text-sm opacity-80 text-red-200';
             btnKill.classList.add('hidden');
             btnRes.classList.remove('hidden');
         } else if (circuitBreaker) {
             section.className = 'rounded-xl border border-amber-600 bg-amber-950/60 p-5 transition-all duration-300';
             emoji.textContent = '⚠️';
-            title.textContent = 'CIRCUIT BREAKER';
+            title.textContent = 'Mercado Muito Volatil - Pausado';
             title.className = 'text-base font-semibold text-amber-300';
-            msg.textContent = 'Limite de perda atingido — novas operações bloqueadas';
+            msg.textContent = 'O preco se moveu muito rapido. O bot pausou por seguranca e retomara automaticamente.';
             msg.className = 'text-sm opacity-80 text-amber-200';
             btnKill.classList.remove('hidden');
             btnRes.classList.add('hidden');
         } else {
             section.className = 'rounded-xl border border-emerald-800 bg-emerald-950/30 p-5 transition-all duration-300';
             emoji.textContent = '✅';
-            title.textContent = 'Sistema Normal';
+            title.textContent = 'Tudo Funcionando Normalmente';
             title.className = 'text-base font-semibold text-emerald-300';
-            msg.textContent = 'Todas as operações ativas';
+            msg.textContent = 'O bot esta monitorando o mercado e gerando sinais quando encontrar boas oportunidades.';
             msg.className = 'text-sm opacity-80 text-emerald-200';
             btnKill.classList.remove('hidden');
             btnRes.classList.add('hidden');
@@ -1193,10 +1231,10 @@
         const dryRun = exec.dry_run !== false;
         const modeEl = document.getElementById('executorMode');
         if (dryRun) {
-            modeEl.textContent = 'DRY-RUN';
+            modeEl.textContent = 'SIMULACAO';
             modeEl.className = 'px-2.5 py-1 rounded-md bg-amber-900/40 text-amber-300 text-xs font-bold tracking-wider';
         } else {
-            modeEl.textContent = 'LIVE';
+            modeEl.textContent = 'REAL';
             modeEl.className = 'px-2.5 py-1 rounded-md bg-red-900/40 text-red-300 text-xs font-bold tracking-wider animate-pulse';
         }
 
@@ -1226,7 +1264,7 @@
     async function toggleDryRun() {
         try {
             const data = await api('POST', '/api/executor/toggle-dry-run');
-            showToast(data.dry_run ? 'Modo DRY-RUN ativado' : '⚠️ Modo LIVE ativado!', data.dry_run ? 'info' : 'error');
+            showToast(data.dry_run ? 'Modo SIMULACAO ativado (seguro)' : 'Modo REAL ativado! Ordens reais serao enviadas!', data.dry_run ? 'info' : 'error');
             fetchExecutor();
         } catch(e) {
             showToast('Falha toggle: ' + (e.message || ''), 'error');

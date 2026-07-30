@@ -138,6 +138,18 @@ class CTEVWorker:
         self.state.last_status_message = "Worker iniciado"
         ex_id = self.exchange_info.exchange_id if self.exchange_info else "?"
         ex_sym = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
+
+        # Notifica via Telegram que o bot iniciou
+        if self.notifier is not None:
+            try:
+                await self.notifier.send_welcome(ex_id, ex_sym)
+                if self.exchange_info:
+                    await self.notifier.send_exchange_connected(
+                        self.exchange_info.exchange_id,
+                        self.exchange_info.symbol,
+                    )
+            except Exception:
+                pass
         insert_log(
             "INFO",
             f"Worker CTEV v3.2 iniciado | exchange={ex_id} "
@@ -301,10 +313,9 @@ class CTEVWorker:
                 RiskBlockReason.CIRCUIT_BREAKER,
             ) and self.notifier is not None:
                 try:
-                    await self.notifier.send_text(
-                        f"⚠️ *RISK MANAGER* — Sinal bloqueado\n"
-                        f"Motivo: `{risk_check.reason.value}`\n"
-                        f"{risk_check.message}"
+                    await self.notifier.send_risk_alert(
+                        risk_check.reason.value,
+                        risk_check.message,
                     )
                 except Exception:
                     pass
