@@ -1,20 +1,24 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v4 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v4.1 para LONG e SHORT.
 
-Estrategia CTEV v4 = Regime-Based Trend-Following com Fibonacci Pullback
+Estrategia CTEV v4.1 = Regime-Based Trend-Following com Fibonacci Pullback
 
-Principais mudancas vs v3:
-    - REGIME FILTER (CRITICO): ADX > 25 obrigatorio — so opera em tendencias
-      Blocos: ranging (ADX < 20), transition (20-25), volatile (BB pct > 80)
-    - VOLUME FILTER re-ativado (soft): volume > SMA(50) em vez de SMA(20)
-    - RSI DELTA: agora requer rsi_delta > 0 (momentum girando para cima) para LONG
-    - R:R OTIMIZADO: SL = 1.5 ATR, TP = 3.0 ATR (R:R 2:1, SL mais apertado)
-    - EMA(20) como pullback primario (conforme PDF: pullback a EMA20 no 1H)
-    - EMA(50) SLOPE: slope > 0.0 confirma tendencia de alta (nao apenas posicao)
-    - BB squeeze como oportunidade: bb_squeeze_pct < 30 preferencial (breakout iminente)
-    - Regime trending_up/down no Signal dataclass para tracking
+Mudancas v4.1 vs v4 (relaxamento controlado apos diagnostico de 0 sinais em 17.4K candles):
+    - REGIME: transition agora gera sinais com ADX > 20 (antes era bloqueado)
+    - RSI: faixas alargadas LONG 25-55 (era 30-50), SHORT 45-75 (era 50-70)
+    - RSI DELTA: tolerancia de -1/+1 (era 0 exato)
+    - VOLUME: agora requer volume > 60% da SMA(50) (era 100%)
+    - FIBONACCI: tolerancia 2.5% (era 1.5%)
+    - ATR PERCENTILE: 10-90% (era 15-85%)
+    - BB WIDTH: 0.5-20% (era 1-15%)
+
+Mudancas v4 vs v3:
+    - REGIME FILTER: ADX > 25 para trending, ADX > 20 para transition
+    - VOLUME FILTER re-ativado (soft): volume > 60% SMA(50)
+    - R:R OTIMIZADO: SL = 1.5 ATR, TP = 3.0 ATR (R:R 2:1)
+    - EMA(20) como pullback primario, EMA(50) SLOPE como confirmacao
 
 Por que essas mudancas (baseado no PDF "Framework Multi-Timeframe e de Regimes"):
     1. O estudo de Adaptive Regime-Based Trading (ref. 48) alcancou CAGR 70.94%
@@ -116,36 +120,39 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v4 ──
+# ── Parametros da estrategia CTEV v4.1 ──
+# v4.1: Relaxamento controlado de filtros para gerar sinais reais
+# Diagnostico mostrou 0 sinais em 17.4K candles — filtros excessivamente restritivos
 
 # REGIME FILTER (CRITICO — baseado no PDF)
-ADX_MIN = 25.0                # ADX minimo para operar (tendencia forte)
-# Nota: NAO operamos quando ADX < 25 (ranging ou fraco)
-# Isso elimina a maior fonte de perdas: trades em mercados laterais
+ADX_MIN = 25.0                # ADX minimo para trending (mantido para trending)
+ADX_MIN_TRANSITION = 20.0     # ADX minimo para transition (mais permissivo)
+# Nota: v4.1 permite operar em transition com ADX > 20 (antes era bloqueado)
 
-# RSI como zona de pullback
-RSI_LONG_MIN = 30.0           # RSI > 30 para LONG (pullback saudavel)
-RSI_LONG_MAX = 50.0           # RSI < 50 para LONG (zona de pullback)
-RSI_SHORT_MIN = 50.0          # RSI > 50 para SHORT (rally em downtrend)
-RSI_SHORT_MAX = 70.0          # RSI < 70 para SHORT (nao sobrecomprado)
+# RSI como zona de pullback (v4.1: faixas alargadas)
+RSI_LONG_MIN = 25.0           # RSI > 25 para LONG (era 30 — mais permissivo)
+RSI_LONG_MAX = 55.0           # RSI < 55 para LONG (era 50 — captura mais pullbacks)
+RSI_SHORT_MIN = 45.0          # RSI > 45 para SHORT (era 50)
+RSI_SHORT_MAX = 75.0          # RSI < 75 para SHORT (era 70)
 
 # RSI Delta (momentum turning)
-RSI_DELTA_LONG_MIN = 0.0      # RSI deve estar subindo para LONG
-RSI_DELTA_SHORT_MAX = 0.0    # RSI deve estar descendo para SHORT
+RSI_DELTA_LONG_MIN = -1.0     # RSI pode estar levemente descendo para LONG (era 0)
+RSI_DELTA_SHORT_MAX = 1.0     # RSI pode estar levemente subindo para SHORT (era 0)
 
-# Volume (soft filter — SMA(50) conforme versao equilibrada do PDF)
-VOLUME_CONFIRM = True         # Ativado na v4 (era desativado na v3)
+# Volume (soft filter — v4.1: mais suave)
+VOLUME_CONFIRM = True         # Ativado
+VOLUME_SMA_RATIO = 0.60       # volume > 60% da SMA(50) (era 100% — muito restritivo)
 
-# Fibonacci tolerancia
-FIB_TOLERANCE_PCT = 0.015     # 1.5%
+# Fibonacci tolerancia (v4.1: alargada)
+FIB_TOLERANCE_PCT = 0.025     # 2.5% (era 1.5% — mais leeway no pullback)
 
 # ATR Percentile filter
-ATR_PCT_MIN = 0.15
-ATR_PCT_MAX = 0.85
+ATR_PCT_MIN = 0.10            # 10% (era 15% — permite mais volatilidade baixa)
+ATR_PCT_MAX = 0.90            # 90% (era 85% — permite mais volatilidade alta)
 
-# Bollinger Bandwidth
-BB_WIDTH_MIN = 1.0
-BB_WIDTH_MAX = 15.0
+# Bollinger Bandwidth (v4.1: alargado)
+BB_WIDTH_MIN = 0.5            # 0.5% (era 1.0%)
+BB_WIDTH_MAX = 20.0           # 20% (era 15%)
 
 # EMA Slope (confirmacao de tendencia — do PDF)
 EMA50_SLOPE_MIN = 0.0         # Slope > 0 para uptrend, < 0 para downtrend
@@ -194,19 +201,17 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes LONG (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4 — rigorosamente baseado no PDF):
-      1. REGIME: ADX > 25 (tendencia forte) — BLOQUEIA mercados laterais
-      2. TENDENCIA: close > EMA(50) E EMA(50) > EMA(200) (uptrend confirmado)
-      3. SLOPE: ema50_slope > 0 (EMA subindo — nao apenas acima)
-      4. PULLBACK: Preco na zona Fibonacci (0.382-0.618)
-         OU low tocou EMA(20) (pullback primario)
-         OU low tocou EMA(50) (pullback secundario)
-      5. RSI: 30 < RSI < 50 (zona de pullback saudavel)
-      6. RSI DELTA: RSI subindo (rsi_delta > 0) — momentum virando
+    Requisitos (CTEV v4.1 — 10 filtros com relaxamento controlado):
+      1. REGIME: trending_up (ADX>25) OU transition (ADX>20)
+      2. TENDENCIA: close > EMA(50) E EMA(50) > EMA(200)
+      3. SLOPE: ema50_slope > 0
+      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
+      5. RSI: 25 < RSI < 55
+      6. RSI DELTA: rsi_delta > -1
       7. MACD: Histograma > 0 OU MACD > Signal
-      8. VOLUME: volume > SMA(volume, 50) (soft confirmation)
-      9. ATR: Percentile entre 15%-85%
-      10. BB: Bandwidth > 1% (nao em squeeze extremo)
+      8. VOLUME: volume > 60% SMA(50)
+      9. ATR: Percentile 10%-90%
+      10. BB: Bandwidth 0.5%-20%
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -240,12 +245,20 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # 1. REGIME FILTER (CRITICO — do PDF): ADX > 25 = tendencia forte
-    if pd.isna(adx) or adx < ADX_MIN:
+    # 1. REGIME FILTER (v4.1: permite transition com ADX > 20)
+    if pd.isna(adx) or adx < ADX_MIN_TRANSITION:
         return None
 
-    # 1b. Regime deve ser trending_up
-    if regime != "trending_up":
+    # 1b. Regime deve ser trending_up OU transition (v4.1)
+    #    transition agora permite sinais com ADX > 20 (antes era bloqueado)
+    if regime == "trending_up":
+        # Regime forte: mantem ADX > 25
+        if adx < ADX_MIN:
+            return None
+    elif regime == "transition":
+        # Regime transicao: permite com ADX > 20 (mais permissivo)
+        pass
+    else:
         return None
 
     # 2. TENDENCIA: Dual EMA — uptrend confirmado
@@ -292,7 +305,7 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     if not (RSI_LONG_MIN <= rsi <= RSI_LONG_MAX):
         return None
 
-    # 6. RSI DELTA: Momentum deve estar virando para cima
+    # 6. RSI DELTA: Momentum virando para cima (v4.1: tolerancia de -1)
     if rsi_delta < RSI_DELTA_LONG_MIN:
         return None
 
@@ -300,9 +313,9 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     if not _macd_bullish(macd_hist, macd_val, macd_sig):
         return None
 
-    # 8. VOLUME: Soft confirmation (SMA 50 — menos restritivo)
+    # 8. VOLUME: Soft confirmation v4.1 (60% da SMA50 em vez de 100%)
     if VOLUME_CONFIRM and (not pd.isna(volume_sma50) and volume_sma50 > 0):
-        if volume < volume_sma50:
+        if volume < volume_sma50 * VOLUME_SMA_RATIO:
             return None
 
     # 9. ATR: Volatilidade na faixa normal
@@ -368,17 +381,17 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes SHORT (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4):
-      1. REGIME: ADX > 25 (tendencia forte)
-      2. TENDENCIA: close < EMA(50) E EMA(50) < EMA(200) (downtrend)
-      3. SLOPE: ema50_slope < 0 (EMA descendo)
-      4. PULLBACK: Fibonacci zone OU EMA(20) touch OU EMA(50) touch
-      5. RSI: 50 < RSI < 70
-      6. RSI DELTA: RSI descendo (rsi_delta < 0)
+    Requisitos (CTEV v4.1):
+      1. REGIME: trending_down (ADX>25) OU transition (ADX>20)
+      2. TENDENCIA: close < EMA(50) E EMA(50) < EMA(200)
+      3. SLOPE: ema50_slope < 0
+      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
+      5. RSI: 45 < RSI < 75
+      6. RSI DELTA: rsi_delta < 1
       7. MACD: Histograma < 0 OU MACD < Signal
-      8. VOLUME: volume > SMA(volume, 50)
-      9. ATR: Percentile entre 15%-85%
-      10. BB: Bandwidth > 1%
+      8. VOLUME: volume > 60% SMA(50)
+      9. ATR: Percentile 10%-90%
+      10. BB: Bandwidth 0.5%-20%
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -412,12 +425,19 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # 1. REGIME FILTER: ADX > 25
-    if pd.isna(adx) or adx < ADX_MIN:
+    # 1. REGIME FILTER (v4.1: permite transition com ADX > 20)
+    if pd.isna(adx) or adx < ADX_MIN_TRANSITION:
         return None
 
-    # 1b. Regime deve ser trending_down
-    if regime != "trending_down":
+    # 1b. Regime deve ser trending_down OU transition (v4.1)
+    if regime == "trending_down":
+        # Regime forte: mantem ADX > 25
+        if adx < ADX_MIN:
+            return None
+    elif regime == "transition":
+        # Regime transicao: permite com ADX > 20
+        pass
+    else:
         return None
 
     # 2. TENDENCIA: Dual EMA — downtrend confirmado
@@ -463,7 +483,7 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     if not (RSI_SHORT_MIN <= rsi <= RSI_SHORT_MAX):
         return None
 
-    # 6. RSI DELTA: Momentum deve estar virando para baixo
+    # 6. RSI DELTA: Momentum virando para baixo (v4.1: tolerancia de +1)
     if rsi_delta > RSI_DELTA_SHORT_MAX:
         return None
 
@@ -471,9 +491,9 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     if not _macd_bearish(macd_hist, macd_val, macd_sig):
         return None
 
-    # 8. VOLUME: Soft confirmation
+    # 8. VOLUME: Soft confirmation v4.1 (60% da SMA50)
     if VOLUME_CONFIRM and (not pd.isna(volume_sma50) and volume_sma50 > 0):
-        if volume < volume_sma50:
+        if volume < volume_sma50 * VOLUME_SMA_RATIO:
             return None
 
     # 9. ATR: Volatilidade na faixa normal

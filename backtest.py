@@ -1066,8 +1066,8 @@ def run_backtest(
     symbol: str = "BTC/USDT",
     timeframe: str = "1h",
     days: int = 730,
-    atr_pct_min: float = 0.20,
-    atr_pct_max: float = 0.80,
+    atr_pct_min: float = 0.10,  # v4.1: alargado de 0.20
+    atr_pct_max: float = 0.90,  # v4.1: alargado de 0.80
     advanced: bool = False,
 ) -> Tuple[BacktestMetrics, List[TradeResult]]:
     """
