@@ -1396,6 +1396,7 @@ async function fetchMTF() {
 
 // ── Backtest Live Animation Engine ──
 let btSSE = null;
+let btPoll = null;
 const BT_CANDLE_COUNT = 60;
 let btCandles = [];
 let btEquityCtx = null;
