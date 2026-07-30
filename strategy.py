@@ -1,39 +1,27 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v4.1 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v4.2 para LONG e SHORT.
 
-Estrategia CTEV v4.1 = Regime-Based Trend-Following com Fibonacci Pullback
+Estrategia CTEV v4.2 = Regime-Based Trend-Following com Pullback
 
-Mudancas v4.1 vs v4 (relaxamento controlado apos diagnostico de 0 sinais em 17.4K candles):
-    - REGIME: transition agora gera sinais com ADX > 20 (antes era bloqueado)
-    - RSI: faixas alargadas LONG 25-55 (era 30-50), SHORT 45-75 (era 50-70)
-    - RSI DELTA: tolerancia de -1/+1 (era 0 exato)
-    - VOLUME: agora requer volume > 60% da SMA(50) (era 100%)
-    - FIBONACCI: tolerancia 2.5% (era 1.5%)
-    - ATR PERCENTILE: 10-90% (era 15-85%)
-    - BB WIDTH: 0.5-20% (era 1-15%)
+v4.2 vs v4.1 (9 trades, WR 11.1%, PF 0.01 — ainda muito restritivo):
+    - REMOVIDO: Filtro BB Width (#10) — baixo valor preditivo
+    - REMOVIDO: Filtro MACD (#7) — redundante com RSI
+    - REMOVIDO: Filtro RSI Delta (#6) — ruido excessivo em 1H
+    - RSI: LONG 20-65 (era 25-55), SHORT 35-80 (era 45-75)
+    - VOLUME: > 40% SMA50 (era 60%)
+    - FIBONACCI: tolerancia 4% (era 2.5%)
+    - ADX TRANSITION: > 15 (era 20)
+    - NOVO: EMA proximity como pullback (dentro de 1.5% EMA20 ou 2% EMA50)
+    - De 10 filtros hard → 7 filtros hard
 
-Mudancas v4 vs v3:
-    - REGIME FILTER: ADX > 25 para trending, ADX > 20 para transition
-    - VOLUME FILTER re-ativado (soft): volume > 60% SMA(50)
-    - R:R OTIMIZADO: SL = 1.5 ATR, TP = 3.0 ATR (R:R 2:1)
-    - EMA(20) como pullback primario, EMA(50) SLOPE como confirmacao
-
-Por que essas mudancas (baseado no PDF "Framework Multi-Timeframe e de Regimes"):
-    1. O estudo de Adaptive Regime-Based Trading (ref. 48) alcancou CAGR 70.94%
-       com max DD de -20.42% usando regime classification — vs buy-hold 33.48%/-77.22%
-    2. ADX > 25 e o padrao-ouro para filtrar mercados laterais (Quantpedia, 2025)
-    3. O sistema mestre do PDF usa EMA(50) slope no 4H para definir tendencia,
-       e EMA(20) no 1H como zona de pullback
-    4. Volume > SMA(50) e menos restritivo que SMA(20) mas filtra entrada sem
-       confirmacao (versao equilibrada do PDF)
-    5. SL de 1.5 ATR reduz perda media por trade sem sacrificar o R:R
+v4.1 vs v4 (0 sinais em 17.4K candles):
+    - REGIME: transition agora gera sinais com ADX > 20
+    - RSI/Volume/ATR/BB alargados
 
 Referencias:
-    - PDF: "O Framework Multi-Timeframe e de Regimes como Chave para
-      Estrategias Robustas em BTC/USDT no Timeframe de 1H"
-    - Adaptive Regime-Based Trading on Bitcoin (ref. 48): CAGR 70.94%, DD -20.42%
+    - PDF: "O Framework Multi-Timeframe e de Regimes"
     - Quantpedia (2025): 355 estrategias — mediana deterioracao Sharpe 43.90%
 """
 
@@ -120,46 +108,50 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v4.1 ──
-# v4.1: Relaxamento controlado de filtros para gerar sinais reais
-# Diagnostico mostrou 0 sinais em 17.4K candles — filtros excessivamente restritivos
+# ── Parametros da estrategia CTEV v4.2 ──
+# v4.2: Remocao de filtros redundantes + alargamento agressivo dos restantes
+# v4.1 gerou apenas 9 trades em 2 anos com WR 11.1% — insuficiente
 
-# REGIME FILTER (CRITICO — baseado no PDF)
-ADX_MIN = 25.0                # ADX minimo para trending (mantido para trending)
-ADX_MIN_TRANSITION = 20.0     # ADX minimo para transition (mais permissivo)
-# Nota: v4.1 permite operar em transition com ADX > 20 (antes era bloqueado)
+# REGIME FILTER (core — mantido)
+ADX_MIN = 25.0                # ADX minimo para trending (inalterado)
+ADX_MIN_TRANSITION = 15.0     # ADX minimo para transition (era 20 — v4.2 mais permissivo)
 
-# RSI como zona de pullback (v4.1: faixas alargadas)
-RSI_LONG_MIN = 25.0           # RSI > 25 para LONG (era 30 — mais permissivo)
-RSI_LONG_MAX = 55.0           # RSI < 55 para LONG (era 50 — captura mais pullbacks)
-RSI_SHORT_MIN = 45.0          # RSI > 45 para SHORT (era 50)
-RSI_SHORT_MAX = 75.0          # RSI < 75 para SHORT (era 70)
+# RSI como zona de pullback (v4.2: faixas bem mais largas)
+RSI_LONG_MIN = 20.0           # RSI > 20 para LONG (era 25)
+RSI_LONG_MAX = 65.0           # RSI < 65 para LONG (era 55)
+RSI_SHORT_MIN = 35.0          # RSI > 35 para SHORT (era 45)
+RSI_SHORT_MAX = 80.0          # RSI < 80 para SHORT (era 75)
 
-# RSI Delta (momentum turning)
-RSI_DELTA_LONG_MIN = -1.0     # RSI pode estar levemente descendo para LONG (era 0)
-RSI_DELTA_SHORT_MAX = 1.0     # RSI pode estar levemente subindo para SHORT (era 0)
+# RSI Delta — REMOVIDO como hard filter no v4.2 (ruido em 1H)
+# Ainda calculado para logging, mas nao filtra mais entradas
+RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
+RSI_DELTA_SHORT_MAX = 5.0    # effectively disabled
 
-# Volume (soft filter — v4.1: mais suave)
-VOLUME_CONFIRM = True         # Ativado
-VOLUME_SMA_RATIO = 0.60       # volume > 60% da SMA(50) (era 100% — muito restritivo)
+# Volume (v4.2: muito mais suave — so filtra volume extremamente baixo)
+VOLUME_CONFIRM = True
+VOLUME_SMA_RATIO = 0.40       # volume > 40% da SMA(50) (era 60%)
 
-# Fibonacci tolerancia (v4.1: alargada)
-FIB_TOLERANCE_PCT = 0.025     # 2.5% (era 1.5% — mais leeway no pullback)
+# Fibonacci tolerancia (v4.2: alargada)
+FIB_TOLERANCE_PCT = 0.040     # 4.0% (era 2.5%)
 
-# ATR Percentile filter
-ATR_PCT_MIN = 0.10            # 10% (era 15% — permite mais volatilidade baixa)
-ATR_PCT_MAX = 0.90            # 90% (era 85% — permite mais volatilidade alta)
+# ATR Percentile filter (inalterado — ja bem largo)
+ATR_PCT_MIN = 0.10
+ATR_PCT_MAX = 0.90
 
-# Bollinger Bandwidth (v4.1: alargado)
-BB_WIDTH_MIN = 0.5            # 0.5% (era 1.0%)
-BB_WIDTH_MAX = 20.0           # 20% (era 15%)
+# Bollinger Bandwidth — REMOVIDO como hard filter no v4.2
+BB_WIDTH_MIN = 0.0            # disabled
+BB_WIDTH_MAX = 999.0          # disabled
 
-# EMA Slope (confirmacao de tendencia — do PDF)
-EMA50_SLOPE_MIN = 0.0         # Slope > 0 para uptrend, < 0 para downtrend
+# EMA proximity para pullback (NOVO v4.2)
+EMA20_PROXIMITY_PCT = 0.015   # 1.5% — se close esta dentro de 1.5% da EMA20
+EMA50_PROXIMITY_PCT = 0.020   # 2.0% — se close esta dentro de 2.0% da EMA50
 
-# Gestao de risco — R:R 2:1 (SL mais apertado que v3)
-SL_ATR_MULT = 1.5             # Stop = Entry - 1.5 * ATR (vs 2.0 da v3)
-TP_ATR_MULT = 3.0             # TP = Entry + 3.0 * ATR (vs 4.0 da v3, R:R mantido em 2:1)
+# EMA Slope (confirmacao de tendencia — mantido)
+EMA50_SLOPE_MIN = 0.0
+
+# Gestao de risco — R:R 2:1 (inalterado)
+SL_ATR_MULT = 1.5
+TP_ATR_MULT = 3.0
 
 
 def _price_near_fib(price: float, fib_level: float, tolerance_pct: float = FIB_TOLERANCE_PCT) -> bool:
@@ -201,17 +193,14 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes LONG (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4.1 — 10 filtros com relaxamento controlado):
-      1. REGIME: trending_up (ADX>25) OU transition (ADX>20)
+    Requisitos (CTEV v4.2 — 7 filtros, 3 removidos vs v4.1):
+      1. REGIME: trending_up (ADX>25) OU transition (ADX>15)
       2. TENDENCIA: close > EMA(50) E EMA(50) > EMA(200)
       3. SLOPE: ema50_slope > 0
-      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
-      5. RSI: 25 < RSI < 55
-      6. RSI DELTA: rsi_delta > -1
-      7. MACD: Histograma > 0 OU MACD > Signal
-      8. VOLUME: volume > 60% SMA(50)
-      9. ATR: Percentile 10%-90%
-      10. BB: Bandwidth 0.5%-20%
+      4. PULLBACK: Fibonacci (tol 4%) OU EMA touch OU EMA proximity
+      5. RSI: 20 < RSI < 65
+      6. VOLUME: volume > 40% SMA(50)
+      7. ATR: Percentile 10%-90%
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -245,18 +234,14 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # 1. REGIME FILTER (v4.1: permite transition com ADX > 20)
+    # 1. REGIME FILTER (v4.2: transition com ADX > 15)
     if pd.isna(adx) or adx < ADX_MIN_TRANSITION:
         return None
 
-    # 1b. Regime deve ser trending_up OU transition (v4.1)
-    #    transition agora permite sinais com ADX > 20 (antes era bloqueado)
     if regime == "trending_up":
-        # Regime forte: mantem ADX > 25
         if adx < ADX_MIN:
             return None
     elif regime == "transition":
-        # Regime transicao: permite com ADX > 20 (mais permissivo)
         pass
     else:
         return None
@@ -265,81 +250,75 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     if not (close > ema50 and ema50 > ema200):
         return None
 
-    # 3. SLOPE: EMA50 deve estar subindo (do PDF: slope > 0)
+    # 3. SLOPE: EMA50 deve estar subindo
     if pd.isna(ema50_slope) or ema50_slope <= EMA50_SLOPE_MIN:
         return None
 
-    # 4. PULLBACK: Fibonacci zone OU EMA(20) touch OU EMA(50) touch
+    # 4. PULLBACK: Fibonacci zone OU EMA touch OU EMA proximity (NOVO v4.2)
     pullback_type = None
 
-    # Fibonacci check (prioridade maxima)
+    # Fibonacci check (tolerancia 4% v4.2)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == 1:
         pullback_type = "fibonacci"
     else:
-        # Tolerancia: low tocou um nivel Fibonacci
         if fib_dir == 1:
-            if (_price_near_fib(low, fib_0382, 0.02) or
-                    _price_near_fib(low, fib_0500, 0.02) or
-                    _price_near_fib(low, fib_0618, 0.02)):
+            if (_price_near_fib(low, fib_0382) or
+                    _price_near_fib(low, fib_0500) or
+                    _price_near_fib(low, fib_0618)):
                 pullback_type = "fibonacci"
 
-    # EMA(20) touch (pullback primario — recomendado pelo PDF)
+    # EMA(20) touch (low cruzou EMA20 e close recuperou)
     if pullback_type is None:
         if bool(row.get("ema20_touched", False)) and close > ema20:
             pullback_type = "ema20_touch"
 
-    # EMA(50) touch (pullback secundario)
+    # EMA(20) proximity (NOVO v4.2: close dentro de 1.5% da EMA20)
+    if pullback_type is None:
+        if ema20 > 0 and abs(close - ema20) / ema20 <= EMA20_PROXIMITY_PCT:
+            pullback_type = "ema20_proximity"
+
+    # EMA(50) touch
     if pullback_type is None:
         if bool(row.get("ema50_touched", False)) and close > ema50:
             pullback_type = "ema50_touch"
 
-    # Combo: fib + ema20
-    if pullback_type == "fibonacci" and bool(row.get("ema20_touched", False)):
-        pullback_type = "fib_ema_combo"
+    # EMA(50) proximity (NOVO v4.2: close dentro de 2% da EMA50)
+    if pullback_type is None:
+        if ema50 > 0 and abs(close - ema50) / ema50 <= EMA50_PROXIMITY_PCT:
+            pullback_type = "ema50_proximity"
 
     if pullback_type is None:
         return None
 
-    # 5. RSI: Zona de pullback (30-50)
+    # 5. RSI: Zona de pullback alargada (20-65)
     if not (RSI_LONG_MIN <= rsi <= RSI_LONG_MAX):
         return None
 
-    # 6. RSI DELTA: Momentum virando para cima (v4.1: tolerancia de -1)
-    if rsi_delta < RSI_DELTA_LONG_MIN:
-        return None
-
-    # 7. MACD: Momentum virando para cima
-    if not _macd_bullish(macd_hist, macd_val, macd_sig):
-        return None
-
-    # 8. VOLUME: Soft confirmation v4.1 (60% da SMA50 em vez de 100%)
+    # 6. VOLUME: Soft confirmation v4.2 (40% da SMA50)
     if VOLUME_CONFIRM and (not pd.isna(volume_sma50) and volume_sma50 > 0):
         if volume < volume_sma50 * VOLUME_SMA_RATIO:
             return None
 
-    # 9. ATR: Volatilidade na faixa normal
+    # 7. ATR: Volatilidade na faixa normal
     if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
         return None
 
-    # 10. BOLLINGER: Evitar squeeze extremo
-    if bb_w < BB_WIDTH_MIN or bb_w > BB_WIDTH_MAX:
-        return None
+    # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
+    # (eram redundantes/restritivos demais — ver docstring do modulo)
 
-    # ── Gestao de risco LONG — R:R 2:1 (SL mais apertado) ──
+    # ── Gestao de risco LONG — R:R 2:1 ──
     entry = close
     stop_loss = entry - (SL_ATR_MULT * atr)
     take_profit = entry + (TP_ATR_MULT * atr)
 
-    # Sanity: SL nao pode ser negativo
     if stop_loss <= 0:
         return None
 
     logger.info(
-        "SINAL LONG v4 | entry=%.2f SL=%.2f TP=%.2f R:R=1:2 ATR=%.2f "
-        "RSI=%.1f dRSI=%.1f ADX=%.1f regime=%s MACD_hist=%.4f pullback=%s",
-        entry, stop_loss, take_profit, atr, rsi,
-        rsi_delta, adx, regime, macd_hist, pullback_type,
+        "SINAL LONG v4.2 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
+        entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
 
     return Signal(
@@ -381,17 +360,14 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes SHORT (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4.1):
-      1. REGIME: trending_down (ADX>25) OU transition (ADX>20)
+    Requisitos (CTEV v4.2 — 7 filtros):
+      1. REGIME: trending_down (ADX>25) OU transition (ADX>15)
       2. TENDENCIA: close < EMA(50) E EMA(50) < EMA(200)
       3. SLOPE: ema50_slope < 0
-      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
-      5. RSI: 45 < RSI < 75
-      6. RSI DELTA: rsi_delta < 1
-      7. MACD: Histograma < 0 OU MACD < Signal
-      8. VOLUME: volume > 60% SMA(50)
-      9. ATR: Percentile 10%-90%
-      10. BB: Bandwidth 0.5%-20%
+      4. PULLBACK: Fibonacci (tol 4%) OU EMA touch OU EMA proximity
+      5. RSI: 35 < RSI < 80
+      6. VOLUME: volume > 40% SMA(50)
+      7. ATR: Percentile 10%-90%
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -425,17 +401,14 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # 1. REGIME FILTER (v4.1: permite transition com ADX > 20)
+    # 1. REGIME FILTER (v4.2: transition com ADX > 15)
     if pd.isna(adx) or adx < ADX_MIN_TRANSITION:
         return None
 
-    # 1b. Regime deve ser trending_down OU transition (v4.1)
     if regime == "trending_down":
-        # Regime forte: mantem ADX > 25
         if adx < ADX_MIN:
             return None
     elif regime == "transition":
-        # Regime transicao: permite com ADX > 20
         pass
     else:
         return None
@@ -448,7 +421,7 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     if pd.isna(ema50_slope) or ema50_slope >= -EMA50_SLOPE_MIN:
         return None
 
-    # 4. PULLBACK: Fibonacci zone OU EMA(20) touch OU EMA(50) touch
+    # 4. PULLBACK: Fibonacci OU EMA touch OU EMA proximity (v4.2)
     pullback_type = None
 
     # Fibonacci check
@@ -457,52 +430,50 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
         pullback_type = "fibonacci"
     else:
         if fib_dir == -1:
-            if (_price_near_fib(high, fib_0382, 0.02) or
-                    _price_near_fib(high, fib_0500, 0.02) or
-                    _price_near_fib(high, fib_0618, 0.02)):
+            if (_price_near_fib(high, fib_0382) or
+                    _price_near_fib(high, fib_0500) or
+                    _price_near_fib(high, fib_0618)):
                 pullback_type = "fibonacci"
 
-    # EMA(20) touch (pullback primario)
+    # EMA(20) touch (high cruzou EMA20 e close rejeitou abaixo)
     if pullback_type is None:
         if bool(row.get("ema20_touched", False)) and close < ema20:
-            # Para short: close < EMA20 (rally toca EMA20 e rejeita)
-            # Mais preciso: high tocou EMA20 e close rejeitou abaixo
             if high >= ema20:
                 pullback_type = "ema20_touch"
 
-    # EMA(50) touch (pullback secundario)
+    # EMA(20) proximity (NOVO v4.2: close dentro de 1.5% da EMA20)
+    if pullback_type is None:
+        if ema20 > 0 and abs(close - ema20) / ema20 <= EMA20_PROXIMITY_PCT:
+            pullback_type = "ema20_proximity"
+
+    # EMA(50) touch
     if pullback_type is None:
         if bool(row.get("ema50_touched_up", False)) and close < ema50:
             if high >= ema50:
                 pullback_type = "ema50_touch"
 
+    # EMA(50) proximity (NOVO v4.2: close dentro de 2% da EMA50)
+    if pullback_type is None:
+        if ema50 > 0 and abs(close - ema50) / ema50 <= EMA50_PROXIMITY_PCT:
+            pullback_type = "ema50_proximity"
+
     if pullback_type is None:
         return None
 
-    # 5. RSI: Zona de rally em downtrend (50-70)
+    # 5. RSI: Zona de rally alargada (35-80)
     if not (RSI_SHORT_MIN <= rsi <= RSI_SHORT_MAX):
         return None
 
-    # 6. RSI DELTA: Momentum virando para baixo (v4.1: tolerancia de +1)
-    if rsi_delta > RSI_DELTA_SHORT_MAX:
-        return None
-
-    # 7. MACD: Momentum virando para baixo
-    if not _macd_bearish(macd_hist, macd_val, macd_sig):
-        return None
-
-    # 8. VOLUME: Soft confirmation v4.1 (60% da SMA50)
+    # 6. VOLUME: Soft confirmation v4.2 (40% da SMA50)
     if VOLUME_CONFIRM and (not pd.isna(volume_sma50) and volume_sma50 > 0):
         if volume < volume_sma50 * VOLUME_SMA_RATIO:
             return None
 
-    # 9. ATR: Volatilidade na faixa normal
+    # 7. ATR: Volatilidade na faixa normal
     if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
         return None
 
-    # 10. BOLLINGER: Evitar squeeze extremo
-    if bb_w < BB_WIDTH_MIN or bb_w > BB_WIDTH_MAX:
-        return None
+    # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
 
     # ── Gestao de risco SHORT — R:R 2:1 ──
     entry = close
@@ -510,10 +481,9 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     take_profit = entry - (TP_ATR_MULT * atr)
 
     logger.info(
-        "SINAL SHORT v4 | entry=%.2f SL=%.2f TP=%.2f R:R=1:2 ATR=%.2f "
-        "RSI=%.1f dRSI=%.1f ADX=%.1f regime=%s MACD_hist=%.4f pullback=%s",
-        entry, stop_loss, take_profit, atr, rsi,
-        rsi_delta, adx, regime, macd_hist, pullback_type,
+        "SINAL SHORT v4.2 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
+        entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
 
     return Signal(
