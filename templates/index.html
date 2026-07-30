@@ -757,6 +757,14 @@
                     </table>
                 </div>
             </div>
+            <!-- Filter diagnostics (shown when 0 trades) -->
+            <div id="btDiag" style="display:none;padding:16px 18px;border-top:1px solid rgba(51,65,85,0.2)">
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#f59e0b;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    DIAGNOSTICO DE FILTROS — 0 sinais gerados
+                </div>
+                <div id="btDiagContent" style="font-size:11px;color:#94a3b8;line-height:1.7"></div>
+            </div>
             <div id="btPlaceholder" style="padding:60px;text-align:center;color:#64748b;font-size:12px">
                 Clique em <b style="color:#93c5fd">"Rodar Simulacao"</b> para ver o desempenho historico da estrategia.
             </div>
@@ -1612,6 +1620,7 @@ async function runBacktest() {
     txt.textContent = 'executando';
     document.getElementById('btResults').style.display = 'none';
     document.getElementById('btPlaceholder').style.display = 'none';
+    if (document.getElementById('btDiag')) document.getElementById('btDiag').style.display = 'none';
 
     // Show animation overlay
     overlay.classList.add('active');
@@ -1723,6 +1732,33 @@ function renderBt(res) {
 
     document.getElementById('btResults').style.display = 'block';
     document.getElementById('btPlaceholder').style.display = 'none';
+
+    // Show filter diagnostics if 0 trades
+    const diag = (m.filter_diag || {});
+    const diagEl = document.getElementById('btDiag');
+    if (m.total_trades === 0 && diagEl && Object.keys(diag).length > 0) {
+        const total = (diag.nan_filtered||0) + (diag.regime_ranging||0) + (diag.regime_volatile||0) + (diag.regime_transition||0) + (diag.trending_up||0) + (diag.trending_down||0);
+        const pct = (v) => total > 0 ? (v/total*100).toFixed(1) : '0.0';
+        const fmt = (v) => (v||0).toLocaleString();
+        document.getElementById('btDiagContent').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px">
+                <div><span style="color:#475569">Candles analisados:</span> <span class="font-mono" style="color:#e2e8f0">${fmt(total)}</span></div>
+                <div><span style="color:#475569">NaN (indicadores):</span> <span class="font-mono" style="color:#f87171">${fmt(diag.nan_filtered)}</span> <span style="color:#475569">(${pct(diag.nan_filtered)}%)</span></div>
+                <div><span style="color:#475569">Regime Ranging:</span> <span class="font-mono" style="color:#f59e0b">${fmt(diag.regime_ranging)}</span> <span style="color:#475569">(${pct(diag.regime_ranging)}%)</span></div>
+                <div><span style="color:#475569">Regime Volatile:</span> <span class="font-mono" style="color:#f87171">${fmt(diag.regime_volatile)}</span> <span style="color:#475569">(${pct(diag.regime_volatile)}%)</span></div>
+                <div><span style="color:#475569">Trending Up:</span> <span class="font-mono" style="color:#4ade80">${fmt(diag.trending_up)}</span> <span style="color:#475569">(${pct(diag.trending_up)}%)</span></div>
+                <div><span style="color:#475569">Trending Down:</span> <span class="font-mono" style="color:#60a5fa">${fmt(diag.trending_down)}</span> <span style="color:#475569">(${pct(diag.trending_down)}%)</span></div>
+                <div><span style="color:#475569">Transition:</span> <span class="font-mono" style="color:#94a3b8">${fmt(diag.regime_transition)}</span> <span style="color:#475569">(${pct(diag.regime_transition)}%)</span></div>
+                <div><span style="color:#475569">Filtrado ATR:</span> <span class="font-mono" style="color:#f59e0b">${fmt(diag.atr_filtered_diag)}</span></div>
+                <div style="grid-column:span 2;border-top:1px solid rgba(51,65,85,0.2);padding-top:6px;margin-top:2px"><span style="color:#475569">Passou regime+ATR, sem sinal:</span> <span class="font-mono" style="color:#f87171;font-weight:600">${fmt(diag.no_signal)}</span> <span style="color:#64748b">— estrategia nao encontrou condicoes de entrada</span></div>
+            </div>
+            <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);color:#f87171;font-size:10px">
+                A combinacao de 12 filtros simultaneos (regime, ADX, EMA, slope, pullback Fibonacci/EMA, RSI, MACD, volume, ATR, BB) pode ser excessivamente restritiva para este periodo.
+            </div>`;
+        diagEl.style.display = 'block';
+    } else if (diagEl) {
+        diagEl.style.display = 'none';
+    }
 }
 function resetBt() {
     document.getElementById('btBtn').disabled = false;

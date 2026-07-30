@@ -296,6 +296,7 @@ class BacktestMetrics:
             "trailing_activated_count": self.trailing_activated_count,
             "partial_tp_count": self.partial_tp_count,
             "avg_r_r": round(self.avg_r_r, 2),
+            "filter_diag": getattr(self, '_filter_diag', {}),
         }
 
 
@@ -644,7 +645,7 @@ def simulate_trades(
         "Simulacao v4 completa: %d trades, %d filtrados volatilidade, %d filtrados regime",
         len(trades), atr_filtered, regime_filtered,
     )
-    return trades, atr_filtered
+    return trades, atr_filtered, {}
 
 
 def simulate_trades_advanced(
@@ -676,6 +677,16 @@ def simulate_trades_advanced(
     _eq_points: list = []
     _running_pnl = 0.0
 
+    # ── Filter diagnostics ──
+    _diag_nan = 0
+    _diag_regime_ranging = 0
+    _diag_regime_volatile = 0
+    _diag_regime_transition = 0
+    _diag_trending_up = 0
+    _diag_trending_down = 0
+    _diag_atr_filtered = 0
+    _diag_no_signal = 0
+
     while i < n:
         row = df_ind.iloc[i]
 
@@ -704,17 +715,33 @@ def simulate_trades_advanced(
             "adx", "plus_di", "minus_di", "regime",
         ]
         if any(pd.isna(row.get(c)) for c in critical):
+            _diag_nan += 1
             i += 1
             continue
 
         regime = str(row.get("regime", ""))
-        if regime in ("ranging", "volatile"):
+        if regime == "ranging":
+            _diag_regime_ranging += 1
             regime_filtered += 1
             i += 1
             continue
+        if regime == "volatile":
+            _diag_regime_volatile += 1
+            regime_filtered += 1
+            i += 1
+            continue
+        if regime == "transition":
+            _diag_regime_transition += 1
+            # transition passes through to signal evaluation
+
+        if regime == "trending_up":
+            _diag_trending_up += 1
+        if regime == "trending_down":
+            _diag_trending_down += 1
 
         atr_pct = float(row.get("atr_percentile", 0.5))
         if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
+            _diag_atr_filtered += 1
             atr_filtered += 1
             i += 1
             continue
@@ -724,6 +751,7 @@ def simulate_trades_advanced(
             signal = evaluate_short(row)
 
         if signal is None:
+            _diag_no_signal += 1
             i += 1
             continue
 
@@ -911,7 +939,13 @@ def simulate_trades_advanced(
         "Simulacao avancada v4 completa: %d trades, %d filtrados vol, %d regime, balance=$%.2f",
         len(trades), atr_filtered, regime_filtered, balance,
     )
-    return trades, atr_filtered
+    logger.info(
+        "DIAG: nan=%d ranging=%d volatile=%d transition=%d trend_up=%d trend_down=%d atr_filt=%d no_signal=%d",
+        _diag_nan, _diag_regime_ranging, _diag_regime_volatile,
+        _diag_regime_transition, _diag_trending_up, _diag_trending_down,
+        _diag_atr_filtered, _diag_no_signal,
+    )
+    return trades, atr_filtered, {"nan_filtered": _diag_nan, "regime_ranging": _diag_regime_ranging, "regime_volatile": _diag_regime_volatile, "regime_transition": _diag_regime_transition, "trending_up": _diag_trending_up, "trending_down": _diag_trending_down, "atr_filtered_diag": _diag_atr_filtered, "no_signal": _diag_no_signal}
 
 
 # ------------------------------------------------------------------
@@ -1082,8 +1116,9 @@ def run_backtest(
     logger.info("DataFrame limpo: %d candles (de %d originais)", len(df_clean), len(df_ind))
 
     # 4. Simula trades
+    _diag = {}
     if advanced:
-        trades, atr_filtered = simulate_trades_advanced(df_clean, atr_pct_min, atr_pct_max)
+        trades, atr_filtered, _diag = simulate_trades_advanced(df_clean, atr_pct_min, atr_pct_max)
     else:
         trades, atr_filtered = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
 
@@ -1095,6 +1130,7 @@ def run_backtest(
 
     # 5. Calcula metricas
     metrics = calculate_metrics(trades, df_clean, atr_filtered)
+    metrics._filter_diag = _diag  # attach diagnostics
 
     _update_progress(
         phase="Concluido", phase_num=6, pct=100,
