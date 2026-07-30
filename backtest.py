@@ -28,9 +28,60 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+# ── Progress callback for streaming UI ──
+_backtest_progress: Dict[str, Any] = {
+    "phase": "idle",
+    "phase_num": 0,
+    "total_phases": 6,
+    "pct": 0,
+    "message": "",
+    "candles_total": 0,
+    "candles_scanned": 0,
+    "signals_found": 0,
+    "current_price": 0,
+    "current_ts": "",
+    "current_rsi": 0,
+    "current_atr": 0,
+    "last_signal_type": "",
+    "last_signal_price": 0,
+    "last_signal_pnl": 0,
+    "running": False,
+    "equity_snapshot": [],
+    "scan_speed": 0,
+}
+_progress_lock = threading.Lock()
+
+
+def _update_progress(**kwargs: Any) -> None:
+    """Thread-safe update of the global backtest progress dict."""
+    with _progress_lock:
+        _backtest_progress.update(kwargs)
+
+
+def get_backtest_progress() -> Dict[str, Any]:
+    """Return a copy of the current progress state."""
+    with _progress_lock:
+        return dict(_backtest_progress)
+
+
+def reset_backtest_progress() -> None:
+    """Reset progress to idle state."""
+    with _progress_lock:
+        _backtest_progress.update({
+            "phase": "idle", "phase_num": 0, "total_phases": 6,
+            "pct": 0, "message": "", "candles_total": 0,
+            "candles_scanned": 0, "signals_found": 0, "current_price": 0,
+            "current_ts": "", "current_rsi": 0, "current_atr": 0,
+            "last_signal_type": "", "last_signal_price": 0,
+            "last_signal_pnl": 0, "running": False,
+            "equity_snapshot": [], "scan_speed": 0,
+        })
 
 import ccxt
 import numpy as np
@@ -283,8 +334,19 @@ def fetch_historical_ohlcv(
         DataFrame com colunas open, high, low, close, volume e index datetime UTC.
     """
     preferred_id = os.getenv("EXCHANGE_ID", "coinbase").lower()
+
+    _update_progress(
+        phase="Conectando exchange", phase_num=1, pct=2,
+        message=f"Tentando {preferred_id.upper()}...",
+    )
+
     exchange, effective_symbol, ex_id = _pick_exchange_and_symbol(
         preferred_id, symbol,
+    )
+
+    _update_progress(
+        phase="Baixando dados", phase_num=2, pct=5,
+        message=f"Conectado a {ex_id.upper()} | {effective_symbol}",
     )
 
     since_ms = int(
@@ -317,6 +379,15 @@ def fetch_historical_ohlcv(
 
             # Proximo batch: ultimo candle + 1 candle
             since_ms = batch_ts + (60 * 60 * 1000)  # +1h em ms
+
+            # Progress update during download
+            if len(all_ohlcv) % 2000 < 1000 or iteration <= 2:
+                est_total = since_days_ago * 24
+                dl_pct = min(15, 5 + (len(all_ohlcv) / est_total) * 10)
+                _update_progress(
+                    pct=round(dl_pct, 1),
+                    message=f"Baixando candles... {len(all_ohlcv):,} / ~{est_total:,}",
+                )
 
             logger.debug(
                 "Batch %d: %d candles de %s (%s), total=%d",
@@ -600,9 +671,32 @@ def simulate_trades_advanced(
     balance = initial_balance
     i = 0
     n = len(df_ind)
+    _scan_t0 = time.time()
+    _last_progress_time = 0.0
+    _eq_points: list = []
+    _running_pnl = 0.0
 
     while i < n:
         row = df_ind.iloc[i]
+
+        # Progress update (throttled to ~4Hz)
+        _now = time.time()
+        if _now - _last_progress_time > 0.25:
+            _last_progress_time = _now
+            _elapsed = max(_now - _scan_t0, 0.01)
+            _speed = i / _elapsed
+            _base_pct = 20  # scanning phase is 20-80%
+            _scan_pct = _base_pct + (i / max(n, 1)) * 60
+            _update_progress(
+                phase="Escaneando candles", phase_num=4, pct=round(_scan_pct, 1),
+                message=f"Analise {i:,} / {n:,} candles  |  {_speed:.0f} candle/s",
+                candles_total=n, candles_scanned=i, scan_speed=round(_speed),
+                current_price=round(float(row.get("close", 0)), 2),
+                current_ts=str(row.name)[:16] if hasattr(row.name, '__str__') else "",
+                current_rsi=round(float(row.get("rsi", 0)), 1),
+                current_atr=round(float(row.get("atr", 0)), 2),
+                equity_snapshot=list(_eq_points[-50:]),
+            )
 
         critical = [
             "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
@@ -798,6 +892,19 @@ def simulate_trades_advanced(
             sl_updates=sl_updates,
         ))
 
+        # Track equity for live streaming
+        _running_pnl += pnl_pct
+        _eq_points.append(round(_running_pnl, 2))
+
+        # Update progress with signal info
+        _update_progress(
+            signals_found=len(trades),
+            last_signal_type=signal.type.value,
+            last_signal_price=round(entry_price, 2),
+            last_signal_pnl=round(pnl_pct, 2),
+            equity_snapshot=list(_eq_points[-50:]),
+        )
+
         i += bars + 1
 
     logger.info(
@@ -938,6 +1045,10 @@ def run_backtest(
     Returns:
         (BacktestMetrics, List[TradeResult])
     """
+    _update_progress(
+        phase="Conectando exchange", phase_num=1, pct=0,
+        message="Iniciando backtest CTEV...", running=True,
+    )
     logger.info(
         "Iniciando backtest CTEV: %s %s %d dias ATR_pct=[%.0f%%, %.0f%%] mode=%s",
         symbol, timeframe, days, atr_pct_min * 100, atr_pct_max * 100,
@@ -946,6 +1057,12 @@ def run_backtest(
 
     # 1. Download dados
     df = fetch_historical_ohlcv(symbol, timeframe, days)
+
+    _update_progress(
+        phase="Calculando indicadores", phase_num=3, pct=16,
+        message=f"Calculando EMA/BB/RSI/ADX/MACD para {len(df):,} candles...",
+        candles_total=len(df),
+    )
 
     # 2. Calcula indicadores
     df_ind = compute_indicators(df)
@@ -956,6 +1073,12 @@ def run_backtest(
         "macd", "macd_signal", "macd_hist",
         "adx", "plus_di", "minus_di", "regime",
     ]).copy()
+
+    _update_progress(
+        phase="Escaneando candles", phase_num=4, pct=20,
+        message=f"Iniciando simulacao avancada em {len(df_clean):,} candles...",
+        candles_total=len(df_clean), candles_scanned=0, signals_found=0,
+    )
     logger.info("DataFrame limpo: %d candles (de %d originais)", len(df_clean), len(df_ind))
 
     # 4. Simula trades
@@ -964,8 +1087,20 @@ def run_backtest(
     else:
         trades, atr_filtered = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
 
+    _update_progress(
+        phase="Calculando metricas", phase_num=5, pct=85,
+        message=f"Compilando metricas de {len(trades)} trades...",
+        signals_found=len(trades),
+    )
+
     # 5. Calcula metricas
     metrics = calculate_metrics(trades, df_clean, atr_filtered)
+
+    _update_progress(
+        phase="Concluido", phase_num=6, pct=100,
+        message=f"Backtest concluido: {metrics.total_trades} trades | WR={metrics.win_rate:.1f}%",
+        running=False,
+    )
 
     logger.info(
         "Backtest concluido: %d trades | WR=%.1f%% | PF=%.2f | MaxDD=%.2f%% | PnL=%.2f%%",

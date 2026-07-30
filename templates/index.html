@@ -228,6 +228,128 @@
             .hide-mobile { display: none !important; }
             .mobile-col { grid-column: span 1 !important; }
         }
+
+        /* ══════════════════════════════════════════════
+           BACKTEST LIVE ANIMATION SYSTEM
+           ══════════════════════════════════════════════ */
+        .bt-overlay {
+            display: none;
+            padding: 0;
+            animation: btFadeIn 0.4s ease-out;
+        }
+        .bt-overlay.active { display: block; }
+        @keyframes btFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+
+        /* Phase stepper */
+        .bt-phases { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 20px 18px 16px; }
+        .bt-phase {
+            display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px;
+            font-size: 11px; font-weight: 500; color: #475569;
+            transition: all 0.4s ease; position: relative;
+        }
+        .bt-phase-num {
+            width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; border: 1.5px solid rgba(71, 85, 105, 0.3);
+            transition: all 0.4s ease; flex-shrink: 0;
+        }
+        .bt-phase.active { color: #93c5fd; }
+        .bt-phase.active .bt-phase-num { border-color: #3b82f6; color: #3b82f6; background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 12px rgba(59, 130, 246, 0.2); }
+        .bt-phase.done { color: #4ade80; }
+        .bt-phase.done .bt-phase-num { border-color: #22c55e; color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+        .bt-phase-connector { width: 24px; height: 1.5px; background: rgba(71, 85, 105, 0.2); transition: background 0.5s ease; flex-shrink: 0; }
+        .bt-phase-connector.lit { background: linear-gradient(90deg, #22c55e, #3b82f6); }
+
+        /* Main progress section */
+        .bt-engine { padding: 0 18px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 640px) { .bt-engine { grid-template-columns: 1fr; } }
+
+        /* Scan visualization */
+        .bt-scan-panel {
+            background: rgba(8, 11, 20, 0.7); border: 1px solid rgba(51, 65, 85, 0.25); border-radius: 10px;
+            padding: 14px; position: relative; overflow: hidden;
+        }
+        .bt-scan-panel::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.4), transparent);
+        }
+        .bt-scan-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+        .bt-candle-row { display: flex; align-items: flex-end; gap: 1.5px; height: 52px; padding: 0 2px; }
+        .bt-candle {
+            flex: 1; min-width: 2px; border-radius: 1px 1px 0 0; transition: height 0.15s ease, opacity 0.15s ease;
+            opacity: 0.25; position: relative;
+        }
+        .bt-candle.scanned { opacity: 0.55; }
+        .bt-candle.current { opacity: 1; box-shadow: 0 0 6px currentColor; }
+        .bt-candle.signal-long { background: #22c55e !important; opacity: 1 !important; }
+        .bt-candle.signal-short { background: #ef4444 !important; opacity: 1 !important; }
+        .bt-scan-line {
+            position: absolute; bottom: 0; width: 2px; height: 100%; background: #3b82f6;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6), 0 0 20px rgba(59, 130, 246, 0.3);
+            transition: left 0.3s ease; border-radius: 1px; z-index: 2;
+            animation: scanPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes scanPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+        /* Live data panel */
+        .bt-data-panel {
+            background: rgba(8, 11, 20, 0.7); border: 1px solid rgba(51, 65, 85, 0.25); border-radius: 10px;
+            padding: 14px; position: relative; overflow: hidden;
+        }
+        .bt-data-panel::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.4), transparent);
+        }
+        .bt-data-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(51, 65, 85, 0.1); }
+        .bt-data-row:last-child { border-bottom: none; }
+        .bt-data-key { font-size: 10px; color: #64748b; font-weight: 500; }
+        .bt-data-val { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; color: #e2e8f0; }
+
+        /* Progress bar */
+        .bt-progress-section { padding: 0 18px 16px; }
+        .bt-progress-track {
+            height: 3px; background: rgba(51, 65, 85, 0.2); border-radius: 2px; overflow: hidden; position: relative;
+        }
+        .bt-progress-fill {
+            height: 100%; border-radius: 2px; transition: width 0.3s ease;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4);
+            background-size: 200% 100%; animation: progressShimmer 2s linear infinite;
+        }
+        @keyframes progressShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .bt-progress-pct {
+            font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+            color: #93c5fd; text-align: center; margin-top: 8px;
+        }
+        .bt-progress-msg {
+            font-size: 11px; color: #64748b; text-align: center; margin-top: 4px;
+            min-height: 16px;
+        }
+
+        /* Mini equity canvas */
+        .bt-equity-section { padding: 0 18px 18px; }
+        .bt-equity-wrap {
+            background: rgba(8, 11, 20, 0.5); border: 1px solid rgba(51, 65, 85, 0.2); border-radius: 10px;
+            padding: 12px; position: relative; overflow: hidden;
+        }
+        .bt-equity-wrap canvas { width: 100% !important; height: 90px !important; }
+
+        /* Signal flash */
+        .bt-signal-flash {
+            position: absolute; top: 8px; right: 8px; padding: 4px 10px; border-radius: 6px;
+            font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+            animation: signalFlashIn 0.3s ease-out;
+            z-index: 5;
+        }
+        .bt-signal-flash.long { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .bt-signal-flash.short { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        @keyframes signalFlashIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Matrix rain effect in scan panel */
+        .bt-matrix-bg {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.03;
+            pointer-events: none; font-family: 'JetBrains Mono', monospace;
+            font-size: 8px; color: #22c55e; line-height: 1; overflow: hidden;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
@@ -515,6 +637,74 @@
                         <span id="btText">idle</span>
                     </div>
                     <button id="btBtn" onclick="runBacktest()" class="btn btn-primary">Rodar Simulacao</button>
+                </div>
+            </div>
+
+            <!-- ═══ LIVE ANIMATION OVERLAY ═══ -->
+            <div id="btOverlay" class="bt-overlay">
+                <!-- Phase stepper -->
+                <div class="bt-phases" id="btPhases">
+                    <div class="bt-phase" data-phase="1"><span class="bt-phase-num">1</span><span class="hide-mobile">Exchange</span></div>
+                    <div class="bt-phase-connector"></div>
+                    <div class="bt-phase" data-phase="2"><span class="bt-phase-num">2</span><span class="hide-mobile">Download</span></div>
+                    <div class="bt-phase-connector"></div>
+                    <div class="bt-phase" data-phase="3"><span class="bt-phase-num">3</span><span class="hide-mobile">Indicadores</span></div>
+                    <div class="bt-phase-connector"></div>
+                    <div class="bt-phase" data-phase="4"><span class="bt-phase-num">4</span><span class="hide-mobile">Scan</span></div>
+                    <div class="bt-phase-connector"></div>
+                    <div class="bt-phase" data-phase="5"><span class="bt-phase-num">5</span><span class="hide-mobile">Metricas</span></div>
+                    <div class="bt-phase-connector"></div>
+                    <div class="bt-phase" data-phase="6"><span class="bt-phase-num">6</span><span class="hide-mobile">Done</span></div>
+                </div>
+
+                <!-- Progress bar -->
+                <div class="bt-progress-section">
+                    <div class="bt-progress-track">
+                        <div id="btProgressFill" class="bt-progress-fill" style="width:0%"></div>
+                    </div>
+                    <div id="btProgressPct" class="bt-progress-pct">0.0%</div>
+                    <div id="btProgressMsg" class="bt-progress-msg">Aguardando...</div>
+                </div>
+
+                <!-- Engine grid: scan viz + live data -->
+                <div class="bt-engine">
+                    <!-- Scan visualization -->
+                    <div class="bt-scan-panel" id="btScanPanel">
+                        <div class="bt-scan-label">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            SCAN ENGINE
+                        </div>
+                        <div class="bt-candle-row" id="btCandleRow"></div>
+                        <div class="bt-scan-line" id="btScanLine" style="left:0"></div>
+                        <div id="btMatrixBg" class="bt-matrix-bg"></div>
+                        <div id="btSignalFlash"></div>
+                    </div>
+
+                    <!-- Live data panel -->
+                    <div class="bt-data-panel">
+                        <div class="bt-scan-label">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            LIVE DATA
+                        </div>
+                        <div class="bt-data-row"><span class="bt-data-key">Preco Atual</span><span class="bt-data-val" id="btLivePrice">—</span></div>
+                        <div class="bt-data-row"><span class="bt-data-key">Timestamp</span><span class="bt-data-val" id="btLiveTs">—</span></div>
+                        <div class="bt-data-row"><span class="bt-data-key">RSI (14)</span><span class="bt-data-val" id="btLiveRSI">—</span></div>
+                        <div class="bt-data-row"><span class="bt-data-key">ATR (14)</span><span class="bt-data-val" id="btLiveATR">—</span></div>
+                        <div class="bt-data-row"><span class="bt-data-key">Candles/s</span><span class="bt-data-val" id="btLiveSpeed">—</span></div>
+                        <div class="bt-data-row"><span class="bt-data-key">Sinais</span><span class="bt-data-val" id="btLiveSignals" style="color:#fbbf24">0</span></div>
+                        <div class="bt-data-row"><span class="bt-data-key">Ultimo Sinal</span><span class="bt-data-val" id="btLiveLastSig">—</span></div>
+                    </div>
+                </div>
+
+                <!-- Mini equity curve -->
+                <div class="bt-equity-section">
+                    <div class="bt-equity-wrap">
+                        <div class="bt-scan-label">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                            EQUITY CURVE (LIVE)
+                        </div>
+                        <canvas id="btEquityCanvas"></canvas>
+                    </div>
                 </div>
             </div>
 
@@ -1204,31 +1394,280 @@ async function fetchMTF() {
     try { renderMTF(await api('GET', '/api/mtf')); } catch(e) {}
 }
 
-// ── Backtest ──
-let btPoll = null;
+// ── Backtest Live Animation Engine ──
+let btSSE = null;
+const BT_CANDLE_COUNT = 60;
+let btCandles = [];
+let btEquityCtx = null;
+let btMatrixInterval = null;
+
+// Generate initial random candle heights for visual effect
+function btInitCandles() {
+    const row = document.getElementById('btCandleRow');
+    if (!row) return;
+    row.innerHTML = '';
+    btCandles = [];
+    for (let i = 0; i < BT_CANDLE_COUNT; i++) {
+        const h = 8 + Math.random() * 40;
+        const bullish = Math.random() > 0.45;
+        const el = document.createElement('div');
+        el.className = 'bt-candle';
+        el.style.height = h + 'px';
+        el.style.background = bullish ? '#22c55e' : '#ef4444';
+        el.style.color = bullish ? '#22c55e' : '#ef4444';
+        row.appendChild(el);
+        btCandles.push({ el, h, bullish });
+    }
+}
+
+// Update scan visualization based on progress
+function btUpdateScan(p) {
+    const total = p.candles_total || 1;
+    const scanned = p.candles_scanned || 0;
+    const frac = scanned / total;
+    const activeIdx = Math.floor(frac * BT_CANDLE_COUNT);
+
+    btCandles.forEach((c, i) => {
+        c.el.className = 'bt-candle';
+        if (i < activeIdx) {
+            c.el.classList.add('scanned');
+        } else if (i === activeIdx) {
+            c.el.classList.add('current');
+            // Randomize the current candle height for visual feedback
+            if (p.current_price > 0) {
+                const newH = 8 + Math.abs(Math.sin(Date.now() / 300 + i)) * 40;
+                c.el.style.height = newH + 'px';
+            }
+        }
+    });
+
+    // Move scan line
+    const line = document.getElementById('btScanLine');
+    if (line) {
+        const pct = (activeIdx / BT_CANDLE_COUNT) * 100;
+        line.style.left = pct + '%';
+    }
+
+    // Signal flash
+    if (p.last_signal_type && p.signals_found > 0) {
+        const flash = document.getElementById('btSignalFlash');
+        if (flash) {
+            const isLong = p.last_signal_type === 'LONG';
+            const pnl = p.last_signal_pnl || 0;
+            flash.className = 'bt-signal-flash ' + (isLong ? 'long' : 'short');
+            flash.innerHTML = `${isLong ? 'LONG' : 'SHORT'} $${(p.last_signal_price || 0).toLocaleString()} <span style="opacity:0.7">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</span>`;
+        }
+        // Mark a random recent candle as signal
+        const sigIdx = Math.max(0, activeIdx - 1);
+        if (btCandles[sigIdx]) {
+            btCandles[sigIdx].el.className = 'bt-candle signal-' + (isLong ? 'long' : 'short');
+        }
+    }
+}
+
+// Update phase stepper
+function btUpdatePhases(phaseNum) {
+    document.querySelectorAll('#btPhases .bt-phase').forEach(el => {
+        const n = parseInt(el.dataset.phase);
+        el.className = 'bt-phase';
+        if (n < phaseNum) el.classList.add('done');
+        else if (n === phaseNum) el.classList.add('active');
+    });
+    document.querySelectorAll('#btPhases .bt-phase-connector').forEach((el, i) => {
+        el.className = 'bt-phase-connector' + (i < phaseNum - 1 ? ' lit' : '');
+    });
+}
+
+// Update live data panel
+function btUpdateLiveData(p) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('btLivePrice', p.current_price ? '$' + p.current_price.toLocaleString() : '—');
+    set('btLiveTs', p.current_ts || '—');
+    set('btLiveRSI', p.current_rsi ? p.current_rsi.toFixed(1) : '—');
+    set('btLiveATR', p.current_atr ? '$' + p.current_atr.toLocaleString() : '—');
+    set('btLiveSpeed', p.scan_speed ? p.scan_speed.toLocaleString() : '—');
+    set('btLiveSignals', (p.signals_found || 0).toString());
+    if (p.last_signal_type) {
+        const isLong = p.last_signal_type === 'LONG';
+        set('btLiveLastSig', `${p.last_signal_type} @ $${(p.last_signal_price || 0).toLocaleString()}`);
+        const el = document.getElementById('btLiveLastSig');
+        if (el) el.style.color = isLong ? '#4ade80' : '#f87171';
+    }
+}
+
+// Draw mini equity curve on canvas
+function btDrawEquity(snapshot) {
+    const canvas = document.getElementById('btEquityCanvas');
+    if (!canvas || !snapshot || snapshot.length < 2) return;
+    if (!btEquityCtx) btEquityCtx = canvas.getContext('2d');
+    const ctx = btEquityCtx;
+    const W = canvas.width = canvas.offsetWidth * 2;
+    const H = canvas.height = 180;
+    ctx.clearRect(0, 0, W, H);
+
+    const vals = snapshot.map(p => p[1] || p);
+    const minV = Math.min(...vals);
+    const maxV = Math.max(...vals);
+    const range = maxV - minV || 1;
+    const pad = 8;
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(51,65,85,0.15)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+        const y = pad + (i / 3) * (H - 2 * pad);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+
+    // Equity line
+    const isProfit = vals[vals.length - 1] >= (vals[0] || 0);
+    const lineColor = isProfit ? '#22c55e' : '#ef4444';
+    const fillColor = isProfit ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)';
+
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+        const x = (i / (vals.length - 1)) * (W - 2 * pad) + pad;
+        const y = H - pad - ((v - minV) / range) * (H - 2 * pad);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Fill area
+    const lastX = W - pad;
+    ctx.lineTo(lastX, H);
+    ctx.lineTo(pad, H);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    // Pulsing dot at end
+    const lastY = H - pad - ((vals[vals.length - 1] - minV) / range) * (H - 2 * pad);
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 8, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor.replace(')', ',0.2)').replace('rgb', 'rgba');
+    ctx.fill();
+}
+
+// Matrix rain background effect
+function btStartMatrix() {
+    const el = document.getElementById('btMatrixBg');
+    if (!el) return;
+    const chars = '0123456789ABCDEF$%.'.split('');
+    let text = '';
+    for (let i = 0; i < 200; i++) text += chars[Math.floor(Math.random() * chars.length)];
+    el.textContent = text;
+    btMatrixInterval = setInterval(() => {
+        const arr = text.split('');
+        for (let i = 0; i < 3; i++) {
+            const idx = Math.floor(Math.random() * arr.length);
+            arr[idx] = chars[Math.floor(Math.random() * chars.length)];
+        }
+        text = arr.join('');
+        el.textContent = text;
+    }, 80);
+}
+function btStopMatrix() {
+    if (btMatrixInterval) { clearInterval(btMatrixInterval); btMatrixInterval = null; }
+}
+
+// Process a single SSE progress event
+function btHandleProgress(p) {
+    // Progress bar
+    const fill = document.getElementById('btProgressFill');
+    const pct = document.getElementById('btProgressPct');
+    const msg = document.getElementById('btProgressMsg');
+    const pctVal = Math.max(0, Math.min(100, p.pct || 0));
+    if (fill) fill.style.width = pctVal + '%';
+    if (pct) pct.textContent = pctVal.toFixed(1) + '%';
+    if (msg) msg.textContent = p.message || '';
+
+    // Phases
+    btUpdatePhases(p.phase_num || 0);
+
+    // Scan viz (only during phase 4)
+    if ((p.phase_num || 0) === 4) btUpdateScan(p);
+
+    // Live data
+    btUpdateLiveData(p);
+
+    // Equity curve
+    if (p.equity_snapshot && p.equity_snapshot.length > 1) btDrawEquity(p.equity_snapshot);
+}
+
 async function runBacktest() {
     const btn = document.getElementById('btBtn');
     const dot = document.getElementById('btDot');
     const txt = document.getElementById('btText');
+    const overlay = document.getElementById('btOverlay');
+
     btn.disabled = true; btn.style.opacity = '0.4';
     dot.style.background = '#f59e0b'; dot.classList.add('pulse-dot');
-    txt.textContent = 'calculando...';
+    txt.textContent = 'executando';
     document.getElementById('btResults').style.display = 'none';
-    document.getElementById('btPlaceholder').style.display = 'block';
+    document.getElementById('btPlaceholder').style.display = 'none';
+
+    // Show animation overlay
+    overlay.classList.add('active');
+    btInitCandles();
+    btStartMatrix();
+
+    // Close any existing SSE
+    if (btSSE) { btSSE.close(); btSSE = null; }
+
     try {
+        // Trigger backtest
         const res = await api('POST', '/api/backtest?days=730');
-        if (res.ok !== false) { btPoll = setInterval(checkBt, 3000); }
-        else { showToast(res.error || 'Falha', 'error'); resetBt(); }
-    } catch(e) { showToast('Falha: ' + e.message, 'error'); resetBt(); }
+        if (res.ok !== false) {
+            // Open SSE stream
+            btSSE = new EventSource('/api/backtest/stream');
+            btSSE.onmessage = (e) => {
+                try {
+                    const p = JSON.parse(e.data);
+                    btHandleProgress(p);
+                } catch(err) {}
+            };
+            btSSE.addEventListener('done', (e) => {
+                btSSE.close(); btSSE = null;
+                btStopMatrix();
+                // Wait a beat then poll for final results
+                setTimeout(() => checkBt(), 500);
+            });
+            btSSE.onerror = () => {
+                // Fallback to polling if SSE fails
+                btSSE.close(); btSSE = null;
+                btPoll = setInterval(checkBt, 3000);
+            };
+        } else {
+            showToast(res.error || 'Falha', 'error');
+            resetBtOverlay(); resetBt();
+        }
+    } catch(e) {
+        showToast('Falha: ' + e.message, 'error');
+        resetBtOverlay(); resetBt();
+    }
+}
+
+function resetBtOverlay() {
+    const overlay = document.getElementById('btOverlay');
+    if (overlay) overlay.classList.remove('active');
+    btStopMatrix();
+    if (btSSE) { btSSE.close(); btSSE = null; }
 }
 async function checkBt() {
     try {
         const r = await api('GET', '/api/backtest/status');
         if (r.status === 'done') { clearInterval(btPoll); btPoll = null; renderBt(r.result); }
-    } catch(e) { clearInterval(btPoll); btPoll = null; resetBt(); }
+    } catch(e) { clearInterval(btPoll); btPoll = null; resetBtOverlay(); resetBt(); }
 }
 function renderBt(res) {
-    if (!res || !res.ok) { showToast('Backtest falhou', 'error'); resetBt(); return; }
+    if (!res || !res.ok) { showToast('Backtest falhou', 'error'); resetBtOverlay(); resetBt(); return; }
+    resetBtOverlay();
     const dot = document.getElementById('btDot');
     const txt = document.getElementById('btText');
     dot.style.background = '#22c55e'; dot.classList.remove('pulse-dot');
@@ -1290,6 +1729,7 @@ function resetBt() {
     document.getElementById('btDot').style.background = '#475569';
     document.getElementById('btDot').classList.remove('pulse-dot');
     document.getElementById('btText').textContent = 'idle';
+    resetBtOverlay();
 }
 
 // ── Init ──

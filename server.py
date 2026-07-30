@@ -16,6 +16,8 @@ Servidor web FastAPI que expoe:
 - GET  /api/executor   -> Estado do executor (signal_only)
 - POST /api/backtest   -> Dispara backtest assincrono
 - GET  /api/backtest/status -> Status do backtest
+- GET  /api/backtest/progress -> Progresso em tempo real
+- GET  /api/backtest/stream  -> SSE stream de progresso
 
 MODO: Signal-Only — apenas analise e emissao de sinais.
 Nenhum endpoint de execucao de ordens esta disponivel.
@@ -30,14 +32,16 @@ Endpoints de chart data:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from bot_state import get_bot_state
@@ -196,6 +200,50 @@ async def api_risk() -> dict:
     return get_risk_manager().snapshot()
 
 
+@app.get("/api/backtest/progress", summary="Progresso em tempo real do backtest")
+async def api_backtest_progress() -> dict:
+    """Retorna o progresso atual do backtest."""
+    from backtest import get_backtest_progress
+    return get_backtest_progress()
+
+
+@app.get("/api/backtest/stream", summary="SSE de progresso do backtest")
+async def api_backtest_stream():
+    """Server-Sent Events com progresso em tempo real do backtest."""
+    from backtest import get_backtest_progress
+
+    async def event_generator():
+        last_json = ""
+        while True:
+            try:
+                prog = get_backtest_progress()
+                data = json.dumps(prog, default=str)
+                if data != last_json:
+                    yield f"data: {data}\n\n"
+                    last_json = data
+                if not prog.get("running") and prog.get("phase") == "Concluido":
+                    yield f"event: done\ndata: {data}\n\n"
+                    break
+                if _backtest_result is not None and not prog.get("running"):
+                    yield f"event: done\ndata: {data}\n\n"
+                    break
+                await asyncio.sleep(0.25)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.post("/api/backtest", summary="Dispara backtest da estrategia CTEV")
 async def api_backtest(days: int = 730) -> dict:
     """
@@ -211,6 +259,10 @@ async def api_backtest(days: int = 730) -> dict:
 
     _backtest_running = True
     _backtest_result = None
+
+    # Reset progress state for streaming UI
+    from backtest import reset_backtest_progress
+    reset_backtest_progress()
 
     async def _run_backtest():
         global _backtest_result, _backtest_running
