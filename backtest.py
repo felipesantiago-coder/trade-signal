@@ -36,11 +36,8 @@ import pandas as pd
 
 from indicators import compute_indicators
 from strategy import (
-    RSI_LONG_THRESHOLD,
-    RSI_SHORT_THRESHOLD,
     SL_ATR_MULT,
     TP_ATR_MULT,
-    VOLUME_MULTIPLIER,
     Signal,
     SignalType,
     evaluate_long,

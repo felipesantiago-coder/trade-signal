@@ -39,48 +39,56 @@ def _fmt_usd(value: float) -> str:
 
 def _explain_long_conditions(signal: Signal) -> str:
     """Explica em linguagem acessivel o que o sinal LONG significa."""
+    fib_info = ""
+    if signal.fib_0382 > 0 and signal.fib_direction == 1:
+        fib_info = f"\n   Fibonacci 0.382: ${signal.fib_0382:,.2f}"
+        if signal.fib_0500 > 0:
+            fib_info += f"\n   Fibonacci 0.500: ${signal.fib_0500:,.2f}"
+        fib_info = f"\n   O preco esta na zona de Fibonacci (pullback).{fib_info}"
     lines = [
         "O que o sistema detectou:",
         "",
-        "1. Tendencia de ALTA confirmada",
-        f"   O preco (${signal.entry_price:,.2f}) esta acima da media",
-        f"   dos ultimos 200 periodos (${signal.ema200:,.2f}).",
+        "1. Tendencia de ALTA confirmada (duplo EMA)",
+        f"   Preco (${signal.entry_price:,.2f}) acima da EMA(50)",
+        f"   e EMA(50) acima da EMA(200) — tendencia solida.",
         "",
-        "2. Pullback (recuo temporario)",
-        "   O preco recuou e tocou a faixa inferior de Bollinger.",
-        "   Isso e normal em tendencias de alta e cria ponto de entrada.",
+        "2. Momentum de alta ativo",
+        f"   RSI em {signal.rsi:.1f} e subindo (delta: {signal.rsi_delta:+.1f}).",
+        "   Indica que compradores estao retomando controle.",
         "",
-        "3. Exaustao da venda",
-        f"   O RSI esta em {signal.rsi:.1f} (abaixo de 35).",
-        "   Indica que a pressao vendedora esta enfraquecendo.",
+        "3. Pullback em zona favoravel",
+        "   O preco recuou temporariamente criando ponto de entrada.",{fib_info if fib_info else "   Pullback identificado pela faixa inferior de Bollinger."},
         "",
-        "4. Volume elevado confirma",
-        f"   O volume esta {signal.volume / max(signal.volume_sma20, 1):.1f}x acima",
-        "   da media. Isso sugere entrada forte de compradores.",
+        "4. Volume confirma interesse",
+        f"   Volume {signal.volume / max(signal.volume_sma20, 1):.1f}x acima da media.",
     ]
     return "\n".join(lines)
 
 
 def _explain_short_conditions(signal: Signal) -> str:
     """Explica em linguagem acessivel o que o sinal SHORT significa."""
+    fib_info = ""
+    if signal.fib_0382 > 0 and signal.fib_direction == -1:
+        fib_info = f"\n   Fibonacci 0.382: ${signal.fib_0382:,.2f}"
+        if signal.fib_0500 > 0:
+            fib_info += f"\n   Fibonacci 0.500: ${signal.fib_0500:,.2f}"
+        fib_info = f"\n   O preco esta na zona de Fibonacci (pullback).{fib_info}"
     lines = [
         "O que o sistema detectou:",
         "",
-        "1. Tendencia de BAIXA confirmada",
-        f"   O preco (${signal.entry_price:,.2f}) esta abaixo da media",
-        f"   dos ultimos 200 periodos (${signal.ema200:,.2f}).",
+        "1. Tendencia de BAIXA confirmada (duplo EMA)",
+        f"   Preco (${signal.entry_price:,.2f}) abaixo da EMA(50)",
+        f"   e EMA(50) abaixo da EMA(200) — tendencia de baixa solida.",
         "",
-        "2. Pullback para cima (recuo temporario)",
-        "   O preco subiu temporariamente e tocou a faixa superior.",
-        "   Isso e normal em tendencias de baixa e cria ponto de entrada.",
+        "2. Momentum de baixa ativo",
+        f"   RSI em {signal.rsi:.1f} e descendo (delta: {signal.rsi_delta:+.1f}).",
+        "   Indica que vendedores estao retomando controle.",
         "",
-        "3. Exaustao da compra",
-        f"   O RSI esta em {signal.rsi:.1f} (acima de 65).",
-        "   Indica que a pressao compradora esta enfraquecendo.",
+        "3. Pullback em zona favoravel",
+        "   O preco subiu temporariamente criando ponto de entrada.",{fib_info if fib_info else "   Pullback identificado pela faixa superior de Bollinger."},
         "",
-        "4. Volume elevado confirma",
-        f"   O volume esta {signal.volume / max(signal.volume_sma20, 1):.1f}x acima",
-        "   da media. Isso sugere entrada forte de vendedores.",
+        "4. Volume confirma interesse",
+        f"   Volume {signal.volume / max(signal.volume_sma20, 1):.1f}x acima da media.",
     ]
     return "\n".join(lines)
 
@@ -133,7 +141,7 @@ def _format_signal_message(signal: Signal, symbol: str) -> str:
         "para sua propria decisao de trading."
     )
 
-    footer = "\n\nCTEV Signal Bot v4.0 — Apenas analise"
+    footer = "\n\nCTEV Signal Bot v5.0 — Trend-Following + Fibonacci"
 
     return (
         f"{header}\n\n"
