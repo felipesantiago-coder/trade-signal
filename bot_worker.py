@@ -39,6 +39,7 @@ from position_sizing import get_position_sizer
 from position_tracker import get_position_tracker, PositionStatus
 from risk_manager import RiskBlockReason, get_risk_manager
 from strategy import evaluate_signal
+from strategy_profiles import get_profile
 
 logger = logging.getLogger("ctev.worker")
 
@@ -351,7 +352,9 @@ class CTEVWorker:
 
         # ---- AVALIA SINAL ----
         try:
-            signal = evaluate_signal(df_ind)
+            active_tf = self.state.timeframe_override or self.settings.binance.timeframe
+            _profile = get_profile(active_tf)
+            signal = evaluate_signal(df_ind, profile=_profile)
         except Exception as exc:
             self.state.error_count += 1
             self.state.last_error = f"Strategy: {exc}"

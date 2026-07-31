@@ -99,6 +99,7 @@ from strategy import (
     ATR_PCT_MAX as _ATR_PCT_MAX_STRATEGY,
     ADX_MIN as _ADX_MIN_STRATEGY,
 )
+from strategy_profiles import get_profile
 
 logger = logging.getLogger("ctev.backtest")
 
@@ -106,9 +107,8 @@ logger = logging.getLogger("ctev.backtest")
 # Geo-fallback sincrono para backtest (ccxt sync)
 # ------------------------------------------------------------------
 _FALLBACK_CHAIN = [
-    "coinbase", "kraken",
-    "binance", "bybit", "kucoin", "okx",
-    "gate", "bitget",
+    "bybit", "okx", "gate", "bitget",
+    "binance", "coinbase", "kraken", "kucoin",
 ]
 
 _GEOBLOCK_CODES = {403, 451}
@@ -334,7 +334,7 @@ def fetch_historical_ohlcv(
     Returns:
         DataFrame com colunas open, high, low, close, volume e index datetime UTC.
     """
-    preferred_id = os.getenv("EXCHANGE_ID", "coinbase").lower()
+    preferred_id = os.getenv("EXCHANGE_ID", "bybit").lower()
 
     _update_progress(
         phase="Conectando exchange", phase_num=1, pct=2,
@@ -536,12 +536,15 @@ def simulate_trades(
     fee_pct: float = DEFAULT_FEE_PCT,
     spread_bps: float = DEFAULT_SPREAD_BPS,
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
-) -> Tuple[List[TradeResult], int]:
+    max_bars: int = 72,
+    profile=None,
+) -> Tuple[List[TradeResult], int, dict]:
     """
     Percorre o DataFrame com indicadores calculados e simula trades
     da estrategia CTEV v4, respeitando SL e TP baseados em ATR.
 
     v4: Adicionados ADX, regime, volume_sma50, cost modeling.
+    v6: Adicionado profile de timeframe para parametros adaptativos.
 
     Parameters:
         df_ind: DataFrame com indicadores (output de compute_indicators)
@@ -589,10 +592,10 @@ def simulate_trades(
             i += 1
             continue
 
-        # Tenta LONG
-        signal = evaluate_long(row)
+        # Tenta LONG (usa profile se disponivel)
+        signal = evaluate_long(row, profile=profile)
         if signal is None:
-            signal = evaluate_short(row)
+            signal = evaluate_short(row, profile=profile)
 
         if signal is None:
             i += 1
@@ -609,7 +612,8 @@ def simulate_trades(
         exit_reason = None
         bars = 0
 
-        for j in range(i + 1, min(i + 72, n)):  # Max 72 candles (3 dias)
+        _max_bars = max_bars if profile is None else profile.max_bars_held
+        for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]
             future_close = float(future["close"])
             future_low = float(future["low"])
@@ -699,7 +703,9 @@ def simulate_trades_advanced(
     fee_pct: float = DEFAULT_FEE_PCT,
     spread_bps: float = DEFAULT_SPREAD_BPS,
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
-) -> Tuple[List[TradeResult], int]:
+    max_bars: int = 72,
+    profile=None,
+) -> Tuple[List[TradeResult], int, dict]:
     """
     Simulacao avancada v4 com position sizing, trailing stop, break-even, partial TP,
     cost modeling e regime filter.
@@ -784,9 +790,9 @@ def simulate_trades_advanced(
             i += 1
             continue
 
-        signal = evaluate_long(row)
+        signal = evaluate_long(row, profile=profile)
         if signal is None:
-            signal = evaluate_short(row)
+            signal = evaluate_short(row, profile=profile)
 
         if signal is None:
             _diag_no_signal += 1
@@ -831,7 +837,8 @@ def simulate_trades_advanced(
         bars = 0
         sl_updates = 0
 
-        for j in range(i + 1, min(i + 72, n)):
+        _max_bars = max_bars if profile is None else profile.max_bars_held
+        for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]
             f_close = float(future["close"])
             f_low = float(future["low"])
@@ -892,7 +899,7 @@ def simulate_trades_advanced(
                 break
 
         if exit_price is None:
-            last_j = min(i + 72, n) - 1
+            last_j = min(i + _max_bars, n) - 1
             exit_price = float(df_ind.iloc[last_j]["close"])
             exit_reason = "timeout"
             bars = last_j - i
@@ -1104,12 +1111,14 @@ def run_backtest(
     symbol: str = "BTC/USDT",
     timeframe: str = "1h",
     days: int = 730,
-    atr_pct_min: float = 0.10,  # v4.1: alargado de 0.20
-    atr_pct_max: float = 0.90,  # v4.1: alargado de 0.80
+    atr_pct_min: float = None,  # v6: None = usa profile
+    atr_pct_max: float = None,  # v6: None = usa profile
     advanced: bool = False,
 ) -> Tuple[BacktestMetrics, List[TradeResult]]:
     """
     Executa backtest completo da estrategia CTEV.
+
+    v6: Resolve automaticamente o StrategyProfile pelo timeframe.
 
     Parameters:
         advanced: se True, usa simulate_trades_advanced com sizing/trailing
@@ -1117,13 +1126,20 @@ def run_backtest(
     Returns:
         (BacktestMetrics, List[TradeResult])
     """
+    # Resolve profile pelo timeframe
+    profile = get_profile(timeframe)
+
+    # Resolve ATR pct limits: arg > profile > hardcoded fallback
+    _atr_min = atr_pct_min if atr_pct_min is not None else profile.atr_pct_min
+    _atr_max = atr_pct_max if atr_pct_max is not None else profile.atr_pct_max
+
     _update_progress(
         phase="Conectando exchange", phase_num=1, pct=0,
-        message="Iniciando backtest CTEV...", running=True,
+        message=f"Iniciando backtest CTEV [{profile.name}]...", running=True,
     )
     logger.info(
-        "Iniciando backtest CTEV: %s %s %d dias ATR_pct=[%.0f%%, %.0f%%] mode=%s",
-        symbol, timeframe, days, atr_pct_min * 100, atr_pct_max * 100,
+        "Iniciando backtest CTEV [%s]: %s %s %d dias ATR_pct=[%.0f%%, %.0f%%] mode=%s",
+        profile.name, symbol, timeframe, days, _atr_min * 100, _atr_max * 100,
         "advanced" if advanced else "basic",
     )
 
@@ -1132,14 +1148,14 @@ def run_backtest(
 
     _update_progress(
         phase="Calculando indicadores", phase_num=3, pct=16,
-        message=f"Calculando EMA/BB/RSI/ADX/MACD para {len(df):,} candles...",
+        message=f"Calculando EMA/BB/RSI/ADX/MACD para {len(df):,} candles [{profile.name}]...",
         candles_total=len(df),
     )
 
     # 2. Calcula indicadores (passa timeframe para lookbacks adaptativos)
     df_ind = compute_indicators(df, timeframe=timeframe)
 
-    # 3. Remove linhas com NaN (v4: adicionado ADX, regime, ema20, volume_sma50)
+    # 3. Remove linhas com NaN
     df_clean = df_ind.dropna(subset=[
         "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
         "macd", "macd_signal", "macd_hist",
@@ -1148,37 +1164,41 @@ def run_backtest(
 
     _update_progress(
         phase="Escaneando candles", phase_num=4, pct=20,
-        message=f"Iniciando simulacao avancada em {len(df_clean):,} candles...",
+        message=f"Iniciando simulacao [{profile.summary()}] em {len(df_clean):,} candles...",
         candles_total=len(df_clean), candles_scanned=0, signals_found=0,
     )
     logger.info("DataFrame limpo: %d candles (de %d originais)", len(df_clean), len(df_ind))
 
-    # 4. Simula trades
+    # 4. Simula trades (passa profile para evaluate_long/short)
     _diag = {}
     if advanced:
-        trades, atr_filtered, _diag = simulate_trades_advanced(df_clean, atr_pct_min, atr_pct_max)
+        trades, atr_filtered, _diag = simulate_trades_advanced(
+            df_clean, _atr_min, _atr_max, profile=profile,
+        )
     else:
-        trades, atr_filtered, _diag = simulate_trades(df_clean, atr_pct_min, atr_pct_max)
+        trades, atr_filtered, _diag = simulate_trades(
+            df_clean, _atr_min, _atr_max, profile=profile,
+        )
 
     _update_progress(
         phase="Calculando metricas", phase_num=5, pct=85,
-        message=f"Compilando metricas de {len(trades)} trades...",
+        message=f"Compilando metricas de {len(trades)} trades [{profile.name}]...",
         signals_found=len(trades),
     )
 
     # 5. Calcula metricas
     metrics = calculate_metrics(trades, df_clean, atr_filtered)
-    metrics._filter_diag = _diag  # attach diagnostics
+    metrics._filter_diag = _diag
 
     _update_progress(
         phase="Concluido", phase_num=6, pct=100,
-        message=f"Backtest concluido: {metrics.total_trades} trades | WR={metrics.win_rate:.1f}%",
+        message=f"Backtest [{profile.name}] concluido: {metrics.total_trades} trades | WR={metrics.win_rate:.1f}%",
         running=False,
     )
 
     logger.info(
-        "Backtest concluido: %d trades | WR=%.1f%% | PF=%.2f | MaxDD=%.2f%% | PnL=%.2f%%",
-        metrics.total_trades, metrics.win_rate, metrics.profit_factor,
+        "Backtest [%s] concluido: %d trades | WR=%.1f%% | PF=%.2f | MaxDD=%.2f%% | PnL=%.2f%%",
+        profile.name, metrics.total_trades, metrics.win_rate, metrics.profit_factor,
         metrics.max_drawdown_pct, metrics.total_pnl_pct,
     )
 
@@ -1241,11 +1261,11 @@ def run_walk_forward(
             break
 
         # Treino
-        train_trades, _ = simulate_trades(train_slice, atr_pct_min, atr_pct_max)
+        train_trades, _, _ = simulate_trades(train_slice, atr_pct_min, atr_pct_max, profile=profile)
         train_metrics = calculate_metrics(train_trades, train_slice)
 
         # Teste
-        test_trades, _ = simulate_trades(test_slice, atr_pct_min, atr_pct_max)
+        test_trades, _, _ = simulate_trades(test_slice, atr_pct_min, atr_pct_max, profile=profile)
         test_metrics = calculate_metrics(test_trades, test_slice)
 
         # Degradação

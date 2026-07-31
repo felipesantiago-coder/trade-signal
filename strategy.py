@@ -36,9 +36,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from strategy_profiles import StrategyProfile
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +162,10 @@ SL_ATR_MULT = 1.50
 TP_ATR_MULT = 3.50
 
 
-def _price_near_fib(price: float, fib_level: float, tolerance_pct: float = FIB_TOLERANCE_PCT) -> bool:
+def _price_near_fib(
+    price: float, fib_level: float,
+    tolerance_pct: float = FIB_TOLERANCE_PCT,
+) -> bool:
     """Verifica se o preco esta dentro da tolerancia de um nivel Fibonacci."""
     if pd.isna(fib_level) or fib_level <= 0:
         return False
@@ -194,17 +200,19 @@ def _macd_bearish(macd_hist: float, macd_line: float, macd_signal: float) -> boo
     return macd_hist < 0 or macd_line < macd_signal
 
 
-def evaluate_long(row: pd.Series) -> Optional[Signal]:
+def evaluate_long(
+    row: pd.Series, profile: Optional[StrategyProfile] = None
+) -> Optional[Signal]:
     """
     Avalia condicoes LONG (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v5.0 — 6 filtros, otimizados para frequencia):
-      1. REGIME: trending_up (ADX>=30) OU transition
+    Requisitos (CTEV v5.0 — 6 filtros, adaptados por timeframe via profile):
+      1. REGIME: trending_up (ADX>=profile.adx_min) OU transition
       2. TENDENCIA: close > EMA(50) E EMA(50) > EMA(200)
-      3. SLOPE: ema50_slope > -1 (relaxado v5.0)
-      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
-      5. RSI: LONG 28-48, SHORT 55-75
-      6. ATR: Percentile 10%-90%
+      3. SLOPE: ema50_slope > profile.ema50_slope_min
+      4. PULLBACK: Fibonacci (tol profile.fib_tolerance_pct) OU EMA(20/50) touch
+      5. RSI: LONG profile.rsi_long_min - profile.rsi_long_max
+      6. ATR: Percentile profile.atr_pct_min - profile.atr_pct_max
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -238,12 +246,26 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
+    # Resolve profile parameters (fallback para constantes v5.0)
+    _adx_min = profile.adx_min if profile else ADX_MIN
+    _allow_trans = profile.allow_transition if profile else ALLOW_TRANSITION
+    _rsi_l_min = profile.rsi_long_min if profile else RSI_LONG_MIN
+    _rsi_l_max = profile.rsi_long_max if profile else RSI_LONG_MAX
+    _fib_tol = profile.fib_tolerance_pct if profile else FIB_TOLERANCE_PCT
+    _slope_min = profile.ema50_slope_min if profile else EMA50_SLOPE_MIN
+    _vol_confirm = profile.volume_confirm if profile else VOLUME_CONFIRM
+    _vol_ratio = profile.volume_sma_ratio if profile else VOLUME_SMA_RATIO
+    _atr_pct_min = profile.atr_pct_min if profile else ATR_PCT_MIN
+    _atr_pct_max = profile.atr_pct_max if profile else ATR_PCT_MAX
+    _sl_mult = profile.sl_atr_mult if profile else SL_ATR_MULT
+    _tp_mult = profile.tp_atr_mult if profile else TP_ATR_MULT
+
     # 1. REGIME FILTER (v4.4: ALLOW_TRANSITION toggle)
     if regime == "trending_up":
-        if pd.isna(adx) or adx < ADX_MIN:
+        if pd.isna(adx) or adx < _adx_min:
             return None
     elif regime == "transition":
-        if not ALLOW_TRANSITION:
+        if not _allow_trans:
             return None
     else:
         return None
@@ -253,7 +275,7 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
         return None
 
     # 3. SLOPE: EMA50 deve estar subindo
-    if pd.isna(ema50_slope) or ema50_slope <= EMA50_SLOPE_MIN:
+    if pd.isna(ema50_slope) or ema50_slope <= _slope_min:
         return None
 
     # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4: sem EMA proximity)
@@ -263,15 +285,15 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4)
     pullback_type = None
 
-    # Fibonacci check (tolerancia 2.5% v4.4)
+    # Fibonacci check (tolerancia adaptada ao profile)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == 1:
         pullback_type = "fibonacci"
     else:
         if fib_dir == 1:
-            if (_price_near_fib(low, fib_0382) or
-                    _price_near_fib(low, fib_0500) or
-                    _price_near_fib(low, fib_0618)):
+            if (_price_near_fib(low, fib_0382, _fib_tol) or
+                    _price_near_fib(low, fib_0500, _fib_tol) or
+                    _price_near_fib(low, fib_0618, _fib_tol)):
                 pullback_type = "fibonacci"
 
     # EMA(20) touch (low cruzou EMA20 e close recuperou)
@@ -287,34 +309,35 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     if pullback_type is None:
         return None
 
-    # 5. RSI: Zona de pullback alargada (20-65)
-    if not (RSI_LONG_MIN <= rsi <= RSI_LONG_MAX):
+    # 5. RSI: Zona de pullback (adaptada ao profile)
+    if not (_rsi_l_min <= rsi <= _rsi_l_max):
         return None
 
-    # 6. VOLUME: Soft confirmation v4.2 (40% da SMA50)
-    if VOLUME_CONFIRM and (not pd.isna(volume_sma50) and volume_sma50 > 0):
-        if volume < volume_sma50 * VOLUME_SMA_RATIO:
+    # 6. VOLUME: Soft confirmation (adaptada ao profile)
+    if _vol_confirm and (not pd.isna(volume_sma50) and volume_sma50 > 0):
+        if volume < volume_sma50 * _vol_ratio:
             return None
 
-    # 7. ATR: Volatilidade na faixa normal
-    if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
+    # 7. ATR: Volatilidade na faixa normal (adaptada ao profile)
+    if not (_atr_pct_min <= atr_pct <= _atr_pct_max):
         return None
 
     # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
     # (eram redundantes/restritivos demais — ver docstring do modulo)
 
-    # ── Gestao de risco LONG — R:R 2:1 ──
+    # ── Gestao de risco LONG — SL/TP adaptados ao profile ──
     entry = close
-    stop_loss = entry - (SL_ATR_MULT * atr)
-    take_profit = entry + (TP_ATR_MULT * atr)
+    stop_loss = entry - (_sl_mult * atr)
+    take_profit = entry + (_tp_mult * atr)
 
     if stop_loss <= 0:
         return None
 
+    _profile_name = profile.name if profile else "v5.0-default"
     logger.info(
-        "SINAL LONG v5.0 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SINAL LONG %s | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
-        entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
+        _profile_name, entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
 
     return Signal(
@@ -352,17 +375,19 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     )
 
 
-def evaluate_short(row: pd.Series) -> Optional[Signal]:
+def evaluate_short(
+    row: pd.Series, profile: Optional[StrategyProfile] = None
+) -> Optional[Signal]:
     """
     Avalia condicoes SHORT (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v5.0 — 6 filtros, otimizados para frequencia):
-      1. REGIME: trending_down (ADX>=30) OU transition
+    Requisitos (CTEV v5.0 — 6 filtros, adaptados por timeframe via profile):
+      1. REGIME: trending_down (ADX>=profile.adx_min) OU transition
       2. TENDENCIA: close < EMA(50) EMA(50) < EMA(200)
-      3. SLOPE: ema50_slope < 1 (relaxado v5.0)
-      4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
-      5. RSI: LONG 28-48, SHORT 55-75
-      6. ATR: Percentile 10%-90%
+      3. SLOPE: ema50_slope < -profile.ema50_slope_min
+      4. PULLBACK: Fibonacci (tol profile.fib_tolerance_pct) OU EMA(20/50) touch
+      5. RSI: SHORT profile.rsi_short_min - profile.rsi_short_max
+      6. ATR: Percentile profile.atr_pct_min - profile.atr_pct_max
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -396,12 +421,26 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
+    # Resolve profile parameters (fallback para constantes v5.0)
+    _adx_min = profile.adx_min if profile else ADX_MIN
+    _allow_trans = profile.allow_transition if profile else ALLOW_TRANSITION
+    _rsi_s_min = profile.rsi_short_min if profile else RSI_SHORT_MIN
+    _rsi_s_max = profile.rsi_short_max if profile else RSI_SHORT_MAX
+    _fib_tol = profile.fib_tolerance_pct if profile else FIB_TOLERANCE_PCT
+    _slope_min = profile.ema50_slope_min if profile else EMA50_SLOPE_MIN
+    _vol_confirm = profile.volume_confirm if profile else VOLUME_CONFIRM
+    _vol_ratio = profile.volume_sma_ratio if profile else VOLUME_SMA_RATIO
+    _atr_pct_min = profile.atr_pct_min if profile else ATR_PCT_MIN
+    _atr_pct_max = profile.atr_pct_max if profile else ATR_PCT_MAX
+    _sl_mult = profile.sl_atr_mult if profile else SL_ATR_MULT
+    _tp_mult = profile.tp_atr_mult if profile else TP_ATR_MULT
+
     # 1. REGIME FILTER (v4.4: ALLOW_TRANSITION toggle)
     if regime == "trending_down":
-        if pd.isna(adx) or adx < ADX_MIN:
+        if pd.isna(adx) or adx < _adx_min:
             return None
     elif regime == "transition":
-        if not ALLOW_TRANSITION:
+        if not _allow_trans:
             return None
     else:
         return None
@@ -411,21 +450,21 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
         return None
 
     # 3. SLOPE: EMA50 deve estar descendo
-    if pd.isna(ema50_slope) or ema50_slope >= -EMA50_SLOPE_MIN:
+    if pd.isna(ema50_slope) or ema50_slope >= -_slope_min:
         return None
 
     # 4. PULLBACK: Fibonacci OU EMA touch (v4.4)
     pullback_type = None
 
-    # Fibonacci check
+    # Fibonacci check (tolerancia adaptada ao profile)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == -1:
         pullback_type = "fibonacci"
     else:
         if fib_dir == -1:
-            if (_price_near_fib(high, fib_0382) or
-                    _price_near_fib(high, fib_0500) or
-                    _price_near_fib(high, fib_0618)):
+            if (_price_near_fib(high, fib_0382, _fib_tol) or
+                    _price_near_fib(high, fib_0500, _fib_tol) or
+                    _price_near_fib(high, fib_0618, _fib_tol)):
                 pullback_type = "fibonacci"
 
     # EMA(20) touch (high cruzou EMA20 e close rejeitou abaixo)
@@ -443,30 +482,31 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     if pullback_type is None:
         return None
 
-    # 5. RSI: Zona de rally alargada (35-80)
-    if not (RSI_SHORT_MIN <= rsi <= RSI_SHORT_MAX):
+    # 5. RSI: Zona de rally (adaptada ao profile)
+    if not (_rsi_s_min <= rsi <= _rsi_s_max):
         return None
 
-    # 6. VOLUME: Soft confirmation v4.2 (40% da SMA50)
-    if VOLUME_CONFIRM and (not pd.isna(volume_sma50) and volume_sma50 > 0):
-        if volume < volume_sma50 * VOLUME_SMA_RATIO:
+    # 6. VOLUME: Soft confirmation (adaptada ao profile)
+    if _vol_confirm and (not pd.isna(volume_sma50) and volume_sma50 > 0):
+        if volume < volume_sma50 * _vol_ratio:
             return None
 
-    # 7. ATR: Volatilidade na faixa normal
-    if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
+    # 7. ATR: Volatilidade na faixa normal (adaptada ao profile)
+    if not (_atr_pct_min <= atr_pct <= _atr_pct_max):
         return None
 
     # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
 
-    # ── Gestao de risco SHORT — R:R 2:1 ──
+    # ── Gestao de risco SHORT — SL/TP adaptados ao profile ──
     entry = close
-    stop_loss = entry + (SL_ATR_MULT * atr)
-    take_profit = entry - (TP_ATR_MULT * atr)
+    stop_loss = entry + (_sl_mult * atr)
+    take_profit = entry - (_tp_mult * atr)
 
+    _profile_name = profile.name if profile else "v5.0-default"
     logger.info(
-        "SINAL SHORT v5.0 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SINAL SHORT %s | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
-        entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
+        _profile_name, entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
 
     return Signal(
@@ -504,17 +544,23 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     )
 
 
-def evaluate_signal(df_ind: pd.DataFrame) -> Optional[Signal]:
+def evaluate_signal(
+    df_ind: pd.DataFrame, profile: Optional[StrategyProfile] = None
+) -> Optional[Signal]:
     """
-    Ponto de entrada principal da estrategia v4.
+    Ponto de entrada principal da estrategia v4/v6.
     Recebe o DataFrame com indicadores e avalia apenas a ultima linha.
     Retorna um Signal LONG, SHORT ou None.
+
+    Parameters:
+        df_ind: DataFrame com indicadores calculados
+        profile: StrategyProfile do timeframe (None = usa padrao 1h v5.0)
     """
     if df_ind.empty:
         return None
 
     last = df_ind.iloc[-1]
-    signal = evaluate_long(last)
+    signal = evaluate_long(last, profile=profile)
     if signal is not None:
         return signal
-    return evaluate_short(last)
+    return evaluate_short(last, profile=profile)
