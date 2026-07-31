@@ -1270,15 +1270,15 @@ function renderStatus(data) {
         }
     }
     // Mostra badge se houver override
-    const badge = document.getElementById('workerTFBadge');
-    if (badge) {
+    const tfBadge = document.getElementById('workerTFBadge');
+    if (tfBadge) {
         if (data.timeframe_override && data.timeframe_override !== (data.timeframe_base || '1h')) {
-            badge.style.display = 'inline';
-            badge.textContent = 'override ativo';
-            badge.style.color = '#f59e0b';
-            badge.style.background = 'rgba(245,158,11,0.1)';
+            tfBadge.style.display = 'inline';
+            tfBadge.textContent = 'override ativo';
+            tfBadge.style.color = '#f59e0b';
+            tfBadge.style.background = 'rgba(245,158,11,0.1)';
         } else {
-            badge.style.display = 'none';
+            tfBadge.style.display = 'none';
         }
     }
 
