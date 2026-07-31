@@ -244,12 +244,13 @@ async def api_backtest_stream():
 
 
 @app.post("/api/backtest", summary="Dispara backtest da estrategia CTEV")
-async def api_backtest(days: int = 730) -> dict:
+async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
     """
     Executa backtest assincrono da estrategia CTEV.
 
     Parametros query:
-        days: dias de dados historicos (default 365)
+        days: dias de dados historicos (default 730)
+        timeframe: timeframe dos candles (ex: '15m', '1h', '4h'). Default = config do bot.
     """
     global _backtest_task, _backtest_result, _backtest_running
 
@@ -263,13 +264,16 @@ async def api_backtest(days: int = 730) -> dict:
     from backtest import reset_backtest_progress
     reset_backtest_progress()
 
+    # Resolve timeframe: usa o parametro ou fallback para config do bot
+    effective_tf = timeframe or get_settings().binance.timeframe
+
     async def _run_backtest():
         global _backtest_result, _backtest_running
         try:
             from backtest import run_backtest
             loop = asyncio.get_event_loop()
             metrics, trades = await loop.run_in_executor(
-                None, lambda: run_backtest(days=days, advanced=False)
+                None, lambda: run_backtest(days=days, timeframe=effective_tf, advanced=False)
             )
             _backtest_result = {
                 "ok": True,
@@ -352,6 +356,8 @@ async def api_status() -> dict:
     risk = get_risk_manager().snapshot()
     tracker = get_position_tracker()
     mtf = get_mtf_filter().snapshot()
+    # Timeframe ativo: override > config
+    active_tf = state.get("timeframe_override") or get_settings().binance.timeframe
     return {
         "bot": state,
         "risk": risk,
@@ -360,7 +366,8 @@ async def api_status() -> dict:
         "executor": {"mode": "signal_only"},
         "trades_summary": get_trades_summary(),
         "symbol": get_settings().binance.symbol,
-        "timeframe": get_settings().binance.timeframe,
+        "timeframe": active_tf,
+        "timeframe_base": get_settings().binance.timeframe,
         "signals_today": count_signals_today(),
         "signals_today_by_type": count_signals_by_type_today(),
     }
@@ -374,6 +381,26 @@ async def api_trades(limit: int = 50) -> dict:
         "trades": list_recent_trades(limit=limit),
         "summary": get_trades_summary(),
     }
+
+
+@app.post("/api/settings/timeframe", summary="Altera timeframe em runtime (sem restart)")
+async def api_set_timeframe(timeframe: str) -> dict:
+    """
+    Altera o timeframe do worker e do backtest em tempo real.
+    O proximo ciclo do worker ja usara o novo timeframe.
+    Nao requer restart do servidor.
+    """
+    valid_tfs = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d"]
+    if timeframe not in valid_tfs:
+        return {"ok": False, "error": f"Timeframe invalido: '{timeframe}'. Opcoes: {valid_tfs}"}
+
+    get_bot_state().timeframe_override = timeframe
+    insert_log(
+        "INFO",
+        f"Timeframe alterado em runtime para {timeframe} (base: {get_settings().binance.timeframe})",
+        "settings",
+    )
+    return {"ok": True, "timeframe": timeframe, "message": f"Timeframe alterado para {timeframe}. Proximo ciclo ja usa o novo TF."}
 
 
 @app.get("/api/chart-data", summary="Dados de precos + indicadores + sinais para graficos")
@@ -401,7 +428,7 @@ async def api_chart_data(bars: int = 100) -> dict:
         df.set_index("datetime", inplace=True)
         df.drop(columns=["timestamp"], inplace=True)
 
-        df_ind = compute_indicators(df)
+        df_ind = compute_indicators(df, timeframe=get_settings().binance.timeframe)
         signals = list_recent_signals(limit=50)
 
         candles = []

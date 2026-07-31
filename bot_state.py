@@ -38,6 +38,8 @@ class BotState:
     error_count: int = 0
     last_error: Optional[str] = None
     last_status_message: str = "Inicializando..."
+    # Runtime overrides (mutáveis sem restart)
+    timeframe_override: Optional[str] = None
 
     def snapshot(self) -> dict:
         """Retorna um dicionário imutável com o estado atual (para JSON)."""
@@ -50,6 +52,7 @@ class BotState:
             "error_count": self.error_count,
             "last_error": self.last_error,
             "last_status_message": self.last_status_message,
+            "timeframe_override": self.timeframe_override,
             "now": _now_iso(),
         }
 

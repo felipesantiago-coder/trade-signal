@@ -43,7 +43,31 @@ from strategy import evaluate_signal
 logger = logging.getLogger("ctev.worker")
 
 CANDLE_LIMIT = 300
-TIMEFRAME_MS = 60 * 60 * 1000
+
+# Mapa de timeframe para milissegundos (dinamico)
+_TF_MS_MAP = {
+    "1m": 60 * 1000,
+    "3m": 3 * 60 * 1000,
+    "5m": 5 * 60 * 1000,
+    "15m": 15 * 60 * 1000,
+    "30m": 30 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "2h": 2 * 60 * 60 * 1000,
+    "4h": 4 * 60 * 60 * 1000,
+    "6h": 6 * 60 * 60 * 1000,
+    "8h": 8 * 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+}
+
+
+def _get_timeframe_ms(timeframe: str) -> int:
+    """Converte string de timeframe para milissegundos."""
+    if timeframe in _TF_MS_MAP:
+        return _TF_MS_MAP[timeframe]
+    raise ValueError(
+        f"Timeframe '{timeframe}' nao suportado. Opcoes: {list(_TF_MS_MAP.keys())}"
+    )
 
 
 class CTEVWorker:
@@ -226,9 +250,13 @@ class CTEVWorker:
             self.state.last_status_message = "Sem dados de candle"
             return
 
-        # Verifica candle fechado
+        # Resolve timeframe: override em runtime > settings > default
+        active_tf = self.state.timeframe_override or self.settings.binance.timeframe
+
+        # Verifica candle fechado (dinamico por timeframe)
+        timeframe_ms = _get_timeframe_ms(active_tf)
         last_open_ts_ms = int(df.index[-1].timestamp() * 1000)
-        last_close_ts_ms = last_open_ts_ms + TIMEFRAME_MS
+        last_close_ts_ms = last_open_ts_ms + timeframe_ms
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
         if now_ms < last_close_ts_ms:
@@ -248,7 +276,7 @@ class CTEVWorker:
 
         # Calcula indicadores
         try:
-            df_ind = compute_indicators(df)
+            df_ind = compute_indicators(df, timeframe=self.settings.binance.timeframe)
         except Exception as exc:
             self.state.error_count += 1
             self.state.last_error = f"Indicadores: {exc}"
@@ -573,9 +601,11 @@ class CTEVWorker:
         if self.exchange is None:
             raise RuntimeError("Exchange nao inicializada.")
         symbol = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
+        # Usa timeframe ativo (pode ser override em runtime)
+        active_tf = self.state.timeframe_override or self.settings.binance.timeframe
         ohlcv = await self.exchange.fetch_ohlcv(
             symbol=symbol,
-            timeframe=self.settings.binance.timeframe,
+            timeframe=active_tf,
             limit=CANDLE_LIMIT,
         )
         if not ohlcv:

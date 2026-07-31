@@ -59,7 +59,7 @@ class OptimizerV5:
             with open(DATA_CACHE, 'rb') as f: self.df_clean = pickle.load(f)['df_clean']
         else:
             df = fetch_historical_ohlcv(SYMBOL, TIMEFRAME, DAYS)
-            df_ind = compute_indicators(df)
+            df_ind = compute_indicators(df, timeframe=TIMEFRAME)
             crit = ["ema20","ema50","ema200","rsi","atr","atr_percentile",
                     "macd","macd_signal","macd_hist","adx","plus_di","minus_di","regime"]
             self.df_clean = df_ind.dropna(subset=crit).copy()

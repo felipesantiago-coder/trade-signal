@@ -39,6 +39,29 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _get_timeframe_multiplier(timeframe: str) -> float:
+    """
+    Retorna o multiplicador de candles em relacao ao timeframe de 1h.
+    Ex: 15m -> 4.0 (4 candles de 15m por candle de 1h)
+        1h  -> 1.0 (base)
+        4h  -> 0.25
+
+    Usado para escalar lookbacks de indicadores que dependem de tempo real
+    (Fibonacci, swing detection, ATR percentile, BB squeeze percentile).
+    """
+    _tf_minutes = {
+        "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
+        "1h": 60, "2h": 120, "4h": 240, "6h": 360,
+        "8h": 480, "12h": 720, "1d": 1440,
+    }
+    if timeframe not in _tf_minutes:
+        raise ValueError(
+            f"Timeframe '{timeframe}' nao suportado. "
+            f"Opcoes: {list(_tf_minutes.keys())}"
+        )
+    return 60.0 / _tf_minutes[timeframe]
+
+
 def _ema(series: pd.Series, span: int) -> pd.Series:
     """Calcula EMA usando ewm do pandas."""
     return series.ewm(span=span, adjust=False).mean()
@@ -205,8 +228,9 @@ def _detect_swing_points(
     Um swing high e o ponto mais alto dentro de uma janela centrada.
     Um swing low e o ponto mais baixo dentro de uma janela centrada.
 
-    v3: lookback reduzido de 20 para 10 para detectar swings mais frequentes
-    em timeframe 1H (10h = meio dia de dados).
+    O lookback deve ser passado pelo chamador de acordo com o timeframe:
+      - 1h  -> 10  (meio dia)
+      - 15m -> 40  (10 horas = 40 candles de 15min)
     """
     swing_high = (
         (high == high.rolling(window=lookback, center=True).max()) &
@@ -229,8 +253,9 @@ def _compute_fibonacci_levels(
     """
     Calcula niveis de Fibonacci retracement baseados no ultimo swing relevante.
 
-    v3: lookback aumentado de 50 para 120 para capturar movimentos maiores
-    (5 dias em 1H = 120 candles).
+    O lookback deve ser passado pelo chamador de acordo com o timeframe:
+      - 1h  -> 120  (5 dias = 120 candles)
+      - 15m -> 480  (5 dias = 480 candles)
 
     Retorna DataFrame com colunas:
         - fib_0236, fib_0382, fib_0500, fib_0618, fib_0786
@@ -316,10 +341,16 @@ def _compute_fibonacci_levels(
     return pd.DataFrame(fib_data, index=high.index)
 
 
-def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def compute_indicators(df: pd.DataFrame, timeframe: str = "1h") -> pd.DataFrame:
     """
     Recebe um DataFrame com colunas ['open','high','low','close','volume']
     e devolve uma copia enriquecida com os indicadores da estrategia CTEV v4.
+
+    Parameters:
+        df: DataFrame OHLCV
+        timeframe: string do timeframe ('1m','5m','15m','30m','1h','2h','4h','1d')
+            Usado para escalar lookbacks de Fibonacci, swing detection,
+            ATR percentile e BB squeeze percentile.
 
     Indicadores calculados:
         - ema20: EMA de 20 periodos (pullback reference)
@@ -334,7 +365,7 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         - volume_sma20: Media de volume 20 periodos
         - volume_sma50: Media de volume 50 periodos (filtro soft)
         - atr: ATR(14)
-        - atr_percentile: Ranking do ATR nos ultimos 100 candles
+        - atr_percentile: Ranking do ATR nos ultimos N candles
         - macd, macd_signal, macd_hist: MACD(12, 26, 9)
         - adx, plus_di, minus_di: ADX(14) + directional indicators
         - regime: Classificacao do mercado (trending_up/down, ranging, etc.)
@@ -345,6 +376,16 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         - ema50_touched: True se low <= EMA50 (pullback para LONG)
         - ema50_touched_up: True se high >= EMA50 (pullback para SHORT)
     """
+    # Lookback scaling: base reference is 1h
+    # Em 1h: swing_lookback=10, fib_lookback=120, atr/bb_lookback=100
+    # These represent ~10h, ~5 days, ~4 days respectively
+    _tf_multiplier = _get_timeframe_multiplier(timeframe)
+
+    _swing_lookback = int(10 * _tf_multiplier)    # 10h em candles
+    _fib_lookback = int(120 * _tf_multiplier)     # 5 dias em candles
+    _atr_lookback = int(100 * _tf_multiplier)      # ~4 dias em candles
+    _bb_width_lookback = int(100 * _tf_multiplier) # ~4 dias em candles
+
     required = {"open", "high", "low", "close", "volume"}
     missing = required - set(df.columns)
     if missing:
@@ -392,19 +433,16 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # ── ATR 14 ──
     out["atr"] = _atr(out["high"], out["low"], out["close"], period=14)
 
-    # ── ATR Percentile ──
-    ATR_LOOKBACK = 100
-    out["atr_percentile"] = out["atr"].rolling(ATR_LOOKBACK).apply(
+    # ── ATR Percentile (lookback adaptativo ao timeframe) ──
+    out["atr_percentile"] = out["atr"].rolling(_atr_lookback).apply(
         lambda x: (x.iloc[-1] > x).sum() / max(len(x) - 1, 1), raw=False
     )
 
     # ── Bollinger Bandwidth ──
     out["bb_width"] = ((out["bb_upper"] - out["bb_lower"]) / out["bb_middle"]) * 100
 
-    # ── BB Squeeze Percentile (v4: detectar expansao de volatilidade) ──
-    # Quando bb_squeeze_pct esta baixo e comeca a subir = breakout iminente
-    BB_WIDTH_LOOKBACK = 100
-    out["bb_squeeze_pct"] = out["bb_width"].rolling(BB_WIDTH_LOOKBACK).apply(
+    # ── BB Squeeze Percentile (lookback adaptativo ao timeframe) ──
+    out["bb_squeeze_pct"] = out["bb_width"].rolling(_bb_width_lookback).apply(
         lambda x: (x.iloc[-1] > x).sum() / max(len(x) - 1, 1), raw=False
     )
 
@@ -422,11 +460,11 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         out["close"], out["ema50"], out["bb_width"], out["bb_squeeze_pct"],
     )
 
-    # ── Fibonacci Retracement Levels (v3: melhorado) ──
-    swing_highs, swing_lows = _detect_swing_points(out["high"], out["low"], lookback=10)
+    # ── Fibonacci Retracement Levels (lookback adaptativo ao timeframe) ──
+    swing_highs, swing_lows = _detect_swing_points(out["high"], out["low"], lookback=_swing_lookback)
     fib_df = _compute_fibonacci_levels(
         out["high"], out["low"], out["close"],
-        swing_highs, swing_lows, lookback=120
+        swing_highs, swing_lows, lookback=_fib_lookback
     )
     out = pd.concat([out, fib_df], axis=1)
 

@@ -356,7 +356,9 @@ def fetch_historical_ohlcv(
     )
     all_ohlcv: list = []
     last_ts = 0
-    max_iterations = since_days_ago * 24 + 100  # safety: max candles + buffer
+    # Candles per day depends on timeframe
+    _candles_per_day = _timeframe_ms_to_candles_per_day(timeframe)
+    max_iterations = since_days_ago * _candles_per_day + 100  # safety: max candles + buffer
     iteration = 0
 
     while iteration < max_iterations:
@@ -378,12 +380,13 @@ def fetch_historical_ohlcv(
 
             all_ohlcv.extend(batch)
 
-            # Proximo batch: ultimo candle + 1 candle
-            since_ms = batch_ts + (60 * 60 * 1000)  # +1h em ms
+            # Proximo batch: ultimo candle + 1 candle (dinamico por timeframe)
+            tf_ms = _timeframe_to_ms(timeframe)
+            since_ms = batch_ts + tf_ms
 
             # Progress update during download
             if len(all_ohlcv) % 2000 < 1000 or iteration <= 2:
-                est_total = since_days_ago * 24
+                est_total = since_days_ago * _candles_per_day
                 dl_pct = min(15, 5 + (len(all_ohlcv) / est_total) * 10)
                 _update_progress(
                     pct=round(dl_pct, 1),
@@ -437,6 +440,41 @@ def fetch_historical_ohlcv(
 DEFAULT_FEE_PCT = 0.025       # 0.025% por side (Binance)
 DEFAULT_SPREAD_BPS = 10.0    # 10 bps = 0.10%
 DEFAULT_SLIPPAGE_BPS = 20.0  # 20 bps = 0.20%
+
+
+# ------------------------------------------------------------------
+# Timeframe helpers
+# ------------------------------------------------------------------
+_TIMEFRAME_MS_MAP = {
+    "1m": 60 * 1000,
+    "3m": 3 * 60 * 1000,
+    "5m": 5 * 60 * 1000,
+    "15m": 15 * 60 * 1000,
+    "30m": 30 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "2h": 2 * 60 * 60 * 1000,
+    "4h": 4 * 60 * 60 * 1000,
+    "6h": 6 * 60 * 60 * 1000,
+    "8h": 8 * 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+}
+
+
+def _timeframe_to_ms(timeframe: str) -> int:
+    """Converte string de timeframe (ex: '15m', '1h', '4h') para milissegundos."""
+    if timeframe in _TIMEFRAME_MS_MAP:
+        return _TIMEFRAME_MS_MAP[timeframe]
+    raise ValueError(
+        f"Timeframe '{timeframe}' nao suportado. "
+        f"Opcoes: {list(_TIMEFRAME_MS_MAP.keys())}"
+    )
+
+
+def _timeframe_ms_to_candles_per_day(timeframe: str) -> int:
+    """Retorna quantos candles existem por dia para o timeframe dado."""
+    ms_per_day = 24 * 60 * 60 * 1000
+    return ms_per_day // _timeframe_to_ms(timeframe)
 
 
 def _apply_costs(entry_price: float, exit_price: float, is_long: bool,
@@ -1098,8 +1136,8 @@ def run_backtest(
         candles_total=len(df),
     )
 
-    # 2. Calcula indicadores
-    df_ind = compute_indicators(df)
+    # 2. Calcula indicadores (passa timeframe para lookbacks adaptativos)
+    df_ind = compute_indicators(df, timeframe=timeframe)
 
     # 3. Remove linhas com NaN (v4: adicionado ADX, regime, ema20, volume_sma50)
     df_clean = df_ind.dropna(subset=[
@@ -1177,7 +1215,7 @@ def run_walk_forward(
 
     # Download completo
     df = fetch_historical_ohlcv(symbol, timeframe, total_days + train_days)
-    df_ind = compute_indicators(df)
+    df_ind = compute_indicators(df, timeframe=timeframe)
     df_clean = df_ind.dropna(subset=[
         "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
         "macd", "macd_signal", "macd_hist",
@@ -1187,15 +1225,17 @@ def run_walk_forward(
     results: List[WalkForwardResult] = []
     window_id = 0
 
-    total_hours_train = train_days * 24
-    total_hours_test = test_days * 24
-    step_hours = step_days * 24
+    # Candle counts adaptativos ao timeframe
+    _cpd = _timeframe_ms_to_candles_per_day(timeframe)
+    total_candles_train = train_days * _cpd
+    total_candles_test = test_days * _cpd
+    step_candles = step_days * _cpd
     n = len(df_clean)
 
     start = 0
-    while start + total_hours_train + total_hours_test <= n:
-        train_slice = df_clean.iloc[start:start + total_hours_train]
-        test_slice = df_clean.iloc[start + total_hours_train:start + total_hours_train + total_hours_test]
+    while start + total_candles_train + total_candles_test <= n:
+        train_slice = df_clean.iloc[start:start + total_candles_train]
+        test_slice = df_clean.iloc[start + total_candles_train:start + total_candles_train + total_candles_test]
 
         if len(train_slice) < 100 or len(test_slice) < 10:
             break
@@ -1234,7 +1274,7 @@ def run_walk_forward(
         )
 
         window_id += 1
-        start += step_hours
+        start += step_candles
 
     logger.info("Walk-Forward concluido: %d janelas.", len(results))
     return results

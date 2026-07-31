@@ -193,7 +193,7 @@ class Optimizer:
 
             # Download dados uma unica vez
             df = fetch_historical_ohlcv("BTC/USDT", "1h", days)
-            df_ind = compute_indicators(df)
+            df_ind = compute_indicators(df, timeframe="1h")
             df_clean = df_ind.dropna(subset=[
                 "ema200", "bb_lower", "bb_upper", "rsi", "volume_sma20", "atr", "atr_percentile",
             ]).copy()
