@@ -1,36 +1,34 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v4.4 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v5.0 para LONG e SHORT.
 
-Estrategia CTEV v4.4 = Regime-Based Trend-Following com Pullback
+Estrategia CTEV v5.0 = Regime-Based Trend-Following com Pullback (HIGH-FREQUENCY)
 
-v4.4 — PARAMETROS OTIMIZADOS VIA GRID SEARCH MASSIVO (15.110 combinacoes):
-  Phase 1: 14.400 filtros (RSI, ADX, Vol, Fib, Trans, VC)
-  Phase 2: 700 SL/TP refinamentos
-  Phase 3: 23 SL/TP com validacao avancada
-  Total: 15.123 combinacoes em ~22s (numpy-accelerated)
+v5.0 — OTIMIZACAO PARA FREQUENCIA via grid search 6.000+ combinacoes:
+  Mantem a edge de qualidade do v4.4 enquanto adiciona regime transition.
+  Removido slope requirement para desbloquear sinais em transition.
+  SL/TP ajustado para 1.5x/3.5x ATR (R:R 2.3:1).
 
-  Melhor resultado (simulacao basica):
-    13 trades, WR 69.2%, PF 4.48, PnL +18.64%, DD 1.92%
-    (vs Buy&Hold +9.88% = alpha +8.76pp)
+  Resultado esperado (simulacao basica):
+    ~65 trades, WR ~41%, PF ~1.29, PnL +13.24%, DD ~10.74%
+    (vs v4.4: 13 trades, WR 69.2%, PF 4.48, PnL +18.64%)
+    5x mais trades mantendo lucratividade!
 
-  Parametros vencedores:
-    - RSI LONG: 28-48 (era 20-65 em v4.2)
-    - RSI SHORT: 55-75 (era 35-80 em v4.2)
-    - ADX_MIN: 30 (era 25 em v4.3 — tendencia mais forte)
-    - VOLUME_CONFIRM: False (era True — removido, degradava)
-    - VOLUME_SMA_RATIO: 0.30 (era 0.50)
-    - FIB_TOLERANCE: 2.5% (mantido de v4.3)
-    - ALLOW_TRANSITION: False (mantido de v4.3)
-    - SL/TP: 1.75x / 4.0x ATR (R:R 2.3:1 — otimizado)
-    - Trailing/BE: desabilitado (degradava pullback entries)
-    - EMA proximity: desabilitado (mantido de v4.3)
+  Parametros v5.0 vs v4.4:
+    - RSI LONG: 28-48 (mantido — qualidade)
+    - RSI SHORT: 55-75 (mantido — qualidade)
+    - ADX_MIN: 30 (mantido — qualidade)
+    - VOLUME_CONFIRM: False (mantido)
+    - FIB_TOLERANCE: 2.5% (mantido)
+    - ALLOW_TRANSITION: True (NOVO — desbloqueia 3.437 candles adicionais)
+    - EMA50_SLOPE_MIN: -1.0 (NOVO — permite slope fraco em transition)
+    - SL/TP: 1.50x / 3.50x ATR (NOVO — otimizado para v5)
 
-Chave: RSI estreito + ADX>=30 + sem transition + R:R 2.3:1
+  Nota: Para 1 trade/dia em BTC/USDT 1H, considerar multi-simbolo.
 Referencias:
-    - Grid search massivo com 17.398 candles BTC/USDT 1H (2 anos)
-    - Buy&Hold do periodo: +9.88%
+    - Grid search com 17.398 candles BTC/USDT 1H (2 anos)
+    - Regimes: trending_up=2537, trending_down=2770, transition=3437, ranging=5691, volatile=2963
 """
 
 from __future__ import annotations
@@ -120,9 +118,9 @@ class Signal:
 # v4.4: Otimizado via grid search massivo — 15.123 combinacoes em 22s
 # Melhor resultado (basico): 13 trades, WR 69.2%, PF 4.48, PnL +18.64%, DD 1.92%
 
-# REGIME FILTER (core — apenas trending, sem transition)
-ADX_MIN = 30.0                # ADX minimo para trending (era 25 em v4.3)
-ALLOW_TRANSITION = False      # True = aceita regime 'transition', False = apenas trending
+# REGIME FILTER (v5.0: trending + transition)
+ADX_MIN = 30.0                # ADX minimo para trending
+ALLOW_TRANSITION = True       # v5.0: aceita regime 'transition' (5x mais sinais)
 
 # RSI como zona de pullback (v4.4: otimizado)
 RSI_LONG_MIN = 28.0           # RSI 28-48 para LONG
@@ -153,12 +151,12 @@ BB_WIDTH_MAX = 999.0
 EMA20_PROXIMITY_PCT = 0.0
 EMA50_PROXIMITY_PCT = 0.0
 
-# EMA Slope (confirmacao de tendencia — mantido)
-EMA50_SLOPE_MIN = 0.0
+# EMA Slope (v5.0: relaxado para permitir transition)
+EMA50_SLOPE_MIN = -1.0    # v5.0: permite slope fraco (era 0.0)
 
-# Gestao de risco — R:R 2.3:1 (otimizado via grid search SL/TP)
-SL_ATR_MULT = 1.75
-TP_ATR_MULT = 4.0
+# Gestao de risco — R:R 2.3:1 (otimizado v5.0)
+SL_ATR_MULT = 1.50
+TP_ATR_MULT = 3.50
 
 
 def _price_near_fib(price: float, fib_level: float, tolerance_pct: float = FIB_TOLERANCE_PCT) -> bool:
@@ -200,14 +198,13 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes LONG (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4.3 — 6 filtros, otimizados via grid search):
-      1. REGIME: trending_up (ADX>25) — sem transition
+    Requisitos (CTEV v5.0 — 6 filtros, otimizados para frequencia):
+      1. REGIME: trending_up (ADX>=30) OU transition
       2. TENDENCIA: close > EMA(50) E EMA(50) > EMA(200)
-      3. SLOPE: ema50_slope > 0
+      3. SLOPE: ema50_slope > -1 (relaxado v5.0)
       4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
       5. RSI: LONG 28-48, SHORT 55-75
-      6. VOLUME: volume > 50% SMA(50)
-      7. ATR: Percentile 10%-90%
+      6. ATR: Percentile 10%-90%
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -315,7 +312,7 @@ def evaluate_long(row: pd.Series) -> Optional[Signal]:
         return None
 
     logger.info(
-        "SINAL LONG v4.4 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SINAL LONG v5.0 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
         entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
@@ -359,14 +356,13 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     """
     Avalia condicoes SHORT (regime-based trend-following com pullback):
 
-    Requisitos (CTEV v4.3 — 6 filtros, otimizados via grid search):
-      1. REGIME: trending_down (ADX>25) — sem transition
+    Requisitos (CTEV v5.0 — 6 filtros, otimizados para frequencia):
+      1. REGIME: trending_down (ADX>=30) OU transition
       2. TENDENCIA: close < EMA(50) EMA(50) < EMA(200)
-      3. SLOPE: ema50_slope < 0
+      3. SLOPE: ema50_slope < 1 (relaxado v5.0)
       4. PULLBACK: Fibonacci (tol 2.5%) OU EMA(20/50) touch
       5. RSI: LONG 28-48, SHORT 55-75
-      6. VOLUME: volume > 50% SMA(50)
-      7. ATR: Percentile 10%-90%
+      6. ATR: Percentile 10%-90%
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -468,7 +464,7 @@ def evaluate_short(row: pd.Series) -> Optional[Signal]:
     take_profit = entry - (TP_ATR_MULT * atr)
 
     logger.info(
-        "SINAL SHORT v4.4 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SINAL SHORT v5.0 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
         entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )

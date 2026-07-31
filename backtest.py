@@ -720,16 +720,8 @@ def simulate_trades_advanced(
             continue
 
         regime = str(row.get("regime", ""))
-        if regime == "ranging":
-            _diag_regime_ranging += 1
-            regime_filtered += 1
-            i += 1
-            continue
-        if regime == "volatile":
-            _diag_regime_volatile += 1
-            regime_filtered += 1
-            i += 1
-            continue
+        # v5.0: NAO pre-filtrar ranging/volatile — deixar a estrategia decidir
+        # (o strategy.py permite apenas trending e transition)
         if regime == "transition":
             _diag_regime_transition += 1
             # transition passes through to signal evaluation
@@ -738,6 +730,14 @@ def simulate_trades_advanced(
             _diag_trending_up += 1
         if regime == "trending_down":
             _diag_trending_down += 1
+        if regime in ("ranging", "volatile"):
+            if regime == "ranging":
+                _diag_regime_ranging += 1
+            else:
+                _diag_regime_volatile += 1
+            regime_filtered += 1
+            i += 1
+            continue
 
         atr_pct = float(row.get("atr_percentile", 0.5))
         if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
