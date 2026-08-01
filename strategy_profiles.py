@@ -145,38 +145,33 @@ PROFILE_INTRADAY = StrategyProfile(
     name="INTRADAY",
     timeframes=("15m", "30m"),
     description=(
-        "[VALIDADO v8] EMA Cross strategy para 15m. Diferente do CTEV trend-following, "
-        "usa cruze EMA20/50 como sinal primario com filtro RSI delta (momentum). "
-        "Backtest 180d (16862 candles): 150 trades, WR 50.0%, PF 1.13, "
-        "PnL +5.97%, DD 3.53%. Supera B&H (-5.36%) em +11.33pp. "
-        "Walk-Forward 4 passos: train +1.28%, test +0.50%. "
-        "IMPORTANTE: Lucrativo SOMENTE com limit orders (maker fee 0.016% + spread 2bps + slip 2bps). "
-        "Com custos de market order (0.325%/lado), a estrategia nao e lucrativa. "
-        "Otimizado via optimize_15m_v8.py (grid 654 combos, 4 estrategias testadas). "
-        "30m nao validado — usa mesmos params por extrapolacao."
+        "[VALIDADO v9] EMA Cross v9 para 15m. Upgrade profissional com filtros "
+        "adaptativos baseados em analise estatistica de 307 trades. "
+        "v9 improvements: bloqueia regime volatile (PF 0.67), filtro ATR [0.20-0.80] (sweet spot PF 1.24), "
+        "volume >= 0.8x SMA20, BB squeeze >= 0.15, max bars 36 (elimina timeouts perdedores), "
+        "LONGs mais strict (block trending_up), SHORTs liberados em trending_down (WR 64%). "
+        "CRITICO: Lucrativo SOMENTE com limit orders (maker fee ~0.016%)."
     ),
-    # NOTA: Esta estrategia usa logica diferente (EMA Cross) — os parametros
-    # abaixo sao usados apenas para SL/TP. A logica de sinal real precisa ser
-    # implementada via evaluate_long/evaluate_short ou estrategia separada.
-    adx_min=15.0,           # ADX relaxado — foco em momentum, nao forca de tendencia
-    allow_transition=True,   # Permite entradas em transicao de regime
-    rsi_long_min=30.0,
-    rsi_long_max=80.0,     # RSI largo para longs no cruzamento
-    rsi_short_min=20.0,
-    rsi_short_max=70.0,     # RSI largo para shorts no cruzamento
+    # v9: ATR no sweet spot identificado pela analise
+    atr_pct_min=0.20,       # Evita volatilidade muito baixa
+    atr_pct_max=0.80,       # Evita volatilidade extrema
+
+    # SL/TP mantidos do v8
+    sl_atr_mult=2.00,
+    tp_atr_mult=2.50,
+    max_bars_held=36,        # v9: 36 (era 48) — corta timeouts perdedores
+
+    # Campos abaixo usados apenas como referencia (a logica real esta em strategy_ema_cross.py)
+    adx_min=20.0,           # v9: 20 (era 15)
+    allow_transition=True,
+    rsi_long_min=35.0,      # v9: mais strict
+    rsi_long_max=75.0,
+    rsi_short_min=25.0,
+    rsi_short_max=70.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-1.0,
     volume_confirm=False,
-    volume_sma_ratio=0.30,
-
-    # Volatilidade
-    atr_pct_min=0.10,
-    atr_pct_max=0.90,
-
-    # Gestao de risco — Otimizado v8 EMA Cross
-    sl_atr_mult=2.00,       # 2.0x ATR — mais espaco para ruido
-    tp_atr_mult=2.50,       # 2.5x ATR — R:R 1.25:1 (WR compensa)
-    max_bars_held=48,        # 48 candles = 12h (15m)
+    volume_sma_ratio=0.80,  # v9: 0.80 (era 0.30)
 )
 
 PROFILE_STANDARD = StrategyProfile(
@@ -203,6 +198,8 @@ PROFILE_STANDARD = StrategyProfile(
     volume_sma_ratio=0.30,
 
     # Volatilidade
+    # v9: Analise mostrou ATR<0.3 perde (33% WR, -1.41%), ATR 0.7-1.0 e melhor (62% WR)
+    # Filtro interno no regime engine protege; mantido largo no profile
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
