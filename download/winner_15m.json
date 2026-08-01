@@ -1,0 +1,54 @@
+{
+  "version": "15m-v7-refined-wf",
+  "timeframe": "15m",
+  "symbol": "BTC/USDT",
+  "score": 0.2862,
+  "strategy": "momentum",
+  "params": {
+    "strat": "momentum",
+    "rsi_l": [
+      30,
+      60
+    ],
+    "rsi_s": [
+      45,
+      75
+    ],
+    "sl_m": 1.5,
+    "tp_m": 2.5,
+    "max_bars": 48,
+    "cooldown": 4,
+    "adx_min": 20,
+    "be_after_r": 0.0,
+    "trailing": false
+  },
+  "metrics": {
+    "total_trades": 141,
+    "trades_per_day": 0.194,
+    "win_rate": 44.68,
+    "profit_factor": 1.0947,
+    "total_pnl_pct": 3.9127,
+    "max_drawdown_pct": 5.477,
+    "sharpe_ratio": 0.6302,
+    "buy_hold_pct": 9.336219859055417,
+    "train_pnl": -0.7242,
+    "test_pnl": 4.637,
+    "train_wr": 44.62,
+    "test_wr": 44.74,
+    "train_trades": 65,
+    "test_trades": 76,
+    "avg_win_pct": 0.7176,
+    "avg_loss_pct": -0.5295
+  },
+  "costs": {
+    "fee_pct": 0.016,
+    "spread_bps": 2.0,
+    "slippage_bps": 2.0,
+    "rt_pct": 0.07200000000000001
+  },
+  "grid": {
+    "total": 576,
+    "viable": 4,
+    "time_sec": 29.9
+  }
+}
