@@ -40,6 +40,11 @@ from position_tracker import get_position_tracker, PositionStatus
 from risk_manager import RiskBlockReason, get_risk_manager
 from strategy import evaluate_signal
 from strategy_profiles import get_profile
+from strategy_router import (
+    evaluate_signal as router_evaluate_signal,
+    get_strategy_type,
+    get_strategy_label,
+)
 from regime_engine import classify_regimes_v2
 from strategy_regime import evaluate_signal_regime_aware
 
@@ -309,9 +314,11 @@ class CTEVWorker:
         if self.mtf.enabled:
             try:
                 mtf_symbol = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
+                active_tf = self.state.timeframe_override or self.settings.binance.timeframe
                 mtf_result = await self.mtf.analyze(
                     self.exchange,
                     mtf_symbol,
+                    active_tf=active_tf,  # v5: passa TF ativo para MTF adaptativo
                 )
             except Exception as exc:
                 logger.warning("MTF analysis falhou: %s (continuando sem filtro)", exc)
@@ -352,25 +359,25 @@ class CTEVWorker:
             self.last_processed_ts = closed_candle_ts
             return
 
-        # ---- AVALIA SINAL (REGIME-SWITCHING v7) ----
+        # ---- AVALIA SINAL (ROUTER INTELIGENTE POR TIMEFRAME) ----
         try:
             active_tf = self.state.timeframe_override or self.settings.binance.timeframe
             _profile = get_profile(active_tf)
+            _strategy_type = get_strategy_type(active_tf)
+            _strategy_label = get_strategy_label(active_tf)
 
-            # Classifica regime v2 com histerese
-            df_ind = classify_regimes_v2(df_ind, hysteresis_bars=3)
+            # Router: seleciona estrategia automaticamente por timeframe
+            # 15m/30m -> EMA Cross v8 | 1h+ -> CTEV v7.1 Regime-Switching
+            signal = router_evaluate_signal(df_ind, timeframe=active_tf, profile=_profile)
 
-            # Usa regime-aware signal evaluation (trend-follow + mean-reversion)
-            signal = evaluate_signal_regime_aware(df_ind, profile=_profile, hysteresis_bars=3)
-
-            # Expose regime info in status
+            # Expose regime/strategy info in status
             last_row = df_ind.iloc[-1]
-            _regime_v2 = str(last_row.get("regime_v2", "?"))
+            _regime_v2 = str(last_row.get("regime_v2", last_row.get("regime", "?")))
             _regime_conf = float(last_row.get("regime_confidence", 0))
-            _regime_strat = str(last_row.get("regime_strategy", "?"))
+            _regime_strat = str(last_row.get("regime_strategy", _strategy_label))
             logger.info(
-                "Regime v2: %s (conf=%.2f) -> %s",
-                _regime_v2, _regime_conf, _regime_strat,
+                "Router [%s] -> %s | regime=%s (conf=%.2f)",
+                active_tf, _strategy_label, _regime_v2, _regime_conf,
             )
         except Exception as exc:
             self.state.error_count += 1

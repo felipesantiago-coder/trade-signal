@@ -1,0 +1,122 @@
+{
+  "A) Baseline (atual)": {
+    "total": 26,
+    "longs": 21,
+    "shorts": 5,
+    "wr": 38.5,
+    "pnl": 10.44,
+    "max_dd": 6.4,
+    "long_wr": 33.3,
+    "short_wr": 60.0,
+    "long_pnl": 1.35,
+    "short_pnl": 9.09
+  },
+  "B) ADX floor 25 WEAK_UP LONG": {
+    "total": 13,
+    "longs": 8,
+    "shorts": 5,
+    "wr": 46.2,
+    "pnl": 11.8,
+    "max_dd": 5.19,
+    "long_wr": 37.5,
+    "short_wr": 60.0,
+    "long_pnl": 2.71,
+    "short_pnl": 9.09
+  },
+  "C) RSI short [45,75] downtrend": {
+    "total": 106,
+    "longs": 21,
+    "shorts": 85,
+    "wr": 27.4,
+    "pnl": -32.46,
+    "max_dd": 46.78,
+    "long_wr": 33.3,
+    "short_wr": 25.9,
+    "long_pnl": 1.35,
+    "short_pnl": -33.81
+  },
+  "D) RSI short [40,78] downtrend": {
+    "total": 126,
+    "longs": 21,
+    "shorts": 105,
+    "wr": 31.0,
+    "pnl": -13.97,
+    "max_dd": 36.33,
+    "long_wr": 33.3,
+    "short_wr": 30.5,
+    "long_pnl": 1.35,
+    "short_pnl": -15.32
+  },
+  "E) B+C combined": {
+    "total": 93,
+    "longs": 8,
+    "shorts": 85,
+    "wr": 26.9,
+    "pnl": -31.1,
+    "max_dd": 51.78,
+    "long_wr": 37.5,
+    "short_wr": 25.9,
+    "long_pnl": 2.71,
+    "short_pnl": -33.81
+  },
+  "F) B+D combined": {
+    "total": 113,
+    "longs": 8,
+    "shorts": 105,
+    "wr": 31.0,
+    "pnl": -12.61,
+    "max_dd": 41.33,
+    "long_wr": 37.5,
+    "short_wr": 30.5,
+    "long_pnl": 2.71,
+    "short_pnl": -15.32
+  },
+  "G) ADX floor 28 WEAK_UP": {
+    "total": 13,
+    "longs": 8,
+    "shorts": 5,
+    "wr": 46.2,
+    "pnl": 11.8,
+    "max_dd": 5.19,
+    "long_wr": 37.5,
+    "short_wr": 60.0,
+    "long_pnl": 2.71,
+    "short_pnl": 9.09
+  },
+  "H) G+D combined": {
+    "total": 113,
+    "longs": 8,
+    "shorts": 105,
+    "wr": 31.0,
+    "pnl": -12.61,
+    "max_dd": 41.33,
+    "long_wr": 37.5,
+    "short_wr": 30.5,
+    "long_pnl": 2.71,
+    "short_pnl": -15.32
+  },
+  "I) RSI short [42,75] + RANGING [55,80]": {
+    "total": 119,
+    "longs": 21,
+    "shorts": 98,
+    "wr": 27.7,
+    "pnl": -33.18,
+    "max_dd": 45.06,
+    "long_wr": 33.3,
+    "short_wr": 26.5,
+    "long_pnl": 1.35,
+    "short_pnl": -34.53
+  },
+  "J) ADX 25 + RSI [42,75] + RANGING [55,80]": {
+    "total": 106,
+    "longs": 8,
+    "shorts": 98,
+    "wr": 27.4,
+    "pnl": -31.82,
+    "max_dd": 50.06,
+    "long_wr": 37.5,
+    "short_wr": 26.5,
+    "long_pnl": 2.71,
+    "short_pnl": -34.53
+  }
+}

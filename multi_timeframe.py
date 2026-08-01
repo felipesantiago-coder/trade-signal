@@ -1,25 +1,27 @@
 """
 multi_timeframe.py
 ------------------
-Filtro de confirmacao multi-timeframe para a estrategia CTEV v4.
+Filtro de confirmacao multi-timeframe ADAPTATIVO.
 
-Verifica a tendencia macro em H4 e D1 antes de confirmar sinais
-gerados no timeframe principal (1H). Isso reduz falsos sinais
-em contra-tendencia e aumenta a taxa de acerto.
+Verifica a tendencia em timeframes superiores ao ativo antes de
+confirmar sinais. Os timeframes de confirmacao se adaptam automaticamente:
 
-Regras (v4 — baseado no PDF "Framework Multi-Timeframe e de Regimes"):
-    - Para LONG:  H4 close > H4 EMA50 E slope(EMA50) > 0  E  D1 close > D1 EMA200
-    - Para SHORT: H4 close < H4 EMA50 E slope(EMA50) < 0  E  D1 close < D1 EMA200
-    - Se H4 e D1 discordam, o sinal e BLOQUEADO (filtro ativo)
+  TF ativo  |  Confirmacao 1  |  Confirmacao 2
+  ----------+----------------+----------------
+  15m       |  1h             |  4h
+  30m       |  1h             |  4h
+  1h        |  4h             |  1d
+  2h        |  4h             |  1d
+  4h        |  1d             |  —
+  1d        |  (desativado)   |  —
 
-v4: Adicionado EMA(50) + slope no H4 (conforme PDF usa slope(EMA_4H_50, 20)),
-    e EMA(200) no D1 para contexto macro.
+Regras (v4+ adaptativo):
+    - Para LONG:  TF1 close > TF1 EMA50 E slope(EMA50) > 0  E  TF2 close > TF2 EMA200
+    - Para SHORT: TF1 close < TF1 EMA50 E slope(EMA50) < 0  E  TF2 close < TF2 EMA200
+    - Se TF1 e TF2 discordam, o sinal e BLOQUEADO
 
-Referencias:
-    - PDF: "O Framework Multi-Timeframe e de Regimes" — slope-based trend
-    - Investopedia (2025): "Multiple timeframe analysis involves using
-      different timeframes to confirm trends"
-"""
+v5: Adicionado adaptacao automatica dos timeframes de confirmacao
+    baseado no timeframe ativo (via strategy_router.get_mtf_timeframes).
 
 from __future__ import annotations
 
@@ -41,14 +43,18 @@ class MTFResult:
     d1_trend: str          # "bullish" | "bearish" | "neutral"
     confluence: str        # "bullish" | "bearish" | "mixed" | "insufficient"
     h4_close: float
-    h4_ema50: float        # v4: EMA50 no H4 (slope-based)
+    h4_ema50: float        # v4: EMA50 no TF1 (slope-based)
     h4_ema200: float
-    h4_slope: float        # v4: Slope da EMA50 no H4
+    h4_slope: float        # v4: Slope da EMA50 no TF1
     d1_close: float
     d1_ema200: float
     confirms_long: bool
     confirms_short: bool
     fetched_at: str
+    # v5: timeframes usados na analise
+    tf_active: str = "1h"   # timeframe ativo
+    tf_confirm1: str = "4h" # primeiro TF de confirmacao
+    tf_confirm2: str = "1d" # segundo TF de confirmacao (pode ser None)
 
     def to_dict(self) -> dict:
         return {
@@ -64,23 +70,29 @@ class MTFResult:
             "confirms_long": self.confirms_long,
             "confirms_short": self.confirms_short,
             "fetched_at": self.fetched_at,
+            "tf_active": self.tf_active,
+            "tf_confirm1": self.tf_confirm1,
+            "tf_confirm2": self.tf_confirm2,
         }
 
 
 class MultiTimeframeFilter:
     """
-    Filtro de confirmacao multi-timeframe. Singleton.
+    Filtro de confirmacao multi-timeframe ADAPTATIVO. Singleton.
 
-    Usa EMA(200) nos timeframes H4 e D1 para confirmar a tendencia
-    macro antes de permitir sinais de entrada no timeframe 1H.
+    v5: Os timeframes de confirmacao se adaptam ao timeframe ativo.
+    15m/30m -> confirma em 1h + 4h
+    1h      -> confirma em 4h + 1d (original)
+    4h+     -> confirma em 1d apenas
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._enabled: bool = True
         self._h4_cache: Optional[MTFResult] = None
-        self._cache_ttl_seconds: int = 900  # 15 min cache (H4 candle = 4h)
+        self._cache_ttl_seconds: int = 900  # 15 min cache
         self._cache_timestamp: float = 0.0
+        self._active_timeframe: str = "1h"  # v5: TF ativo para adaptacao MTF
 
     def configure(self, kwargs: dict) -> None:
         """Configura o filtro."""
@@ -110,66 +122,90 @@ class MultiTimeframeFilter:
         import time
         return (time.time() - self._cache_timestamp) < self._cache_ttl_seconds
 
-    async def analyze(self, exchange, symbol: str) -> MTFResult:
-        """
-        Busca candles H4 e D1, calcula EMA50+slope(H4) e EMA200(D1), retorna resultado.
+    def set_active_timeframe(self, tf: str) -> None:
+        """v5: Atualiza o timeframe ativo para adaptar MTF."""
+        with self._lock:
+            if tf != self._active_timeframe:
+                self._active_timeframe = tf
+                self._h4_cache = None  # Invalida cache
+                logger.info("MTF: timeframe ativo -> %s", tf)
 
-        v4: Usa EMA(50) com slope no H4 (conforme PDF) e EMA(200) no D1.
+    @property
+    def active_timeframe(self) -> str:
+        with self._lock:
+            return self._active_timeframe
+
+    async def analyze(self, exchange, symbol: str, active_tf: str = None) -> MTFResult:
+        """
+        Busca candles nos TFs de confirmacao, calcula EMA50+slope + EMA200.
+
+        v5: Os TFs de confirmacao se adaptam ao timeframe ativo.
         """
         if not self._enabled:
             return self._build_disabled_result()
+
+        # v5: Atualiza TF ativo
+        if active_tf:
+            self.set_active_timeframe(active_tf)
 
         # Verifica cache
         if self._h4_cache is not None and self.check_cache_valid():
             return self._h4_cache
 
         try:
-            # Fetch H4 candles (precisamos ~100 para EMA50 + 20 para slope)
-            h4_ohlcv = await exchange.fetch_ohlcv(
-                symbol=symbol, timeframe="4h", limit=250,
+            # v5: Resolve TFs de confirmacao baseado no TF ativo
+            from strategy_router import get_mtf_timeframes
+            tf_confs = get_mtf_timeframes(self._active_timeframe)
+            tf1 = tf_confs[0] if tf_confs[0] else "4h"
+            tf2 = tf_confs[1] if len(tf_confs) > 1 and tf_confs[1] else None
+
+            # Fetch TF1 candles (EMA50 + slope)
+            tf1_ohlcv = await exchange.fetch_ohlcv(
+                symbol=symbol, timeframe=tf1, limit=250,
             )
-            # Fetch D1 candles (precisamos ~250 para EMA200)
-            d1_ohlcv = await exchange.fetch_ohlcv(
-                symbol=symbol, timeframe="1d", limit=250,
-            )
-
-            h4_df = self._ohlcv_to_df(h4_ohlcv)
-            d1_df = self._ohlcv_to_df(d1_ohlcv)
-
-            # v4: EMA50 + slope no H4 (conforme PDF: slope(EMA_4H_50, 20))
-            h4_ema50 = self._calc_ema50(h4_df)
-            h4_slope = self._calc_ema_slope(h4_df)
-            h4_ema200 = self._calc_ema200(h4_df)
-            d1_ema200 = self._calc_ema200(d1_df)
-
-            if h4_ema50 is None or d1_ema200 is None:
-                logger.warning("MultiTimeframe: dados insuficientes.")
-                return self._build_insufficient_result(
-                    h4_df, d1_df, 0, 0,
+            # Fetch TF2 candles (EMA200 macro) se disponivel
+            tf2_ohlcv = None
+            if tf2:
+                tf2_ohlcv = await exchange.fetch_ohlcv(
+                    symbol=symbol, timeframe=tf2, limit=250,
                 )
 
-            h4_close = float(h4_df["close"].iloc[-1])
-            d1_close = float(d1_df["close"].iloc[-1])
+            tf1_df = self._ohlcv_to_df(tf1_ohlcv)
+            tf2_df = self._ohlcv_to_df(tf2_ohlcv) if tf2_ohlcv else None
 
-            # v4: Determina tendencia usando EMA50 + slope (do PDF)
-            # slope > 0.001 = uptrend, slope < -0.001 = downtrend
-            slope = h4_slope if h4_slope else 0.0
-            h4_bullish = h4_close > h4_ema50 and slope > 0.001
-            h4_bearish = h4_close < h4_ema50 and slope < -0.001
-            d1_bullish = d1_close > d1_ema200
+            # v4: EMA50 + slope no TF1 (conforme PDF: slope(EMA_50, 20))
+            tf1_ema50 = self._calc_ema50(tf1_df)
+            tf1_slope = self._calc_ema_slope(tf1_df)
+            tf1_ema200 = self._calc_ema200(tf1_df)
+            tf2_ema200 = self._calc_ema200(tf2_df) if tf2_df is not None else None
 
-            if h4_bullish:
-                h4_trend = "bullish"
-            elif h4_bearish:
-                h4_trend = "bearish"
+            if tf1_ema50 is None:
+                logger.warning("MultiTimeframe: dados insuficientes para %s.", tf1)
+                return self._build_insufficient_result(
+                    tf1_df, tf2_df, 0, 0,
+                )
+
+            tf1_close = float(tf1_df["close"].iloc[-1])
+            tf2_close = float(tf2_df["close"].iloc[-1]) if tf2_df is not None else 0.0
+
+            # v4: Determina tendencia usando EMA50 + slope
+            slope = tf1_slope if tf1_slope else 0.0
+            tf1_bullish = tf1_close > tf1_ema50 and slope > 0.001
+            tf1_bearish = tf1_close < tf1_ema50 and slope < -0.001
+            tf2_bullish = tf2_close > tf2_ema200 if tf2_ema200 and tf2_close > 0 else True  # Se nao ha TF2, permite
+
+            if tf1_bullish:
+                tf1_trend = "bullish"
+            elif tf1_bearish:
+                tf1_trend = "bearish"
             else:
-                h4_trend = "neutral"
+                tf1_trend = "neutral"
 
-            d1_trend = "bullish" if d1_bullish else "bearish"
+            tf2_trend = "bullish" if tf2_bullish else "bearish"
 
-            # Confluencia (v4: H4 com slope + D1 com EMA200)
-            confirms_long = h4_bullish and d1_bullish
-            confirms_short = h4_bearish and (not d1_bullish)
+            # Confluencia
+            confirms_long = tf1_bullish and tf2_bullish
+            confirms_short = tf1_bearish and (not tf2_bullish)
 
             if confirms_long:
                 confluence = "bullish"
@@ -180,18 +216,21 @@ class MultiTimeframeFilter:
 
             now = datetime.now(timezone.utc).isoformat(timespec="seconds")
             result = MTFResult(
-                h4_trend=h4_trend,
-                d1_trend=d1_trend,
+                h4_trend=tf1_trend,
+                d1_trend=tf2_trend,
                 confluence=confluence,
-                h4_close=h4_close,
-                h4_ema50=h4_ema50,
-                h4_ema200=h4_ema200 or 0,
+                h4_close=tf1_close,
+                h4_ema50=tf1_ema50,
+                h4_ema200=tf1_ema200 or 0,
                 h4_slope=slope,
-                d1_close=d1_close,
-                d1_ema200=d1_ema200,
+                d1_close=tf2_close,
+                d1_ema200=tf2_ema200 or 0,
                 confirms_long=confirms_long,
                 confirms_short=confirms_short,
                 fetched_at=now,
+                tf_active=self._active_timeframe,
+                tf_confirm1=tf1,
+                tf_confirm2=tf2 or "",
             )
 
             with self._lock:
@@ -199,8 +238,8 @@ class MultiTimeframeFilter:
                 self._cache_timestamp = __import__("time").time()
 
             logger.info(
-                "MultiTimeframe v4: H4=%s(slope=%.4f) D1=%s conf=%s",
-                h4_trend, slope, d1_trend, confluence,
+                "MultiTimeframe v5 [%s]: TF1=%s(%s) TF2=%s(%s) conf=%s",
+                self._active_timeframe, tf1, tf1_trend, tf2 or "-", tf2_trend, confluence,
             )
             return result
 
