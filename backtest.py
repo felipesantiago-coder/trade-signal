@@ -1200,7 +1200,22 @@ def _simulate_regime_switching(
 
         if st == "trend_follow":
             # Use ORIGINAL evaluate functions (they have ADX filter!)
-            # This is the KEY insight: don't change what already works
+            # The adapted functions are too permissive for trend-follow.
+            # CTEV needs ADX>=30 for quality trend signals.
+            #
+            # v7.1 FIX: WEAK_UPTREND LONG ADX floor.
+            # evaluate_long uses the OLD regime column; when old regime="transition"
+            # (allow_transition=True), ADX>=30 is bypassed. This causes low-ADX
+            # trades (21-25) to fire in WEAK_UPTREND. Analysis showed 10/14 LONG
+            # losers had ADX<30. Fix: require ADX >= ADX_TRENDING_MIN (22.0)
+            # for WEAK_UPTREND LONGs, matching regime_engine's trending threshold.
+            if regime_v2 == "WEAK_UPTREND":
+                _weak_adx = float(row.get("adx", 0))
+                if _weak_adx < 22.0:
+                    neutral_filtered += 1
+                    i += 1
+                    continue
+
             if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
                 atr_filtered += 1
                 i += 1

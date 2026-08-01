@@ -582,6 +582,19 @@ def evaluate_signal_regime_aware(
 
     elif strategy_type == "trend_follow":
         # Use existing CTEV trend-following with regime-adapted RSI/SL/TP
+        #
+        # v7.1 FIX: WEAK_UPTREND LONG ADX floor.
+        # _evaluate_trend_long_adapted lacks ADX filter (unlike original
+        # evaluate_long). In WEAK_UPTREND, low-ADX entries (21-25) have
+        # 71% loss rate. Require ADX >= 22.0 (regime_engine's trending min).
+        if params["allow_long"] and regime == "WEAK_UPTREND":
+            _adx_val = float(last.get("adx", 0))
+            if not np.isnan(_adx_val) and _adx_val < 22.0:
+                logger.debug(
+                    "WEAK_UPTREND LONG blocked: ADX %.1f < 22.0", _adx_val,
+                )
+                return None
+
         if params["allow_long"]:
             sig = _evaluate_trend_long_adapted(last, params, base_profile=profile)
             if sig is not None:
