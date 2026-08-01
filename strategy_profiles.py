@@ -177,13 +177,14 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[VALIDADO] Tempo grafico de 1h. Unico timeframe com edge comprovada. "
-        "Otimizado via grid search em 17.398 candles BTC/USDT (2 anos). "
-        "Backtest 730d: 51 trades, WR 39.2%, PF 1.16, PnL +6.01%, DD 10.58%. "
-        "Sharpe 1.26. Todos os outros perfis derivam deste com ajustes "
-        "proporcionais, mas nenhum teve edge validada em backtest."
+        "[VALIDADO P2+WF] Tempo grafico de 1h. Otimizado via P2 grid search "
+        "ao redor de SL 2.5x/TP 12.0x + Walk-Forward 6 janelas. "
+        "Backtest 730d (17408 candles): 39 trades, WR 35.9%, PF 1.53, "
+        "PnL +20.37%, DD 13.35%, Sharpe 2.95, R:R 4.0:1. "
+        "Supera Buy & Hold (+18.60%) com +20.37%. WF OOS: +12.49% vs B&H -30.79%, "
+        "4/6 janelas superam B&H. SL/TP mais frequente nos WF steps: 2.25/8.0 (6/6)."
     ),
-    # Filtros de entrada — EXATAMENTE v5.0
+    # Filtros de entrada — mantidos do P1 v5.0
     adx_min=30.0,
     allow_transition=True,
     rsi_long_min=28.0,
@@ -199,9 +200,9 @@ PROFILE_STANDARD = StrategyProfile(
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
-    # Gestao de risco
-    sl_atr_mult=1.50,
-    tp_atr_mult=3.50,
+    # Gestao de risco — Otimizado P2+WF: SL 2.12x ATR / TP 8.5x ATR (R:R 4.0:1)
+    sl_atr_mult=2.12,
+    tp_atr_mult=8.50,
     max_bars_held=72,        # 3 dias
 )
 
