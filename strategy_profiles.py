@@ -177,12 +177,14 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[VALIDADO P2+WF] Tempo grafico de 1h. Otimizado via P2 grid search "
+        "[VALIDADO v7.1 RS] CTEV Regime-Switching para 1h. Otimizado via P2 grid search "
         "ao redor de SL 2.5x/TP 12.0x + Walk-Forward 6 janelas. "
-        "Backtest 730d (17408 candles): 39 trades, WR 35.9%, PF 1.53, "
-        "PnL +20.37%, DD 13.35%, Sharpe 2.95, R:R 4.0:1. "
-        "Supera Buy & Hold (+18.60%) com +20.37%. WF OOS: +12.49% vs B&H -30.79%, "
-        "4/6 janelas superam B&H. SL/TP mais frequente nos WF steps: 2.25/8.0 (6/6)."
+        "Backtest 730d regime-switching: 22 trades, WR 50%, PF 2.49, "
+        "PnL +25.44%, DD 5.17%, Sharpe 6.07, R:R 4.0:1. "
+        "Supera Buy & Hold (+10.57%) em +14.87pp. "
+        "PDF 'Arquitetura Regime-Aware' testado: OBV/MACD/trailing/breakout/momentum "
+        "nao adicionam edge no regime-switching de 1h (sinais ja muito restritivos). "
+        "LONGs: 17T WR 41.2% PnL +5.03% | SHORTs: 5T WR 80% PnL +20.41%."
     ),
     # Filtros de entrada — mantidos do P1 v5.0
     adx_min=30.0,
@@ -197,15 +199,13 @@ PROFILE_STANDARD = StrategyProfile(
     volume_sma_ratio=0.30,
 
     # Volatilidade
-    # v9: Analise mostrou ATR<0.3 perde (33% WR, -1.41%), ATR 0.7-1.0 e melhor (62% WR)
-    # Filtro interno no regime engine protege; mantido largo no profile
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
     # Gestao de risco — Otimizado P2+WF: SL 2.12x ATR / TP 8.5x ATR (R:R 4.0:1)
     sl_atr_mult=2.12,
     tp_atr_mult=8.50,
-    max_bars_held=72,        # 3 dias
+    max_bars_held=72,
 )
 
 PROFILE_SWING = StrategyProfile(
