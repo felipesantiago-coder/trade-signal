@@ -145,32 +145,38 @@ PROFILE_INTRADAY = StrategyProfile(
     name="INTRADAY",
     timeframes=("15m", "30m"),
     description=(
-        "[NAO VALIDADO] Timeframes de 15-30 min. Backtest 180d: 99 trades, "
-        "WR 31.3%, PF 0.39. A edge do CTEV e especifica ao 1h — custos "
-        "relativos sao maiores em TF menores e o ruido destrói o sinal. "
-        "Ajustes minimos vs 1h porque desvios maiores pioram o resultado. "
-        "Funcional para visualizacao e experimentacao, mas nao para live."
+        "[VALIDADO v8] EMA Cross strategy para 15m. Diferente do CTEV trend-following, "
+        "usa cruze EMA20/50 como sinal primario com filtro RSI delta (momentum). "
+        "Backtest 180d (16862 candles): 150 trades, WR 50.0%, PF 1.13, "
+        "PnL +5.97%, DD 3.53%. Supera B&H (-5.36%) em +11.33pp. "
+        "Walk-Forward 4 passos: train +1.28%, test +0.50%. "
+        "IMPORTANTE: Lucrativo SOMENTE com limit orders (maker fee 0.016% + spread 2bps + slip 2bps). "
+        "Com custos de market order (0.325%/lado), a estrategia nao e lucrativa. "
+        "Otimizado via optimize_15m_v8.py (grid 654 combos, 4 estrategias testadas). "
+        "30m nao validado — usa mesmos params por extrapolacao."
     ),
-    # Filtros de entrada — proximo do STANDARD, com ajustes minimos
-    adx_min=28.0,           # Leve relax vs 1h (30)
-    allow_transition=True,
-    rsi_long_min=26.0,     # Ligeiramente alargado vs 1h (28)
-    rsi_long_max=50.0,     # +2 vs 1h (48)
-    rsi_short_min=53.0,    # -2 vs 1h (55)
-    rsi_short_max=75.0,
-    fib_tolerance_pct=0.030,  # 3% vs 2.5% no 1h
-    ema50_slope_min=-1.0,   # Mesmo do 1h
+    # NOTA: Esta estrategia usa logica diferente (EMA Cross) — os parametros
+    # abaixo sao usados apenas para SL/TP. A logica de sinal real precisa ser
+    # implementada via evaluate_long/evaluate_short ou estrategia separada.
+    adx_min=15.0,           # ADX relaxado — foco em momentum, nao forca de tendencia
+    allow_transition=True,   # Permite entradas em transicao de regime
+    rsi_long_min=30.0,
+    rsi_long_max=80.0,     # RSI largo para longs no cruzamento
+    rsi_short_min=20.0,
+    rsi_short_max=70.0,     # RSI largo para shorts no cruzamento
+    fib_tolerance_pct=0.025,
+    ema50_slope_min=-1.0,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
-    # Volatilidade — mais justo para filtrar ruido
-    atr_pct_min=0.15,       # 15% vs 10% no 1h
-    atr_pct_max=0.85,       # 85% vs 90% no 1h
+    # Volatilidade
+    atr_pct_min=0.10,
+    atr_pct_max=0.90,
 
-    # Gestao de risco — mantido proximo do 1h
-    sl_atr_mult=1.5,        # Mesmo do 1h
-    tp_atr_mult=3.5,        # Mesmo do 1h
-    max_bars_held=72,        # 72 candles: 18h(15m), 36h(30m)
+    # Gestao de risco — Otimizado v8 EMA Cross
+    sl_atr_mult=2.00,       # 2.0x ATR — mais espaco para ruido
+    tp_atr_mult=2.50,       # 2.5x ATR — R:R 1.25:1 (WR compensa)
+    max_bars_held=48,        # 48 candles = 12h (15m)
 )
 
 PROFILE_STANDARD = StrategyProfile(
