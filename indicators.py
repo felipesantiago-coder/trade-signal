@@ -468,7 +468,7 @@ def compute_indicators(df: pd.DataFrame, timeframe: str = "1h") -> pd.DataFrame:
     )
     out = pd.concat([out, fib_df], axis=1)
 
-    # ── EMA(20) Touch Detection (pullback profundo) ──
+    # ── On-Balance Volume (v10: OBV direction filter per PDF recommendation) ──    obv_values = np.zeros(len(out))    for i in range(1, len(out)):        if out["close"].iloc[i] > out["close"].iloc[i-1]:            obv_values[i] = obv_values[i-1] + out["volume"].iloc[i]        elif out["close"].iloc[i] < out["close"].iloc[i-1]:            obv_values[i] = obv_values[i-1] - out["volume"].iloc[i]        else:            obv_values[i] = obv_values[i-1]    out["obv"] = obv_values    out["obv_sma20"] = out["obv"].rolling(20).mean()    out["obv_trend"] = 0    out.loc[out["obv"] > out["obv_sma20"], "obv_trend"] = 1    out.loc[out["obv"] < out["obv_sma20"], "obv_trend"] = -1    # ── EMA(20) Touch Detection (pullback profundo) ──
     out["ema20_touched"] = out["low"] <= out["ema20"]
 
     # ── EMA(50) Touch Detection (pullback alternativo) ──

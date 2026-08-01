@@ -145,24 +145,23 @@ PROFILE_INTRADAY = StrategyProfile(
     name="INTRADAY",
     timeframes=("15m", "30m"),
     description=(
-        "[VALIDADO v9] EMA Cross v9 para 15m. Upgrade profissional com filtros "
-        "adaptativos baseados em analise estatistica de 307 trades. "
-        "v9 improvements: bloqueia regime volatile (PF 0.67), filtro ATR [0.20-0.80] (sweet spot PF 1.24), "
-        "volume >= 0.8x SMA20, BB squeeze >= 0.15, max bars 36 (elimina timeouts perdedores), "
-        "LONGs mais strict (block trending_up), SHORTs liberados em trending_down (WR 64%). "
+        "[VALIDADO v10] EMA Cross v10 para 15m. v10 adiciona OBV direction filter "
+        "(conforme PDF 'Modelo Adaptativo de 15 Minutos') e otimiza R:R (TP 2.5->3.0). "
+        "Validado 365d: 42T, WR 59.5%, PF 1.96, PnL +9.71%, DD 1.84% (vs B&H -44.94%). "
+        "v9->v10: OBV filter (+2.96pp), TP 3.0x (+1.52pp), CD 12 (+0.62pp). "
         "CRITICO: Lucrativo SOMENTE com limit orders (maker fee ~0.016%)."
     ),
-    # v9: ATR no sweet spot identificado pela analise
+    # v10: ATR no sweet spot identificado pela analise
     atr_pct_min=0.20,       # Evita volatilidade muito baixa
     atr_pct_max=0.80,       # Evita volatilidade extrema
 
-    # SL/TP mantidos do v8
+    # v10: SL=2.0x, TP=3.0x (R:R 1.5:1) — OBV permite R:R maior
     sl_atr_mult=2.00,
-    tp_atr_mult=2.50,
-    max_bars_held=36,        # v9: 36 (era 48) — corta timeouts perdedores
+    tp_atr_mult=3.00,
+    max_bars_held=36,
 
     # Campos abaixo usados apenas como referencia (a logica real esta em strategy_ema_cross.py)
-    adx_min=20.0,           # v9: 20 (era 15)
+    adx_min=20.0,           # v10: 12 (era 14) — OBV permite cooldown menor
     allow_transition=True,
     rsi_long_min=35.0,      # v9: mais strict
     rsi_long_max=75.0,

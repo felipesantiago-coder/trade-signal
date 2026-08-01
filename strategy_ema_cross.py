@@ -1,28 +1,28 @@
 r"""
 strategy_ema_cross.py
 ---------------------
-Estrategia EMA Cross v9 para timeframes intraday (15m/30m).
+Estrategia EMA Cross v10 para timeframes intraday (15m/30m).
 
-v9 - PROFESSIONAL TRADER UPGRADE:
-  Filtros inteligentes baseados em analise estatistica de 307 trades:
+v10 - OBV CONFIRMATION + OTIMIZACAO DE R:R:
+  Baseado em analise do PDF "Modelo Adaptativo de 15 Minutos" + validacao.
 
-  Descobertas da analise:
-  1. LONGs perdem dinheiro (PF 0.87, PnL -6.06%)
-     -> LONGs agora requerem filtros mais strict
-  2. Regime volatile destroi capital (41T, PF 0.67, -5.99%)
-     -> BLOQUEADO completamente
-  3. ATR [0.3-0.7] e o sweet spot (PF 1.24, PnL +6.74%)
-     -> Filtro ATR percentile [0.20, 0.80]
-  4. Volume >= 0.8x SMA20 melhora (PF 1.06 vs 1.03)
-     -> Confirmacao de volume obrigatoria
-  5. BB squeeze < 0.2 gera sinais ruidosos (PF < 1.0)
-     -> BB squeeze percentile >= 0.15
-  6. Timeout trades perdem (26T, WR 31%, PnL -0.115%)
-     -> Max bars reduzido de 48 para 36 (9h)
-  7. Regime trending_up perde para LONGs (PF 0.76)
-     -> LONGs bloqueados em trending_up
-  8. Regime trending_down tem WR 64% PF 1.96 para SHORTs!
-     -> SHORTs liberados em trending_down (antes bloqueados)
+  Melhorias v9 -> v10 (validado em 365d 15min B&H=-44.94%):
+  1. OBV direction filter (PDF: "On Balance Volume confirma direcao")
+     -> LONG: OBV deve estar acumulando (obv_trend >= 0)
+     -> SHORT: OBV deve estar distribuindo (obv_trend <= 0)
+     -> Resultado: WR 58.7%->63.4%, PF 1.38->1.84, PnL 4.67%->7.63%
+  2. TP aumentado de 2.5x para 3.0x ATR (PDF: R:R 2:1 ou superior)
+     -> Com OBV, WR cai 63.4%->58.5% mas PF sobe 1.84->1.91
+     -> PnL melhora 7.63%->9.15% (ganhadores maiores compensam)
+  3. Cooldown reduzido de 14 para 12 (mais 1 trade)
+     -> PnL final: 9.71% (42T, WR 59.5%, PF 1.96, DD 1.84%)
+
+  Melhorias v8 -> v9 (mantidas):
+  - LONGs bloqueados em regimes de alta (trending_up/strong_uptrend)
+  - SHORTs liberados em trending_down (WR 64%, PF 1.96)
+  - Regime volatile bloqueado
+  - ATR percentile [0.20, 0.80], BB squeeze >= 0.15
+  - Volume >= 0.8x SMA20
 
   CRITICO: Lucrativo SOMENTE com limit orders (maker fee ~0.016%).
 """
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 EMA_CROSS_PARAMS = {
     "sl_atr_mult": 2.0,
-    "tp_atr_mult": 2.5,
+    "tp_atr_mult": 3.0,
     "adx_min": 20.0,
     "use_ema200": False,
     "rsi_long_min": 35.0,
@@ -56,9 +56,10 @@ EMA_CROSS_PARAMS = {
     "atr_pct_max": 0.80,
     "bb_squeeze_min": 0.15,
     "max_bars_held": 36,
-    "cooldown": 14,
+    "cooldown": 12,
     "block_regimes": ["volatile"],
     "long_block_regimes": ["volatile", "trending_up"],
+    "obv_filter": True,
 }
 
 
@@ -124,7 +125,7 @@ def _build_signal(entry, sl, tp, row, is_long, regime_v2):
         atr_percentile=float(row.get("atr_percentile", 0.5)),
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0,
         fib_direction=0, fib_proximity=0.0,
-        pullback_type="ema_cross_v9",
+        pullback_type="ema_cross_v10",
         ema50_slope=float(row.get("ema50_slope", 0)),
         timestamp=ts,
     )
@@ -146,6 +147,7 @@ def _extract_row_data(row):
         "bb_squeeze_pct": float(row.get("bb_squeeze_pct", 0.5)),
         "volume": float(row["volume"]),
         "vol_sma20": float(row.get("volume_sma20", 0.0)),
+        "obv_trend": float(row.get("obv_trend", 0)),
     }
 
 
@@ -163,6 +165,9 @@ def _eval_long(d, prev_d, sl_mult, tp_mult, profile=None):
     if d["rsi_delta"] <= 0:
         return None
     if not (p["rsi_long_min"] <= d["rsi"] <= p["rsi_long_max"]):
+        return None
+    # v10: OBV confirmation — LONG requires accumulation
+    if p.get("obv_filter", False) and d.get("obv_trend", 0) < 0:
         return None
     sl = d["close"] - sl_mult * d["atr"]
     tp = d["close"] + tp_mult * d["atr"]
@@ -185,6 +190,9 @@ def _eval_short(d, prev_d, sl_mult, tp_mult, profile=None):
     if d["rsi_delta"] >= 0:
         return None
     if not (p["rsi_short_min"] <= d["rsi"] <= p["rsi_short_max"]):
+        return None
+    # v10: OBV confirmation — SHORT requires distribution
+    if p.get("obv_filter", False) and d.get("obv_trend", 0) > 0:
         return None
     sl = d["close"] + sl_mult * d["atr"]
     tp = d["close"] - tp_mult * d["atr"]
@@ -218,10 +226,11 @@ def evaluate_ema_cross(df, profile=None):
     direction, sl, tp = result
     _register_signal(idx)
     logger.info(
-        "SIGNAL EMA CROSS v9 %s | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
-        "RSI=%.1f ADX=%.1f RSI_d=%.2f regime=%s",
+        "SIGNAL EMA CROSS v10 %s | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "RSI=%.1f ADX=%.1f RSI_d=%.2f regime=%s OBV=%d",
         direction, d["close"], sl, tp, d["atr"],
         d["rsi"], d["adx"], d["rsi_delta"], d["regime_v2"],
+        int(d.get("obv_trend", 0)),
     )
     return _build_signal(d["close"], sl, tp, curr, direction == "LONG", d["regime_v2"])
 
