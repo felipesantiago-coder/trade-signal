@@ -4,8 +4,15 @@ notifier.py
 Integracao assincrona com o Telegram usando python-telegram-bot.
 
 MODO: Signal-Only (apenas analise, sem execucao de ordens).
-Todas as mensagens sao projetadas para serem intuitivas e acionaveis,
-explicando o que o sistema detectou e quais niveis de preco observar.
+Mensagens projetadas para serem intuitivas, educativas e acionaveis,
+detalhando o regime de mercado, a estrategia usada e o racional
+detras de cada sinal.
+
+v7.1: Reescrito para refletir regime-switching v7 com:
+  - 9 regimes de mercado com histerese e confidence scoring
+  - 3 estrategias adaptativas (trend-follow, mean-reversion, neutral)
+  - ADX floor v7.1 para WEAK_UPTREND LONG
+  - Notificacao de trade fechado (antes ausente)
 """
 
 from __future__ import annotations
@@ -28,131 +35,340 @@ logger = logging.getLogger(__name__)
 
 
 # ==================================================================
-# Helpers de formatacao
+# Mapas de tradução e formatacao
 # ==================================================================
 
-def _fmt_usd(value: float) -> str:
-    """Formata valor em USD com sinal."""
-    sign = "+" if value >= 0 else ""
-    return f"${sign}{value:,.2f}"
+_REGIME_PT = {
+    "STRONG_UPTREND":   "Tendencia de Alta Forte",
+    "WEAK_UPTREND":     "Tendencia de Alta Fraca",
+    "RANGING":          "Mercado Lateral",
+    "SQUEEZE":          "Compressao de Volatilidade",
+    "BREAKOUT_BULL":    "Expansao de Volatilidade (Alta)",
+    "BREAKOUT_BEAR":    "Expansao de Volatilidade (Baixa)",
+    "WEAK_DOWNTREND":   "Tendencia de Baixa Fraca",
+    "STRONG_DOWNTREND": "Tendencia de Baixa Forte",
+    "HIGH_VOLATILITY":  "Volatilidade Extrema",
+}
+
+_STRATEGY_PT = {
+    "trend_follow_long":  "Trend-Following (Compra)",
+    "trend_follow_short": "Trend-Following (Venda)",
+    "mean_reversion":     "Mean-Reversion (Reversao)",
+    "breakout_long":      "Breakout (Alta)",
+    "breakout_short":     "Breakout (Baixa)",
+    "neutral":            "Neutro (Sem operacao)",
+}
+
+_PULLBACK_PT = {
+    "fibonacci":      "Fibonacci (zona de retracao)",
+    "ema20_touch":    "Toque na EMA(20)",
+    "ema50_touch":    "Toque na EMA(50)",
+    "bb_bounce_long": "Bounce na Banda Inferior (BB)",
+    "bb_bounce_short":"Bounce na Banda Superior (BB)",
+    "breakout_long":  "Rompimento da Banda Superior",
+    "breakout_short": "Rompimento da Banda Inferior",
+}
+
+_EXIT_REASON_PT = {
+    "tp": "Take Profit (alvo atingido)",
+    "sl": "Stop Loss (protecao acionada)",
+    "timeout": "Timeout (maximo de barras sem saida)",
+    "be":  "Break-Even (stop movido para entrada)",
+}
 
 
-def _explain_long_conditions(signal: Signal) -> str:
-    """Explica em linguagem acessivel o que o sinal LONG significa."""
-    fib_info = ""
-    if signal.fib_0382 > 0 and signal.fib_direction == 1:
-        fib_info = f"\n   Fibonacci 0.382: ${signal.fib_0382:,.2f}"
-        if signal.fib_0500 > 0:
-            fib_info += f"\n   Fibonacci 0.500: ${signal.fib_0500:,.2f}"
-        fib_info = f"\n   O preco esta na zona de Fibonacci (pullback).{fib_info}"
-    lines = [
-        "O que o sistema detectou:",
-        "",
-        "1. Tendencia de ALTA confirmada (duplo EMA)",
-        f"   Preco (${signal.entry_price:,.2f}) acima da EMA(50)",
-        f"   e EMA(50) acima da EMA(200) — tendencia solida.",
-        "",
-        "2. Pullback em zona de compra (RSI {signal.rsi:.1f})",
-        f"   RSI na faixa 30-50 (pullback saudavel).",
-        f"   MACD confirma virada de momentum (hist: {signal.macd_hist:+.4f}).",
-        "",
-        "3. Pullback em zona favoravel",
-        f"   Tipo: {signal.pullback_type}",
-        {fib_info if fib_info else "   Preco recuou para zona de suporte."},
-        "",
-        "4. Risco/Retorno 1:2",
-        f"   SL: ${signal.stop_loss:,.2f} | TP: ${signal.take_profit:,.2f}",
-    ]
-    return "\n".join(lines)
+def _rr_ratio(signal: Signal) -> str:
+    """Calcula e formata a relacao risco:retorno real."""
+    risk = abs(signal.entry_price - signal.stop_loss)
+    reward = abs(signal.take_profit - signal.entry_price)
+    rr = reward / max(risk, 1e-9)
+    return f"1:{rr:.1f}"
 
 
-def _explain_short_conditions(signal: Signal) -> str:
-    """Explica em linguagem acessivel o que o sinal SHORT significa."""
-    fib_info = ""
-    if signal.fib_0382 > 0 and signal.fib_direction == -1:
-        fib_info = f"\n   Fibonacci 0.382: ${signal.fib_0382:,.2f}"
-        if signal.fib_0500 > 0:
-            fib_info += f"\n   Fibonacci 0.500: ${signal.fib_0500:,.2f}"
-        fib_info = f"\n   O preco esta na zona de Fibonacci (pullback).{fib_info}"
-    lines = [
-        "O que o sistema detectou:",
-        "",
-        "1. Tendencia de BAIXA confirmada (duplo EMA)",
-        f"   Preco (${signal.entry_price:,.2f}) abaixo da EMA(50)",
-        f"   e EMA(50) abaixo da EMA(200) — tendencia de baixa solida.",
-        "",
-        "2. Rally em zona de venda (RSI {signal.rsi:.1f})",
-        f"   RSI na faixa 50-70 (rally em downtrend).",
-        f"   MACD confirma virada de momentum (hist: {signal.macd_hist:+.4f}).",
-        "",
-        "3. Pullback em zona favoravel",
-        f"   Tipo: {signal.pullback_type}",
-        {fib_info if fib_info else "   Precao subiu para zona de resistencia."},
-        "",
-        "4. Risco/Retorno 1:2",
-        f"   SL: ${signal.stop_loss:,.2f} | TP: ${signal.take_profit:,.2f}",
-    ]
-    return "\n".join(lines)
+def _confidence_bar(confidence: float) -> str:
+    """Retorna barra visual de confianca (5 blocos)."""
+    filled = round(confidence * 5)
+    return "\U0001f7e2" * filled + "\u26ab" * (5 - filled)  # verde + cinza
 
 
-def _format_signal_message(signal: Signal, symbol: str) -> str:
-    """Constroi a mensagem do Telegram para um sinal, em linguagem acessivel."""
-    is_long = signal.type == SignalType.LONG
+# ==================================================================
+# Construtores de mensagem de sinal
+# ==================================================================
 
-    # Cabecalho
-    if is_long:
-        header = (
-            f"Sinal de COMPRA (LONG) detectado no {symbol}\n\n"
-            f"O sistema encontrou uma oportunidade de compra apos recuo "
-            f"numa tendencia de alta. Veja a analise detalhada abaixo."
+def _build_trend_follow_long_msg(
+    signal: Signal, symbol: str,
+    regime: str, strategy: str, confidence: float,
+) -> str:
+    """Mensagem detalhada para sinal LONG de trend-following."""
+    rr = _rr_ratio(signal)
+    regime_pt = _REGIME_PT.get(regime, regime)
+    pullback_pt = _PULLBACK_PT.get(signal.pullback_type, signal.pullback_type)
+    conf_bar = _confidence_bar(confidence)
+    di_spread = signal.plus_di - signal.minus_di
+
+    # Contexto do regime
+    if regime == "STRONG_UPTREND":
+        regime_ctx = (
+            "O mercado esta em tendencia de alta forte: ADX elevado, "
+            "EMA(20) > EMA(50) > EMA(200), e o slope da EMA(50) "
+            "e acelerado. Este e o melhor cenario para trend-following."
+        )
+    elif regime == "WEAK_UPTREND":
+        regime_ctx = (
+            "O mercado esta em tendencia de alta, porem enfraquecendo. "
+            "A tendencia ainda esta intacta (EMA(50) > EMA(200)), "
+            "mas a forca direcional diminuiu. O sinal passou pelo "
+            "filtro ADX >= 22 (v7.1) para garantir qualidade."
         )
     else:
-        header = (
-            f"Sinal de VENDA (SHORT) detectado no {symbol}\n\n"
-            f"O sistema encontrou uma oportunidade de venda apos alta "
-            f"numa tendencia de baixa. Veja a analise detalhada abaixo."
+        regime_ctx = f"Regime: {regime_pt}"
+
+    lines = [
+        f"\U0001f4c8  *SINAL DE COMPRA (LONG)*  no {symbol}",
+        "",
+        f"\U0001f310  *Regime de mercado:* {regime_pt}",
+        f"\U0001f4ca  Confianca: {confidence:.0%}  {conf_bar}",
+        f"\U0001f3af  Estrategia: {_STRATEGY_PT.get(strategy, strategy)}",
+        "",
+        "\U0001f50d  *O que o sistema detectou:*",
+        "",
+        f"1. {regime_ctx}",
+        "",
+        f"2. Pullback identificado em zona de compra",
+        f"   Tipo: {pullback_pt}",
+        f"   RSI: {signal.rsi:.1f} (zona de pullback saudavel)",
+        f"   MACD histograma: {signal.macd_hist:+.4f}",
+        "",
+        "3. Indicadores chave",
+        f"   ADX: {signal.adx:.1f} (forca da tendencia)",
+        f"   DI spread: {di_spread:+.1f} (compradores {'dominam' if di_spread > 0 else 'sob pressao'})",
+        f"   EMA(50) slope: {signal.ema50_slope:+.3f} ({'acelerando' if signal.ema50_slope > 1.0 else 'estavel' if signal.ema50_slope > 0.3 else 'fraca'})",
+        f"   ATR percentile: {signal.atr_percentile:.0%} ({'volatilidade alta' if signal.atr_percentile > 0.7 else 'volatilidade normal' if signal.atr_percentile > 0.3 else 'volatilidade baixa'})",
+        "",
+        f"\U0001f4b0  *Niveis de operacao:*",
+        f"   Entrada:  ${signal.entry_price:,.2f}",
+        f"   Stop Loss:  ${signal.stop_loss:,.2f} ({abs(signal.entry_price - signal.stop_loss) / signal.entry_price * 100:.2f}% abaixo)",
+        f"   Take Profit:  ${signal.take_profit:,.2f} ({abs(signal.take_profit - signal.entry_price) / signal.entry_price * 100:.2f}% acima)",
+        f"   Risco:Retorno: {rr}",
+        f"   ATR: ${signal.atr:,.2f}",
+        "",
+        "\U0001f6a9  *Aviso:* Este e um sinal de analise automatica. "
+        "O sistema NAO executa nenhuma operacao. "
+        "Use como referencia para sua propria decisao.",
+        "",
+        "CTEV v7.1 | Regime-Switching | Trend-Following + Mean-Reversion",
+    ]
+    return "\n".join(lines)
+
+
+def _build_trend_follow_short_msg(
+    signal: Signal, symbol: str,
+    regime: str, strategy: str, confidence: float,
+) -> str:
+    """Mensagem detalhada para sinal SHORT de trend-following."""
+    rr = _rr_ratio(signal)
+    regime_pt = _REGIME_PT.get(regime, regime)
+    pullback_pt = _PULLBACK_PT.get(signal.pullback_type, signal.pullback_type)
+    conf_bar = _confidence_bar(confidence)
+    di_spread = signal.plus_di - signal.minus_di
+
+    if regime == "STRONG_DOWNTREND":
+        regime_ctx = (
+            "O mercado esta em tendencia de baixa forte: ADX elevado, "
+            "EMA(20) < EMA(50) < EMA(200), e o slope da EMA(50) "
+            "e fortemente negativo. Tendencia de baixa bem estabelecida."
+        )
+    elif regime == "WEAK_DOWNTREND":
+        regime_ctx = (
+            "O mercado esta em tendencia de baixa, porem enfraquecendo. "
+            "A estrutura de baixa permanece (EMA(50) < EMA(200)), "
+            "mas a pressao vendedora diminuiu."
+        )
+    else:
+        regime_ctx = f"Regime: {regime_pt}"
+
+    lines = [
+        f"\U0001f4c9  *SINAL DE VENDA (SHORT)*  no {symbol}",
+        "",
+        f"\U0001f310  *Regime de mercado:* {regime_pt}",
+        f"\U0001f4ca  Confianca: {confidence:.0%}  {conf_bar}",
+        f"\U0001f3af  Estrategia: {_STRATEGY_PT.get(strategy, strategy)}",
+        "",
+        "\U0001f50d  *O que o sistema detectou:*",
+        "",
+        f"1. {regime_ctx}",
+        "",
+        f"2. Rally de correcao em zona de venda",
+        f"   Tipo: {pullback_pt}",
+        f"   RSI: {signal.rsi:.1f} (rally em downtrend)",
+        f"   MACD histograma: {signal.macd_hist:+.4f}",
+        "",
+        "3. Indicadores chave",
+        f"   ADX: {signal.adx:.1f} (forca da tendencia)",
+        f"   DI spread: {di_spread:+.1f} (vendedores {'dominam' if di_spread < 0 else 'sob pressao'})",
+        f"   EMA(50) slope: {signal.ema50_slope:+.3f} ({'acelerando queda' if signal.ema50_slope < -1.0 else 'descendo' if signal.ema50_slope < -0.3 else 'fraca'})",
+        f"   ATR percentile: {signal.atr_percentile:.0%}",
+        "",
+        f"\U0001f4b0  *Niveis de operacao:*",
+        f"   Entrada:  ${signal.entry_price:,.2f}",
+        f"   Stop Loss:  ${signal.stop_loss:,.2f} ({abs(signal.stop_loss - signal.entry_price) / signal.entry_price * 100:.2f}% acima)",
+        f"   Take Profit:  ${signal.take_profit:,.2f} ({abs(signal.entry_price - signal.take_profit) / signal.entry_price * 100:.2f}% abaixo)",
+        f"   Risco:Retorno: {rr}",
+        f"   ATR: ${signal.atr:,.2f}",
+        "",
+        "\U0001f6a9  *Aviso:* Este e um sinal de analise automatica. "
+        "O sistema NAO executa nenhuma operacao. "
+        "Use como referencia para sua propria decisao.",
+        "",
+        "CTEV v7.1 | Regime-Switching | Trend-Following + Mean-Reversion",
+    ]
+    return "\n".join(lines)
+
+
+def _build_mean_reversion_msg(
+    signal: Signal, symbol: str,
+    regime: str, strategy: str, confidence: float,
+) -> str:
+    """Mensagem detalhada para sinal de mean-reversion (RANGING)."""
+    is_long = signal.type == SignalType.LONG
+    rr = _rr_ratio(signal)
+    regime_pt = _REGIME_PT.get(regime, regime)
+    pullback_pt = _PULLBACK_PT.get(signal.pullback_type, signal.pullback_type)
+    conf_bar = _confidence_bar(confidence)
+    direction = "COMPRA (LONG)" if is_long else "VENDA (SHORT)"
+    icon = "\U0001f4c8" if is_long else "\U0001f4c9"
+
+    bb_ref = signal.bb_lower if is_long else signal.bb_upper
+    bb_label = "Banda Inferior" if is_long else "Banda Superior"
+    rsi_desc = ("sobrevendido (fundo da faixa)" if is_long
+                else "sobrecomprado (topo da faixa)")
+
+    lines = [
+        f"{icon}  *SINAL DE {direction.upper()}*  no {symbol}",
+        "",
+        f"\U0001f310  *Regime de mercado:* {regime_pt}",
+        f"\U0001f4ca  Confianca: {confidence:.0%}  {conf_bar}",
+        f"\U0001f3af  Estrategia: {_STRATEGY_PT.get(strategy, strategy)}",
+        "",
+        "\U0001f50d  *O que o sistema detectou:*",
+        "",
+        "1. Mercado lateral identificado",
+        "O preco oscila entre suporte e resistencia sem "
+        "tendencia clara. A estrategia de mean-reversion "
+        "opera os extremos das Bandas de Bollinger.",
+        "",
+        f"2. Preco tocou a {bb_label} das Bollinger",
+        f"   {bb_label}: ${bb_ref:,.2f}",
+        f"   RSI: {signal.rsi:.1f} ({rsi_desc})",
+        f"   BB width: {signal.bb_width:.4f} (lateralidade)",
+        f"   MACD histograma: {signal.macd_hist:+.4f}",
+        "",
+        "3. Indicadores complementares",
+        f"   ADX: {signal.adx:.1f} (sem tendencia — confirmando lateral)",
+        f"   ATR percentile: {signal.atr_percentile:.0%}",
+        f"   Volume: {signal.volume / max(signal.volume_sma20, 1):.2f}x media",
+        "",
+        f"\U0001f4b0  *Niveis de operacao:*",
+        f"   Entrada:  ${signal.entry_price:,.2f}",
+        f"   Stop Loss: ${signal.stop_loss:,.2f}",
+        f"   Take Profit: ${signal.take_profit:,.2f}",
+        f"   Risco:Retorno: {rr}",
+        "",
+        "\U0001f6a9  *Aviso:* Este e um sinal de analise automatica. "
+        "O sistema NAO executa nenhuma operacao. "
+        "Use como referencia para sua propria decisao.",
+        "",
+        "CTEV v7.1 | Regime-Switching | Trend-Following + Mean-Reversion",
+    ]
+    return "\n".join(lines)
+
+
+def _format_signal_message(
+    signal: Signal, symbol: str,
+    regime: str = "", strategy: str = "", confidence: float = 0.5,
+) -> str:
+    """
+    Constroi a mensagem do Telegram para um sinal.
+
+    Roteia para o formato especifico da estrategia usada.
+    """
+    is_long = signal.type == SignalType.LONG
+
+    # Fallback para chamadas sem regime (compatibilidade)
+    if not regime:
+        regime = signal.regime or "UNKNOWN"
+    if not strategy:
+        strategy = ("trend_follow_long" if is_long else "trend_follow_short")
+
+    # Roteia pelo tipo de estrategia
+    if "mean_reversion" in strategy:
+        return _build_mean_reversion_msg(
+            signal, symbol, regime, strategy, confidence,
+        )
+    elif is_long:
+        return _build_trend_follow_long_msg(
+            signal, symbol, regime, strategy, confidence,
+        )
+    else:
+        return _build_trend_follow_short_msg(
+            signal, symbol, regime, strategy, confidence,
         )
 
-    # Explicacao das condicoes
-    explanation = (
-        _explain_long_conditions(signal) if is_long
-        else _explain_short_conditions(signal)
-    )
 
-    # Niveis de preco para o usuario acompanhar
-    entry = signal.entry_price
-    sl = signal.stop_loss
-    tp = signal.take_profit
-    risk_usd = abs(entry - sl)
-    reward_usd = abs(tp - entry)
-    rr = reward_usd / max(risk_usd, 1e-9)
+def _format_trade_close_message(
+    pos_type: str,
+    entry: float,
+    exit_p: float,
+    pnl_pct: float,
+    pnl_usd: float,
+    reason: str,
+    be: bool = False,
+    trailing: bool = False,
+    partial: bool = False,
+) -> str:
+    """Constroi a mensagem de fechamento de trade."""
+    is_long = pos_type == "LONG"
+    is_win = pnl_pct >= 0
 
-    prices = (
-        f"\nNiveis para acompanhar:\n"
-        f"  Preco atual: ${entry:,.2f}\n"
-        f"  Zona de protecao (Stop Loss): ${sl:,.2f}\n"
-        f"  Alvo (Take Profit): ${tp:,.2f}\n"
-        f"  Relacao risco/ganho: 1:{rr:.2f}"
-    )
+    icon = "\u2705" if is_win else "\u274c"
+    result = "LUCRO" if is_win else "PERDA"
+    direction = "COMPRA (LONG)" if is_long else "VENDA (SHORT)"
 
-    # Aviso claro de que e apenas analise
-    disclaimer = (
-        "\nEste e um sinal de analise automatica.\n"
-        "O sistema NAO executa nenhuma operacao.\n"
-        "Use esta informacao como referencia\n"
-        "para sua propria decisao de trading."
-    )
+    reason_pt = _EXIT_REASON_PT.get(reason, reason)
 
-    footer = "\n\nCTEV Signal Bot v5.0 — Trend-Following + Fibonacci"
+    lines = [
+        f"{icon}  *{result} — {direction} fechada*",
+        "",
+        f"\U0001f4b0  Resultado:",
+        f"   PnL: {'+' if is_win else ''}{pnl_pct:.2f}%  ({'+' if pnl_usd >= 0 else ''}{pnl_usd:,.2f} USD)",
+        f"   Entrada: ${entry:,.2f}",
+        f"   Saida:  ${exit_p:,.2f}",
+        f"   Motivo: {reason_pt}",
+    ]
 
-    return (
-        f"{header}\n\n"
-        f"{explanation}\n\n"
-        f"{prices}\n\n"
-        f"{disclaimer}\n"
-        f"{footer}"
-    )
+    extras = []
+    if be:
+        extras.append("   \u26a1 Break-even ativado (SL movido para entrada)")
+    if trailing:
+        extras.append("   \U0001f504 Trailing stop ativado (SL acompanhou o preco)")
+    if partial:
+        extras.append("   \U0001f3af Take Profit parcial executado")
 
+    if extras:
+        lines.append("")
+        lines.append("\U0001f527  Gerenciamento ativo:")
+        lines.extend(extras)
+
+    lines.extend([
+        "",
+        "CTEV v7.1 | Regime-Switching",
+    ])
+    return "\n".join(lines)
+
+
+# ==================================================================
+# Classe principal
+# ==================================================================
 
 class TelegramNotifier:
     """Wrapper assincrono sobre telegram.Bot para envio de sinais."""
@@ -173,33 +389,56 @@ class TelegramNotifier:
         """Envia mensagem de boas-vindas ao iniciar."""
         if not self.bot:
             return
+        msg = (
+            "\U0001f916  *CTEV Signal Bot v7.1 — Iniciado*\n\n"
+
+            "\U0001f4d6  *O que este bot faz:*\n\n"
+            "Monitora o Bitcoin 24h por dia e identifica os melhores "
+            "momentos para compra ou venda, usando analise tecnica "
+            "automatizada com deteccao adaptativa de regime de mercado.\n\n"
+
+            "\U0001f310  *Regime-Switching v7 — Como funciona:*\n\n"
+            "O sistema classifica o mercado em 9 regimes a cada hora:\n\n"
+            "\u2022 *Tendencia de Alta Forte* — trend-following LONG com TP agressivo\n"
+            "\u2022 *Tendencia de Alta Fraca* — trend-following LONG com filtro ADX >= 22\n"
+            "\u2022 *Tendencia de Baixa Forte* — trend-following SHORT\n"
+            "\u2022 *Tendencia de Baixa Fraca* — trend-following SHORT\n"
+            "\u2022 *Mercado Lateral* — mean-reversion (bounce nas Bandas de Bollinger)\n"
+            "\u2022 *Compressao / Volatilidade Extrema* — sem operacao (protecao)\n\n"
+            "Cada regime usa parametros diferentes de Stop Loss, Take Profit "
+            "e faixa de RSI, otimizados para aquele cenario especifico.\n\n"
+
+            "\U0001f4c8  *Estrategias:*\n\n"
+            "\u2022 *Trend-Following*: Compra em pullbacks dentro de tendencias. "
+            "Requer alinhamento EMA(20/50/200), pullback em Fibonacci/EMA, "
+            "RSI em zona de exaustao. R:R alvo de 4:1.\n"
+            "\u2022 *Mean-Reversion*: Opera os extremos das Bandas de Bollinger "
+            "em mercados laterais. RSI sobrevendido = compra, "
+            "RSI sobrecomprado = venda. R:R fixo de 3:1.\n\n"
+
+            "\U0001f6e1  *Protecoes automaticas:*\n\n"
+            "\u2022 Circuit Breaker: pausa em movimentos extremos de preco\n"
+            "\u2022 Filtro de drawdown diario e semanal\n"
+            "\u2022 Cooldown apos perdas consecutivas\n"
+            "\u2022 Filtro de volatilidade (ATR percentile)\n\n"
+
+            f"\U0001f4c1  *Configuracao:*\n"
+            f"Exchange: {exchange_id.upper()}\n"
+            f"Par: {symbol}\n"
+            f"Timeframe: 1H (analise a cada 1 hora)\n\n"
+
+            "\u26a0\ufe0f  *Modo: apenas analise*\n\n"
+            "Este bot APENAS analisa o mercado e envia sinais. "
+            "Nenhuma operacao e executada automaticamente. "
+            "Use os sinais como referencia para suas proprias "
+            "decisoes de investimento.\n\n"
+
+            "\U0001f5a5  Acesse o painel web para acompanhar em tempo real."
+        )
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=(
-                    "CTEV Signal Bot foi iniciado!\n\n"
-                    "O que este bot faz:\n"
-                    "Monitora o Bitcoin 24h por dia e identifica os melhores\n"
-                    "momentos para compra ou venda, usando analise tecnica\n"
-                    "automatizada (CTEV — Confluencia de Tendencia e\n"
-                    "Exaustao Volumetrica).\n\n"
-                    "Exchange: {exchange}\n"
-                    "Par: {symbol}\n"
-                    "Timeframe: 1H (analise a cada 1 hora)\n\n"
-                    "Voce recebera notificacoes quando:\n"
-                    "- Um sinal de compra (LONG) for detectado\n"
-                    "- Um sinal de venda (SHORT) for detectado\n"
-                    "- O sistema precisar pausar por seguranca\n\n"
-                    "Importante:\n"
-                    "Este bot APENAS analisa o mercado e envia sinais.\n"
-                    "Nenhuma operacao e executada automaticamente.\n"
-                    "Use os sinais como referencia para suas proprias\n"
-                    "decisoes de investimento.\n\n"
-                    "Acesse o painel web para acompanhar em tempo real."
-                ).format(
-                    exchange=exchange_id.upper(),
-                    symbol=symbol,
-                ),
+                text=msg,
                 parse_mode=ParseMode.MARKDOWN,
             )
         except Exception:
@@ -207,11 +446,11 @@ class TelegramNotifier:
                 await self.bot.send_message(
                     chat_id=self.chat_id,
                     text=(
-                        "CTEV Signal Bot iniciado!\n\n"
-                        "Monitorando Bitcoin 24h. Voce recebera alertas "
-                        "quando oportunidades forem detectadas.\n\n"
-                        "Modo: apenas analise (sem execucao de ordens).\n"
-                        f"Exchange: {exchange_id.upper()} | Par: {symbol}"
+                        "CTEV Signal Bot v7.1 iniciado!\n\n"
+                        f"Monitorando {symbol} em 1H via {exchange_id.upper()}.\n"
+                        "Modo: apenas sinais (sem execucao).\n\n"
+                        "Voce recebera alertas quando oportunidades forem detectadas, "
+                        "com detalhamento do regime, estrategia e indicadores."
                     ),
                 )
             except Exception:
@@ -220,11 +459,20 @@ class TelegramNotifier:
     # ------------------------------------------------------------------
     # Sinal de trade
     # ------------------------------------------------------------------
-    async def send_signal(self, signal: Signal, symbol: str) -> None:
+    async def send_signal(
+        self,
+        signal: Signal,
+        symbol: str,
+        regime: str = "",
+        strategy: str = "",
+        confidence: float = 0.5,
+    ) -> None:
         """Envia o sinal formatado para o chat configurado."""
         if not self.bot:
             return
-        text = _format_signal_message(signal, symbol)
+        text = _format_signal_message(
+            signal, symbol, regime, strategy, confidence,
+        )
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
@@ -244,6 +492,45 @@ class TelegramNotifier:
                 logger.exception(
                     "Fallback de texto puro tambem falhou: %s", fallback_exc
                 )
+
+    # ------------------------------------------------------------------
+    # Fechamento de trade
+    # ------------------------------------------------------------------
+    async def send_trade_close(
+        self,
+        pos_type: str,
+        entry: float,
+        exit_p: float,
+        pnl_pct: float,
+        pnl_usd: float,
+        reason: str,
+        be: bool = False,
+        trailing: bool = False,
+        partial: bool = False,
+    ) -> None:
+        """Notifica o fechamento de uma posicao."""
+        if not self.bot:
+            return
+        text = _format_trade_close_message(
+            pos_type, entry, exit_p, pnl_pct, pnl_usd,
+            reason, be, trailing, partial,
+        )
+        try:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text=text,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            logger.info(
+                "Trade close %s enviado ao Telegram (PnL=%+.2f%%).",
+                pos_type, pnl_pct,
+            )
+        except Exception as exc:
+            logger.exception("Falha ao enviar trade close: %s", exc)
+            try:
+                await self.bot.send_message(chat_id=self.chat_id, text=text)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Texto livre
@@ -266,65 +553,59 @@ class TelegramNotifier:
             return
         explanations = {
             "drawdown_diario": (
-                "Limite de perda diaria atingido.\n"
-                "O bot pausou automaticamente para proteger contra\n"
-                "sinais em periodo desfavoravel.\n"
-                "Retoma automaticamente as 00:00 UTC (21h de Brasilia)."
+                "\u26a0\ufe0f  Limite de perda diaria atingido.\n\n"
+                "O bot pausou automaticamente para proteger contra "
+                "sinais em periodo desfavoravel.\n\n"
+                "\U0001f504  Retoma automaticamente as 00:00 UTC (21h de Brasilia)."
             ),
             "drawdown_semanal": (
-                "Limite de perda semanal atingido.\n"
-                "O bot pausou automaticamente para proteger contra\n"
-                "sinais em periodo desfavoravel.\n"
-                "Retoma automaticamente na segunda-feira UTC."
+                "\u26a0\ufe0f  Limite de perda semanal atingido.\n\n"
+                "O bot pausou automaticamente para proteger contra "
+                "sinais em periodo desfavoravel.\n\n"
+                "\U0001f504  Retoma automaticamente na segunda-feira UTC."
             ),
             "perdas_consecutivas": (
-                "Muitas perdas seguidas nos sinais recentes.\n"
-                "O bot entrou em cooldown para evitar sinais\n"
-                "em sequencia ruim. Retomara automaticamente\n"
+                "\u26a0\ufe0f  Muitas perdas seguidas.\n\n"
+                "O bot entrou em cooldown para evitar sinais "
+                "em sequencia ruim. Retomara automaticamente "
                 "apos o cooldown."
             ),
             "circuit_breaker": (
-                "Movimento extremo de preco detectado.\n"
-                "O mercado esta muito volatil. O bot pausou\n"
-                "temporariamente para evitar sinais durante\n"
+                "\U0001f6a8  Movimento extremo de preco detectado.\n\n"
+                "O mercado esta muito volatil. O bot pausou "
+                "temporariamente para evitar sinais durante "
                 "instabilidade."
             ),
             "filtro_volatilidade": (
-                "Volatilidade fora da faixa segura.\n"
+                "\U0001f6a8  Volatilidade fora da faixa segura.\n\n"
                 "O mercado esta muito {'lateral (sem direcao clara)' if 'lateral' in message.lower() else 'volatil (instavel)'}. "
                 "O bot aguarda melhora nas condicoes."
             ),
             "cooldown_entre_sinais": (
-                "Intervalo minimo entre sinais.\n"
-                "O bot ja gerou um sinal recente e precisa\n"
+                "\u23f3  Intervalo minimo entre sinais.\n\n"
+                "O bot ja gerou um sinal recente e precisa "
                 "esperar algumas velas antes do proximo."
             ),
             "kill_switch_manual": (
-                "Bot DESLIGADO manualmente pelo operador.\n"
-                "Nenhum sinal sera gerado.\n"
+                "\U0001f6d1  Bot DESLIGADO manualmente.\n\n"
+                "Nenhum sinal sera gerado. "
                 "Para reativar, use o painel web (botao 'Reativar')."
             ),
         }
 
-        explanation = explanations.get(reason, message)
+        explanation = explanations.get(reason, f"{reason}: {message}")
 
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=(
-                    f"Protecao automatica ativada\n\n"
-                    f"{explanation}"
-                ),
+                text=explanation,
                 parse_mode=ParseMode.MARKDOWN,
             )
         except Exception:
             try:
                 await self.bot.send_message(
                     chat_id=self.chat_id,
-                    text=(
-                        f"Protecao automatica ativada\n\n"
-                        f"{explanation}"
-                    ),
+                    text=explanation,
                 )
             except Exception:
                 pass
@@ -340,10 +621,14 @@ class TelegramNotifier:
             await self.bot.send_message(
                 chat_id=self.chat_id,
                 text=(
-                    f"Conectado a {exchange_id.upper()}\n"
-                    f"Monitorando: {symbol} no timeframe 1H\n\n"
+                    f"\U0001f510  Conectado a {exchange_id.upper()}\n\n"
+                    f"\U0001f4c1  Monitorando: {symbol} no timeframe 1H\n"
+                    f"\U0001f310  Modo: Regime-Switching v7.1\n"
+                    f"\u2022 9 regimes de mercado com histerese\n"
+                    f"\u2022 Trend-following + Mean-reversion\n"
+                    f"\u2022 Protecao automatica ativa\n\n"
                     "O bot esta ativo e analisando o mercado.\n"
-                    "Modo: apenas sinais (sem execucao)."
+                    "Voce recebera sinais quando oportunidades forem detectadas."
                 ),
                 parse_mode=ParseMode.MARKDOWN,
             )

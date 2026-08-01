@@ -420,10 +420,15 @@ class CTEVWorker:
 
         # === SINAL GERADO — Apenas notifica, sem executar ordem ===
 
-        # Telegram: envia sinal detalhado com analise
+        # Telegram: envia sinal detalhado com analise e regime
         if self.notifier is not None:
             try:
-                await self.notifier.send_signal(signal, self.settings.binance.symbol)
+                await self.notifier.send_signal(
+                    signal, self.settings.binance.symbol,
+                    regime=_regime_v2,
+                    strategy=_regime_strat,
+                    confidence=_regime_conf,
+                )
                 signal_dict["notified"] = 1
             except Exception as exc:
                 logger.exception("Erro ao enviar Telegram: %s", exc)
