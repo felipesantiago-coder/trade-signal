@@ -22,6 +22,7 @@ Regras (v4+ adaptativo):
 
 v5: Adicionado adaptacao automatica dos timeframes de confirmacao
     baseado no timeframe ativo (via strategy_router.get_mtf_timeframes).
+"""
 
 from __future__ import annotations
 
