@@ -56,6 +56,7 @@ from db import (
 )
 from indicators import compute_indicators
 from multi_timeframe import get_mtf_filter
+from regime_engine import get_regime_summary
 from position_tracker import get_position_tracker
 from risk_manager import get_risk_manager
 

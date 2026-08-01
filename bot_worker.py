@@ -40,6 +40,8 @@ from position_tracker import get_position_tracker, PositionStatus
 from risk_manager import RiskBlockReason, get_risk_manager
 from strategy import evaluate_signal
 from strategy_profiles import get_profile
+from regime_engine import classify_regimes_v2
+from strategy_regime import evaluate_signal_regime_aware
 
 logger = logging.getLogger("ctev.worker")
 
@@ -350,11 +352,26 @@ class CTEVWorker:
             self.last_processed_ts = closed_candle_ts
             return
 
-        # ---- AVALIA SINAL ----
+        # ---- AVALIA SINAL (REGIME-SWITCHING v7) ----
         try:
             active_tf = self.state.timeframe_override or self.settings.binance.timeframe
             _profile = get_profile(active_tf)
-            signal = evaluate_signal(df_ind, profile=_profile)
+
+            # Classifica regime v2 com histerese
+            df_ind = classify_regimes_v2(df_ind, hysteresis_bars=3)
+
+            # Usa regime-aware signal evaluation (trend-follow + mean-reversion)
+            signal = evaluate_signal_regime_aware(df_ind, profile=_profile, hysteresis_bars=3)
+
+            # Expose regime info in status
+            last_row = df_ind.iloc[-1]
+            _regime_v2 = str(last_row.get("regime_v2", "?"))
+            _regime_conf = float(last_row.get("regime_confidence", 0))
+            _regime_strat = str(last_row.get("regime_strategy", "?"))
+            logger.info(
+                "Regime v2: %s (conf=%.2f) -> %s",
+                _regime_v2, _regime_conf, _regime_strat,
+            )
         except Exception as exc:
             self.state.error_count += 1
             self.state.last_error = f"Strategy: {exc}"
@@ -365,7 +382,8 @@ class CTEVWorker:
         if signal is None:
             self.state.last_status_message = (
                 f"Sem sinal no candle {closed_candle_ts.isoformat()} "
-                f"(ATR pct: {atr_pct:.2f})"
+                f"| regime={_regime_v2} ({_regime_strat}) "
+                f"| ATR pct: {atr_pct:.2f}"
             )
             self.last_processed_ts = closed_candle_ts
             return
@@ -415,7 +433,7 @@ class CTEVWorker:
         self.state.last_status_message = (
             f"Sinal {signal.type.value} em {signal.entry_price:.2f} "
             f"| SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
-            f"RSI={signal.rsi:.1f} Vol={signal.volume / max(signal.volume_sma20, 1):.1f}x"
+            f"RSI={signal.rsi:.1f} regime={_regime_v2} ({_regime_strat})"
         )
         self.last_processed_ts = closed_candle_ts
 
@@ -424,7 +442,7 @@ class CTEVWorker:
             f"Sinal {signal.type.value} emitido | "
             f"entry={signal.entry_price:.2f} SL={signal.stop_loss:.2f} TP={signal.take_profit:.2f} "
             f"RSI={signal.rsi:.1f} ATR={signal.atr:.2f} "
-            f"Vol={signal.volume / max(signal.volume_sma20, 1):.1f}xSMA",
+            f"regime={_regime_v2} ({_regime_strat}) conf={_regime_conf:.2f}",
             "worker",
         )
 
