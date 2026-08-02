@@ -145,34 +145,34 @@ PROFILE_INTRADAY = StrategyProfile(
     name="INTRADAY",
     timeframes=("15m", "30m"),
     description=(
-        "[VALIDADO v11] EMA Cross v11 para 15m. v11 adiciona: "
-        "(1) EMA200 macro filter — LONGs so acima, SHORTs so abaixo; "
-        "(2) TP adaptativo — 4.5x ATR em trending_down; "
-        "(3) Trailing stop + BE + partial TP no simulador. "
-        "Objetivo: superar B&H em 730d+ (v10 perdia). "
-        "v10 base: 42T, WR 59.5%, PF 1.96, PnL +9.71% (365d). "
-        "CRITICO: Lucrativo SOMENTE com limit orders (maker fee ~0.016%)."
+        "[ATF v1] Adaptive Trend-Follow para 15m/30m. Substitui EMA Cross v11. "
+        "Scoring composto 0-10 (EMA alignment, ADX, DI, MACD, RSI, OBV) + 6 tipos "
+        "de entrada (pullback EMA20/50, RSI dip, MACD cross, momentum burst, "
+        "BB bounce, trend aligned). Trailing adaptativo ao ADX (1.0-2.5x ATR), "
+        "sem TP fixo. SL adaptativo por volatilidade (1.2-2.0x ATR). "
+        "Cooldown 6 bars (3 apos trailing). Max 96 bars (24h). "
+        "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
-    # v10: ATR no sweet spot identificado pela analise
-    atr_pct_min=0.20,       # Evita volatilidade muito baixa
-    atr_pct_max=0.80,       # Evita volatilidade extrema
+    # ATF v1 ATR range
+    atr_pct_min=0.15,       # Mais aberto que v11
+    atr_pct_max=0.85,
 
-    # v10: SL=2.0x, TP=3.0x (R:R 1.5:1) — OBV permite R:R maior
-    sl_atr_mult=2.00,
-    tp_atr_mult=3.00,
-    max_bars_held=36,
+    # SL/TP references (ATF uses adaptive values internally)
+    sl_atr_mult=1.50,       # Base SL
+    tp_atr_mult=10.0,       # Placeholder — ATF uses trailing-only
+    max_bars_held=96,        # 24h on 15min
 
-    # Campos abaixo usados apenas como referencia (a logica real esta em strategy_ema_cross.py)
-    adx_min=20.0,           # v10: 12 (era 14) — OBV permite cooldown menor
+    # Reference params (actual logic in strategy_atf.py)
+    adx_min=20.0,
     allow_transition=True,
-    rsi_long_min=35.0,      # v9: mais strict
+    rsi_long_min=35.0,
     rsi_long_max=75.0,
     rsi_short_min=25.0,
     rsi_short_max=70.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-1.0,
     volume_confirm=False,
-    volume_sma_ratio=0.80,  # v9: 0.80 (era 0.30)
+    volume_sma_ratio=0.70,
 )
 
 PROFILE_STANDARD = StrategyProfile(

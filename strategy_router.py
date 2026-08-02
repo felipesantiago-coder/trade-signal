@@ -9,7 +9,7 @@ a estrategia otimizada para cada escala temporal:
 
   Timeframe  |  Estrategia      |  Engine              |  Validacao
   -----------+-----------------+---------------------+--------------
-  15m, 30m   |  EMA Cross v8    |  strategy_ema_cross  |  +5.97% PnL
+  15m, 30m   |  ATF v1          |  strategy_atf        |  scoring+trailing
   1h          |  CTEV v7.1       |  regime-switching    | +25.44% PnL
   2h, 4h     |  CTEV (wider)    |  regime-switching    |  NAO validado
   1d          |  CTEV (position) |  regime-switching    |  NAO validado
@@ -61,12 +61,12 @@ def get_strategy_type(timeframe: str) -> str:
     Retorna o tipo de estrategia para o timeframe dado.
 
     Returns:
-        "ema_cross" — Para 15m/30m (EMA Cross v8)
+        "atf" — Para 15m/30m (ATF v1 Adaptive Trend-Follow)
         "regime_switching" — Para 1h+ (CTEV v7.1)
         "disabled" — Para 1m/3m/5m (sem edge)
     """
     if timeframe in EMA_CROSS_TIMEFRAMES:
-        return "ema_cross"
+        return "atf"
     elif timeframe in DISABLED_TIMEFRAMES:
         return "disabled"
     else:
@@ -77,7 +77,7 @@ def get_strategy_label(timeframe: str) -> str:
     """Retorna label descritivo da estrategia ativa."""
     st = get_strategy_type(timeframe)
     labels = {
-        "ema_cross": "EMA Cross v11",
+        "atf": "ATF v1 Adaptive Trend-Follow",
         "regime_switching": "CTEV v7.1 Regime-Switching",
         "disabled": "DESATIVADO (sem edge valida)",
     }
@@ -141,11 +141,11 @@ def evaluate_signal(
         logger.debug("Timeframe %s desativado (sem edge valida)", timeframe)
         return None
 
-    # ---- EMA CROSS (15m/30m) ----
-    if strategy_type == "ema_cross":
-        from strategy_ema_cross import evaluate_ema_cross
-        logger.debug("Router [%s] -> EMA Cross v11", timeframe)
-        return evaluate_ema_cross(df, profile=profile)
+    # ---- ATF v1 (15m/30m) ----
+    if strategy_type == "atf":
+        from strategy_atf import evaluate_atf
+        logger.debug("Router [%s] -> ATF v1", timeframe)
+        return evaluate_atf(df, profile=profile)
 
     # ---- REGIME SWITCHING (1h+) ----
     if strategy_type == "regime_switching":
@@ -186,9 +186,9 @@ def evaluate_signal_row(
     if strategy_type == "disabled":
         return None
 
-    if strategy_type == "ema_cross":
-        from strategy_ema_cross import evaluate_ema_cross_row
-        return evaluate_ema_cross_row(row, prev_row, bar_index, profile=profile)
+    if strategy_type == "atf":
+        from strategy_atf import evaluate_atf_row
+        return evaluate_atf_row(row, prev_row, bar_index, profile=profile)
 
     # Para regime_switching, usa o fluxo padrao do backtest
     # (a logica de regime e aplicada em _simulate_regime_switching)

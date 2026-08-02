@@ -1371,6 +1371,273 @@ def _simulate_ema_cross(
 
 
 # ------------------------------------------------------------------
+# ATF v1: Adaptive Trend-Follow simulation (for INTRADAY: 15m/30m)
+# ------------------------------------------------------------------
+def _simulate_atf(
+    df_ind: pd.DataFrame,
+    atr_pct_min: float = 0.15,
+    atr_pct_max: float = 0.85,
+    profile=None,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
+) -> Tuple[List[TradeResult], int, dict]:
+    r"""
+    Simulacao ATF v1 (Adaptive Trend-Follow) para 15m/30m.
+
+    Diferencas fundamentais vs _simulate_ema_cross:
+      1. Sem TP fixo — saida puramente via trailing stop adaptativo ao ADX
+      2. Trailing width: 1.0x (ADX<25) / 1.5x (ADX 25-35) / 2.5x (ADX>=35) ATR
+      3. BE trigger em 0.8x ATR (mais rapido que v11)
+      4. Sem partial TP — posicao inteira faz trailing
+      5. Max bars: 96 (24h em 15min) vs 36 do v11
+      6. Cooldown: 6 bars (1.5h) vs 12 do v11, 3 bars apos trailing exit
+      7. Entradas via score composto (0-10) + 6 tipos de gatilho
+
+    Custos: fee=0.016% + spread=2bps + slip=2bps (limit orders).
+    """
+    from strategy_atf import evaluate_atf_row, reset_cooldown, ATF_PARAMS
+
+    reset_cooldown()
+
+    _be_trigger = ATF_PARAMS["be_trigger_atr"]
+    _max_bars = ATF_PARAMS["max_bars"]
+
+    trades: List[TradeResult] = []
+    atr_filtered = 0
+    i = 0
+    n = len(df_ind)
+    _scan_t0 = time.time()
+    _last_progress_time = 0.0
+    _eq_points: list = []
+    _running_pnl = 0.0
+
+    # Limit order costs (maker)
+    _fee = 0.016
+    _spread = 2.0
+    _slip = 2.0
+
+    # Diagnostics
+    _be_count = 0
+    _trail_count = 0
+    _diag_triggers = {}
+    _diag_scores = []
+    _diag_trail_types = {"strong": 0, "medium": 0, "weak": 0}
+
+    while i < n:
+        row = df_ind.iloc[i]
+
+        # Progress (throttled to ~4Hz)
+        _now = time.time()
+        if _now - _last_progress_time > 0.25:
+            _last_progress_time = _now
+            _elapsed = max(_now - _scan_t0, 0.01)
+            _speed = i / _elapsed
+            _scan_pct = 20 + (i / max(n, 1)) * 60
+            _update_progress(
+                phase="Escaneando candles (ATF v1)", phase_num=4,
+                pct=round(_scan_pct, 1),
+                message=f"ATF v1 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                candles_total=n, candles_scanned=i, scan_speed=round(_speed),
+                current_price=round(float(row.get("close", 0)), 2),
+            )
+
+        if i < 1:
+            i += 1
+            continue
+
+        # Check NaN
+        critical = ["ema20", "ema50", "ema200", "rsi", "atr", "rsi_delta",
+                     "atr_percentile", "adx", "macd", "macd_signal", "macd_hist",
+                     "obv_trend", "bb_lower", "bb_upper", "bb_middle"]
+        if any(pd.isna(row.get(c)) for c in critical):
+            i += 1
+            continue
+
+        # ATR filter (ATF has its own internal filter too, but we pre-filter here)
+        atr_pct = float(row.get("atr_percentile", 0.5))
+        if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
+            atr_filtered += 1
+            i += 1
+            continue
+
+        # Evaluate ATF signal
+        prev = df_ind.iloc[i - 1]
+        result = evaluate_atf_row(row, prev, i, profile=profile)
+
+        if result is None:
+            i += 1
+            continue
+
+        signal, score, trigger_name, adx_at_entry, trail_mult, sl_mult = result
+
+        # ── Track diagnostics ──
+        _diag_triggers[trigger_name] = _diag_triggers.get(trigger_name, 0) + 1
+        _diag_scores.append(score)
+        if adx_at_entry >= 35:
+            _diag_trail_types["strong"] += 1
+        elif adx_at_entry >= 25:
+            _diag_trail_types["medium"] += 1
+        else:
+            _diag_trail_types["weak"] += 1
+
+        # ── Trade simulation with ADX-adaptive trailing ──
+        entry_price = signal.entry_price
+        sl = signal.stop_loss
+        atr = signal.atr
+        is_long = signal.type == SignalType.LONG
+        exit_price = None
+        exit_reason = None
+        bars = 0
+
+        # Trailing state
+        current_sl = sl
+        be_triggered = False
+        trailing_activated = False
+        highest_favorable = entry_price
+        sl_updates = 0
+        was_trailing_exit = False
+
+        # Trail distance is FIXED at entry time based on ADX
+        trail_distance = atr * trail_mult
+
+        for j in range(i + 1, min(i + _max_bars, n)):
+            future = df_ind.iloc[j]
+            f_close = float(future["close"])
+            f_low = float(future["low"])
+            f_high = float(future["high"])
+            bars = j - i
+
+            # Track high water mark
+            if is_long:
+                highest_favorable = max(highest_favorable, f_high)
+            else:
+                highest_favorable = min(highest_favorable, f_low)
+
+            # Check SL hit
+            sl_hit = False
+            if is_long:
+                if f_low <= current_sl:
+                    sl_hit = True
+            else:
+                if f_high >= current_sl:
+                    sl_hit = True
+
+            # NO TP check — ATF uses trailing-only exit
+
+            # BE trigger: price moved be_trigger * ATR in favor
+            if not be_triggered:
+                fav_dist = abs(highest_favorable - entry_price)
+                if fav_dist >= atr * _be_trigger:
+                    be_triggered = True
+                    trailing_activated = True
+                    current_sl = entry_price
+                    _be_count += 1
+
+            # Trailing stop (ratchet-only — only moves in favor)
+            if trailing_activated:
+                if is_long:
+                    new_trail = highest_favorable - trail_distance
+                    if new_trail > current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                        _trail_count += 1
+                else:
+                    new_trail = highest_favorable + trail_distance
+                    if new_trail < current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                        _trail_count += 1
+
+            # Exit check
+            if sl_hit:
+                exit_price = current_sl
+                exit_reason = "trailing_sl" if trailing_activated else "sl"
+                was_trailing_exit = trailing_activated
+                break
+
+        if exit_price is None:
+            last_j = min(i + _max_bars, n) - 1
+            exit_price = float(df_ind.iloc[last_j]["close"])
+            exit_reason = "timeout"
+            bars = last_j - i
+
+        # Apply costs (limit order pricing)
+        _, adj_exit, cost_pct = _apply_costs(
+            entry_price, exit_price, is_long,
+            _fee, _spread, _slip,
+        )
+        if is_long:
+            pnl_pct = (adj_exit - entry_price) / entry_price * 100
+        else:
+            pnl_pct = (entry_price - adj_exit) / entry_price * 100
+
+        trades.append(TradeResult(
+            entry_ts=row.name,
+            exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
+            type=signal.type.value,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=sl,
+            take_profit=signal.take_profit,
+            atr=atr,
+            rsi=signal.rsi,
+            pnl_pct=round(pnl_pct, 4),
+            pnl_abs=round(exit_price - entry_price, 2),
+            bars_held=bars,
+            exit_reason=exit_reason,
+            atr_percentile=atr_pct,
+            be_triggered=be_triggered,
+            trailing_activated=trailing_activated,
+            partial_tp_filled=False,
+            sl_updates=sl_updates,
+        ))
+
+        # Register trailing exit for shorter cooldown on re-entry
+        _from_strategy_atf = __import__("strategy_atf")
+        _from_strategy_atf._register_signal(i + bars, was_trailing=was_trailing_exit)
+
+        _running_pnl += pnl_pct
+        _eq_points.append(round(_running_pnl, 2))
+
+        _update_progress(
+            signals_found=len(trades),
+            last_signal_type=signal.type.value,
+            last_signal_price=round(entry_price, 2),
+            last_signal_pnl=round(pnl_pct, 2),
+            equity_snapshot=list(_eq_points[-50:]),
+        )
+
+        i += bars + 1
+
+    # Summary
+    avg_score = np.mean(_diag_scores) if _diag_scores else 0
+    logger.info(
+        "ATF v1: %d trades, %d ATR filt, BE=%d, trail_updates=%d, "
+        "avg_score=%.1f, triggers=%s, trail_types=%s",
+        len(trades), atr_filtered, _be_count, _trail_count,
+        avg_score, _diag_triggers, _diag_trail_types,
+    )
+
+    _diag = {
+        "strategy": "atf_v1",
+        "atr_filtered": atr_filtered,
+        "be_triggered": _be_count,
+        "trailing_updates": _trail_count,
+        "avg_score": round(avg_score, 2),
+        "triggers": _diag_triggers,
+        "trail_types": _diag_trail_types,
+        "score_distribution": {
+            "min": min(_diag_scores) if _diag_scores else 0,
+            "max": max(_diag_scores) if _diag_scores else 0,
+            "avg": round(avg_score, 2),
+        },
+        "costs": {"fee_pct": _fee, "spread_bps": _spread, "slippage_bps": _slip},
+    }
+    return trades, atr_filtered, _diag
+
+
+# ------------------------------------------------------------------
 # v7: Regime-Switching simulation
 # ------------------------------------------------------------------
 def _simulate_regime_switching(
@@ -1677,23 +1944,10 @@ def run_backtest(
     # 4. Simula trades — ROUTING INTELIGENTE POR TIMEFRAME
     _diag = {}
     if profile.name == "INTRADAY":
-        # v8: EMA Cross para 15m/30m (logica diferente do CTEV)
-        from strategy_router import get_strategy_type
-        _st = get_strategy_type(timeframe)
-        if _st == "ema_cross":
-            trades, atr_filtered, _diag = _simulate_ema_cross(
-                df_clean, _atr_min, _atr_max, profile=profile,
-            )
-        else:
-            # Fallback para regime-switching
-            from regime_engine import classify_regimes_v2, get_regime_params
-            from strategy_regime import (
-                evaluate_mean_reversion_long, evaluate_mean_reversion_short,
-            )
-            df_clean = classify_regimes_v2(df_clean, hysteresis_bars=3)
-            trades, atr_filtered, _diag = _simulate_regime_switching(
-                df_clean, _atr_min, _atr_max, profile=profile,
-            )
+        # v12: ATF v1 para 15m/30m (composite scoring + adaptive trailing)
+        trades, atr_filtered, _diag = _simulate_atf(
+            df_clean, _atr_min, _atr_max, profile=profile,
+        )
     elif regime_switching:
         # v7: Regime-switching mode
         from regime_engine import classify_regimes_v2, get_regime_params
