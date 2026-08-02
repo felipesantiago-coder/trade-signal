@@ -1255,13 +1255,10 @@ function renderStatus(data) {
     const tfLabel = {'1m':'1min','3m':'3min','5m':'5min','15m':'15min','30m':'30min','1h':'1H','2h':'2H','4h':'4H','6h':'6H','8h':'8H','12h':'12H','1d':'1D'}[activeTF] || activeTF;
     document.getElementById('hSubtitle').textContent = 'Bitcoin ' + tfLabel + ' \u00b7 Apenas Analise';
 
-    // Sync backtest TF selector com o timeframe ativo do worker
-    const btTFSel = document.getElementById('btTimeframe');
-    if (btTFSel && btTFSel.value !== activeTF) {
-        for (let i = 0; i < btTFSel.options.length; i++) {
-            if (btTFSel.options[i].value === activeTF) { btTFSel.value = activeTF; break; }
-        }
-    }
+    // NOTA: btTimeframe (seletor da aba backtest) NAO e sincronizado aqui.
+    // O seletor de backtest e independente do timeframe ativo do worker —
+    // forcar o sync causava o bug de o seletor sempre voltar para 15m.
+
     // Sync worker TF selector
     const wTFSel = document.getElementById('workerTF');
     if (wTFSel) {
@@ -1290,13 +1287,6 @@ async function changeWorkerTF(tf) {
         const r = await api('POST', '/api/settings/timeframe?timeframe=' + tf);
         if (r.ok) {
             showToast('Timeframe alterado para ' + tf, 'success');
-            // Sync backtest selector
-            const btSel = document.getElementById('btTimeframe');
-            if (btSel) {
-                for (let i = 0; i < btSel.options.length; i++) {
-                    if (btSel.options[i].value === tf) { btSel.value = tf; break; }
-                }
-            }
         } else {
             showToast(r.error || 'Falha ao alterar timeframe', 'error');
         }
