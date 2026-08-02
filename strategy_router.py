@@ -77,7 +77,7 @@ def get_strategy_label(timeframe: str) -> str:
     """Retorna label descritivo da estrategia ativa."""
     st = get_strategy_type(timeframe)
     labels = {
-        "ema_cross": "EMA Cross v10",
+        "ema_cross": "EMA Cross v11",
         "regime_switching": "CTEV v7.1 Regime-Switching",
         "disabled": "DESATIVADO (sem edge valida)",
     }
@@ -144,7 +144,7 @@ def evaluate_signal(
     # ---- EMA CROSS (15m/30m) ----
     if strategy_type == "ema_cross":
         from strategy_ema_cross import evaluate_ema_cross
-        logger.debug("Router [%s] -> EMA Cross v10", timeframe)
+        logger.debug("Router [%s] -> EMA Cross v11", timeframe)
         return evaluate_ema_cross(df, profile=profile)
 
     # ---- REGIME SWITCHING (1h+) ----

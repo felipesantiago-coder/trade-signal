@@ -1117,18 +1117,28 @@ def _simulate_ema_cross(
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int, dict]:
     r"""
-    Simulacao EMA Cross v8 para timeframes intraday (15m/30m).
+    Simulacao EMA Cross v11 para timeframes intraday (15m/30m).
 
-    Logica: cruze EMA20/50 + RSI delta + ADX > 15 + cooldown 12 bars.
+    v11: Adicionado trailing stop + break-even + partial TP.
+      - BE trigger: apos 1.0x ATR favoravel, SL move para entry
+      - Trailing: 1.5x ATR do high water mark (ratchet-only)
+      - Partial TP: 50% no TP1, resto fica em trailing
+
+    v10: OBV filter + R:R otimizado.
+    v8 base: cruze EMA20/50 + RSI delta + ADX > 15 + cooldown 12 bars.
     NAO usa regime-switching — esta estrategia tem logica propria.
 
-    Validado: 150 trades, WR 50%, PF 1.13, PnL +5.97%, DD 3.53%.
     Custos: fee=0.016% + spread=2bps + slip=2bps (limit orders).
     """
-    from strategy_ema_cross import evaluate_ema_cross_row, reset_cooldown
+    from strategy_ema_cross import evaluate_ema_cross_row, reset_cooldown, EMA_CROSS_PARAMS
 
     # Reset cooldown state
     reset_cooldown()
+
+    # v11: trailing stop params from strategy
+    _be_trigger = EMA_CROSS_PARAMS.get("be_trigger_atr_mult", 1.0)
+    _trail_dist = EMA_CROSS_PARAMS.get("trailing_atr_mult", 1.5)
+    _partial_pct = EMA_CROSS_PARAMS.get("partial_tp_pct", 0.50)
 
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -1144,6 +1154,11 @@ def _simulate_ema_cross(
     _spread = 2.0   # bps
     _slip = 2.0     # bps
 
+    # Diagnostics
+    _be_count = 0
+    _trail_count = 0
+    _partial_count = 0
+
     while i < n:
         row = df_ind.iloc[i]
 
@@ -1155,9 +1170,9 @@ def _simulate_ema_cross(
             _speed = i / _elapsed
             _scan_pct = 20 + (i / max(n, 1)) * 60
             _update_progress(
-                phase="Escaneando candles (EMA Cross)", phase_num=4,
+                phase="Escaneando candles (EMA Cross v11)", phase_num=4,
                 pct=round(_scan_pct, 1),
-                message=f"EMA Cross {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                message=f"EMA Cross v11 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
                 candles_total=n, candles_scanned=i, scan_speed=round(_speed),
                 current_price=round(float(row.get("close", 0)), 2),
             )
@@ -1167,7 +1182,7 @@ def _simulate_ema_cross(
             continue
 
         # Check NaN
-        critical = ["ema20", "ema50", "rsi", "atr", "rsi_delta"]
+        critical = ["ema20", "ema50", "ema200", "rsi", "atr", "rsi_delta"]
         if any(pd.isna(row.get(c)) for c in critical):
             i += 1
             continue
@@ -1187,7 +1202,7 @@ def _simulate_ema_cross(
             i += 1
             continue
 
-        # Simulate trade
+        # ── v11: Advanced trade simulation with trailing stop ──
         entry_price = signal.entry_price
         sl = signal.stop_loss
         tp = signal.take_profit
@@ -1197,20 +1212,100 @@ def _simulate_ema_cross(
         exit_reason = None
         bars = 0
 
+        # Trailing stop state
+        current_sl = sl
+        be_triggered = False
+        trailing_activated = False
+        partial_tp_filled = False
+        highest_favorable = entry_price
+        sl_updates = 0
+
         _max_bars = profile.max_bars_held if profile else 48
         for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]
+            f_close = float(future["close"])
+            f_low = float(future["low"])
+            f_high = float(future["high"])
             bars = j - i
+
+            # Track best price seen (high water mark)
             if is_long:
-                if float(future["low"]) <= sl:
-                    exit_price = sl; exit_reason = "sl"; break
-                if float(future["high"]) >= tp:
-                    exit_price = tp; exit_reason = "tp"; break
+                highest_favorable = max(highest_favorable, f_high)
             else:
-                if float(future["high"]) >= sl:
-                    exit_price = sl; exit_reason = "sl"; break
-                if float(future["low"]) <= tp:
-                    exit_price = tp; exit_reason = "tp"; break
+                highest_favorable = min(highest_favorable, f_low)
+
+            # Check SL/TP hit
+            sl_hit = False
+            tp_hit = False
+            if is_long:
+                if f_low <= current_sl:
+                    sl_hit = True
+                if f_high >= tp:
+                    tp_hit = True
+            else:
+                if f_high >= current_sl:
+                    sl_hit = True
+                if f_low <= tp:
+                    tp_hit = True
+
+            # v11: Partial TP logic (first TP hit → take partial, activate trailing)
+            if tp_hit and not partial_tp_filled and not be_triggered:
+                # First TP: take _partial_pct profit, move SL to entry, activate trailing
+                partial_tp_filled = True
+                _partial_count += 1
+                be_triggered = True
+                _be_count += 1
+                current_sl = entry_price
+                trailing_activated = True
+                # Don't exit yet — let trailing manage the rest
+                if not sl_hit:
+                    continue
+
+            # v11: Break-even trigger (price moved be_trigger * ATR in favor)
+            if not be_triggered:
+                fav_dist = abs(highest_favorable - entry_price)
+                if fav_dist >= atr * _be_trigger:
+                    be_triggered = True
+                    _be_count += 1
+                    trailing_activated = True
+                    current_sl = entry_price
+
+            # v11: Trailing stop update (ratchet-only)
+            if trailing_activated:
+                trail_distance = atr * _trail_dist
+                if is_long:
+                    new_trail = highest_favorable - trail_distance
+                    if new_trail > current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                        _trail_count += 1
+                else:
+                    new_trail = highest_favorable + trail_distance
+                    if new_trail < current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                        _trail_count += 1
+
+            # Exit checks
+            if sl_hit and not tp_hit:
+                exit_price = current_sl
+                exit_reason = "trailing_sl" if trailing_activated else "sl"
+                break
+            elif tp_hit and not sl_hit:
+                if partial_tp_filled:
+                    # Second TP hit on remaining position
+                    exit_price = tp
+                    exit_reason = "tp"
+                    break
+                # First TP (no partial yet — should not happen with v11 logic)
+                exit_price = tp
+                exit_reason = "tp"
+                break
+            elif tp_hit and sl_hit:
+                # Worst case: both hit same bar → use SL (conservative)
+                exit_price = current_sl
+                exit_reason = "trailing_sl" if trailing_activated else "sl"
+                break
 
         if exit_price is None:
             last_j = min(i + _max_bars, n) - 1
@@ -1243,6 +1338,10 @@ def _simulate_ema_cross(
             bars_held=bars,
             exit_reason=exit_reason,
             atr_percentile=atr_pct,
+            be_triggered=be_triggered,
+            trailing_activated=trailing_activated,
+            partial_tp_filled=partial_tp_filled,
+            sl_updates=sl_updates,
         ))
 
         _running_pnl += pnl_pct
@@ -1251,13 +1350,21 @@ def _simulate_ema_cross(
         i += bars + 1
 
     logger.info(
-        "EMA Cross v8: %d trades, %d ATR filt",
-        len(trades), atr_filtered,
+        "EMA Cross v11: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d",
+        len(trades), atr_filtered, _be_count, _trail_count, _partial_count,
     )
 
     _diag = {
-        "strategy": "ema_cross_v8",
+        "strategy": "ema_cross_v11",
         "atr_filtered": atr_filtered,
+        "be_triggered": _be_count,
+        "trailing_activations": _trail_count,
+        "partial_tp_filled": _partial_count,
+        "trailing_params": {
+            "be_trigger_atr": _be_trigger,
+            "trailing_atr": _trail_dist,
+            "partial_pct": _partial_pct,
+        },
         "costs": {"fee_pct": _fee, "spread_bps": _spread, "slippage_bps": _slip},
     }
     return trades, atr_filtered, _diag

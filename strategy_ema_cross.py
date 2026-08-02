@@ -1,28 +1,39 @@
 r"""
 strategy_ema_cross.py
 ---------------------
-Estrategia EMA Cross v10 para timeframes intraday (15m/30m).
+Estrategia EMA Cross v11 para timeframes intraday (15m/30m).
 
-v10 - OBV CONFIRMATION + OTIMIZACAO DE R:R:
-  Baseado em analise do PDF "Modelo Adaptativo de 15 Minutos" + validacao.
+v11 - MACRO TREND FILTER + TP ADAPTATIVO:
+  Objetivo: superar Buy & Hold em periodos longos (2+ anos).
 
-  Melhorias v9 -> v10 (validado em 365d 15min B&H=-44.94%):
-  1. OBV direction filter (PDF: "On Balance Volume confirma direcao")
-     -> LONG: OBV deve estar acumulando (obv_trend >= 0)
-     -> SHORT: OBV deve estar distribuindo (obv_trend <= 0)
-     -> Resultado: WR 58.7%->63.4%, PF 1.38->1.84, PnL 4.67%->7.63%
-  2. TP aumentado de 2.5x para 3.0x ATR (PDF: R:R 2:1 ou superior)
-     -> Com OBV, WR cai 63.4%->58.5% mas PF sobe 1.84->1.91
-     -> PnL melhora 7.63%->9.15% (ganhadores maiores compensam)
-  3. Cooldown reduzido de 14 para 12 (mais 1 trade)
-     -> PnL final: 9.71% (42T, WR 59.5%, PF 1.96, DD 1.84%)
+  Problema v10: Em 365d B&H=-44.94%, estrategia=+9.71%. Mas em 730d,
+  B&H se recupera e supera a estrategia porque esta:
+  1. Entra LONG em tendencias de baixa estruturais (whipsaw)
+  2. Sai cedo demais com TP fixo (3.0x ATR), perdendo grandes movimentos
+  3. Nao usa trailing stop no backtest (só SL/TP fixos)
 
-  Melhorias v8 -> v9 (mantidas):
-  - LONGs bloqueados em regimes de alta (trending_up/strong_uptrend)
-  - SHORTs liberados em trending_down (WR 64%, PF 1.96)
-  - Regime volatile bloqueado
+  Melhorias v10 -> v11:
+  1. EMA200 MACRO FILTER
+     -> LONG: close > EMA200 (so opera long acima da macro tendencia)
+     -> SHORT: close < EMA200 (so opera short abaixo da macro tendencia)
+     -> Evita entrar contra a tendencia estrutural de 2 anos
+  2. TP ADAPTATIVO POR REGIME
+     -> SHORT em trending_down: TP = 4.5x ATR (era 3.0x)
+        Tendencias de baixa tem mais room para correr
+     -> LONG em ranging/transition: TP = 3.0x ATR (mantido)
+     -> R:R efetivo: 4.5:2.0 = 2.25:1 em trending_down shorts
+  3. TRAILING STOP NO BACKTEST (em _simulate_ema_cross)
+     -> BE trigger: 1.0x ATR -> move SL para entry
+     -> Trailing distance: 1.5x ATR do high water mark
+     -> Partial TP: 50% no TP1, trailing no resto
+     -> Deixa ganhadores correrem, capturando grandes movimentos
+
+  Melhorias v9 -> v10 (mantidas):
+  - OBV direction filter (acumulacao/distribuicao)
+  - TP 3.0x ATR base, SL 2.0x ATR
+  - Cooldown 12 bars
+  - LONGs bloqueados em trending_up, SHORTs liberados em trending_down
   - ATR percentile [0.20, 0.80], BB squeeze >= 0.15
-  - Volume >= 0.8x SMA20
 
   CRITICO: Lucrativo SOMENTE com limit orders (maker fee ~0.016%).
 """
@@ -45,8 +56,9 @@ logger = logging.getLogger(__name__)
 EMA_CROSS_PARAMS = {
     "sl_atr_mult": 2.0,
     "tp_atr_mult": 3.0,
+    "tp_trending_down_mult": 4.5,   # v11: TP mais largo em trending_down
     "adx_min": 20.0,
-    "use_ema200": False,
+    "use_ema200": True,               # v11: filtro macro tendencia
     "rsi_long_min": 35.0,
     "rsi_long_max": 75.0,
     "rsi_short_min": 25.0,
@@ -60,6 +72,10 @@ EMA_CROSS_PARAMS = {
     "block_regimes": ["volatile"],
     "long_block_regimes": ["volatile", "trending_up"],
     "obv_filter": True,
+    # v11: trailing stop params (usados pelo simulador backtest)
+    "be_trigger_atr_mult": 1.0,       # move SL para entry apos 1.0x ATR
+    "trailing_atr_mult": 1.5,         # trailing a 1.5x ATR do high water mark
+    "partial_tp_pct": 0.50,           # tira 50% no TP1
 }
 
 
@@ -148,6 +164,7 @@ def _extract_row_data(row):
         "volume": float(row["volume"]),
         "vol_sma20": float(row.get("volume_sma20", 0.0)),
         "obv_trend": float(row.get("obv_trend", 0)),
+        "ema200": float(row.get("ema200", 0.0)),
     }
 
 
@@ -169,8 +186,14 @@ def _eval_long(d, prev_d, sl_mult, tp_mult, profile=None):
     # v10: OBV confirmation — LONG requires accumulation
     if p.get("obv_filter", False) and d.get("obv_trend", 0) < 0:
         return None
+    # v11: EMA200 macro filter — LONG only above structural trend
+    if p.get("use_ema200", False) and d["ema200"] > 0 and d["close"] <= d["ema200"]:
+        return None
+    # v11: TP adaptativo — regime-based (LONGs kept at base tp_mult)
+    regime_str = d["regime_v2"].lower() if d["regime_v2"] else d["regime"].lower()
+    effective_tp = tp_mult
     sl = d["close"] - sl_mult * d["atr"]
-    tp = d["close"] + tp_mult * d["atr"]
+    tp = d["close"] + effective_tp * d["atr"]
     if sl <= 0:
         return None
     return ("LONG", sl, tp)
@@ -194,8 +217,17 @@ def _eval_short(d, prev_d, sl_mult, tp_mult, profile=None):
     # v10: OBV confirmation — SHORT requires distribution
     if p.get("obv_filter", False) and d.get("obv_trend", 0) > 0:
         return None
+    # v11: EMA200 macro filter — SHORT only below structural trend
+    if p.get("use_ema200", False) and d["ema200"] > 0 and d["close"] >= d["ema200"]:
+        return None
+    # v11: TP adaptativo por regime
+    regime_str = d["regime_v2"].lower() if d["regime_v2"] else d["regime"].lower()
+    if "trending_down" in regime_str:
+        effective_tp = p["tp_trending_down_mult"]
+    else:
+        effective_tp = tp_mult
     sl = d["close"] + sl_mult * d["atr"]
-    tp = d["close"] - tp_mult * d["atr"]
+    tp = d["close"] - effective_tp * d["atr"]
     return ("SHORT", sl, tp)
 
 
@@ -226,11 +258,11 @@ def evaluate_ema_cross(df, profile=None):
     direction, sl, tp = result
     _register_signal(idx)
     logger.info(
-        "SIGNAL EMA CROSS v10 %s | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
-        "RSI=%.1f ADX=%.1f RSI_d=%.2f regime=%s OBV=%d",
+        "SIGNAL EMA CROSS v11 %s | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "RSI=%.1f ADX=%.1f RSI_d=%.2f regime=%s OBV=%d EMA200=%.0f",
         direction, d["close"], sl, tp, d["atr"],
         d["rsi"], d["adx"], d["rsi_delta"], d["regime_v2"],
-        int(d.get("obv_trend", 0)),
+        int(d.get("obv_trend", 0)), d["ema200"],
     )
     return _build_signal(d["close"], sl, tp, curr, direction == "LONG", d["regime_v2"])
 

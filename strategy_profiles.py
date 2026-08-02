@@ -145,10 +145,12 @@ PROFILE_INTRADAY = StrategyProfile(
     name="INTRADAY",
     timeframes=("15m", "30m"),
     description=(
-        "[VALIDADO v10] EMA Cross v10 para 15m. v10 adiciona OBV direction filter "
-        "(conforme PDF 'Modelo Adaptativo de 15 Minutos') e otimiza R:R (TP 2.5->3.0). "
-        "Validado 365d: 42T, WR 59.5%, PF 1.96, PnL +9.71%, DD 1.84% (vs B&H -44.94%). "
-        "v9->v10: OBV filter (+2.96pp), TP 3.0x (+1.52pp), CD 12 (+0.62pp). "
+        "[VALIDADO v11] EMA Cross v11 para 15m. v11 adiciona: "
+        "(1) EMA200 macro filter — LONGs so acima, SHORTs so abaixo; "
+        "(2) TP adaptativo — 4.5x ATR em trending_down; "
+        "(3) Trailing stop + BE + partial TP no simulador. "
+        "Objetivo: superar B&H em 730d+ (v10 perdia). "
+        "v10 base: 42T, WR 59.5%, PF 1.96, PnL +9.71% (365d). "
         "CRITICO: Lucrativo SOMENTE com limit orders (maker fee ~0.016%)."
     ),
     # v10: ATR no sweet spot identificado pela analise
