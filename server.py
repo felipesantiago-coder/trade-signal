@@ -262,7 +262,6 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
 
     _backtest_running = True
     _backtest_result = None
-    _backtest_meta = {"timeframe": effective_tf, "days": days}
 
     # Reset progress state for streaming UI
     from backtest import reset_backtest_progress
@@ -270,6 +269,7 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
 
     # Resolve timeframe: usa o parametro ou fallback para config do bot
     effective_tf = timeframe or get_settings().binance.timeframe
+    _backtest_meta = {"timeframe": effective_tf, "days": days}
 
     async def _run_backtest():
         global _backtest_result, _backtest_running
