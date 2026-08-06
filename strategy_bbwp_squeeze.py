@@ -1,63 +1,64 @@
 r"""
 strategy_bbwp_squeeze.py
 ------------------------
-Squeeze Momentum Breakout Strategy v7 para BTC/USDT (1h).
+Squeeze Momentum Breakout Strategy v8 para BTC/USDT (1h).
 
-v7 - QUALIDADE + R:R ALTO + POST-TP1 SL INTELIGENTE:
+v8 - QUANTIDADE + QUALIDADE EQUILIBRADA:
 
-  Problemas do v6 (730d: 132T, WR=43.2%, PF=1.11, PnL=+10.83%, DD=13.99%):
-  1. Entradas muito relaxadas (BBWP<15, sem buffer, vol 0.4) => 180d DESTRUIDO (-2.43%)
-  2. R:R 1.20 => floor do post-TP1 SL (TP1-trail*ATR) limita trailing
-  3. Trailing 1.5x justo demais => nao deixa ganhadores correrem
-  4. Avg win caiu +2.12% -> +1.95% (v5 tinha melhor)
-  5. 75 SL losses em 730d, 25% em 1-3 barras (whipsaws de baixa qualidade)
+  Problemas do v7 (730d: 86T, WR=48.8%, PF=1.33, PnL=+17.70%, DD=6.97%):
+  1. Trade count estagnado em 86 (v4 tinha 88, v6 tinha 132) => entrada muito restritiva
+  2. R:R real 1.21 abaixo do floor teorico 1.375 (trailing nao corre)
+  3. 5 timeout exits (28 bars cada) desperdicam capital
+  4. 10+ SL em 1 barra (whipsaws com SL 2.0x ATR justo demais)
+  5. 30d FRACO (4T, 25% WR) e 90d ACEITAVEL (15T, 40% WR)
 
-  Mudancas v6 -> v7:
+  Mudancas v7 -> v8:
 
-  QUALIDADE (reverter relaxacao excessiva):
-  1. BBWP_THRESHOLD: 15 -> 12 (meio-termo entre v5=10 e v6=15)
-  2. BB_BREAKOUT_BUFFER: 0 -> 0.10 (filtra breakouts fracos)
-  3. VOLUME_MULT: 0.4 -> 0.45
-  4. STOCH_RSI OB/OS: 55/45 -> 58/42
-  5. ADX_MIN: 18 -> 20 (filtro de tendencia mais forte)
-  6. COOLDOWN: 2 -> 3
-  7. SQUEEZE_RECENT_BARS: 12 -> 10
+  ENTRADAS (relaxar moderadamente, alvo ~110-120 trades em 730d):
+  1. BBWP_THRESHOLD: 12 -> 15 (janela maior para squeeze)
+  2. SQUEEZE_RECENT_BARS: 10 -> 12 (lookback mais largo)
+  3. BB_BREAKOUT_BUFFER: 0.10 -> 0.05 (breakout menos rigido)
+  4. ADX_MIN: 20 -> 16 (permite tendencias moderadas)
+  5. VOLUME_MULT: 0.45 -> 0.35 (volume mais relaxado)
+  6. STOCH_RSI OB/OS: 58/42 -> 56/44 (momentum levemente relaxado)
+  7. COOLDOWN: 3 -> 2 (re-entrada mais rapida)
+  8. COOLDOWN_TRAILING: 2 -> 1 (re-entrada rapida apos trailing exit)
 
-  R:R ALTO (otimizar saidas):
-  8. TP1: 3.5x -> 3.0x ATR (mais alcancavel => maior hit rate)
-  9. TP1_PCT: 40% -> 50% (lock in METADE no TP1)
-  10. TRAILING: 1.5x -> 1.5x ATR (mantem, bom para racheta)
-  11. NOVO: POST_TP1_SL_BUFFER: 0.5 (SL = TP1 - 0.5*ATR, NAO TP1 - trail*ATR)
-      => Floor de 2.5*ATR lucro na porcao trailing (vs 2.0*ATR no v6)
-      => R:R floor: (0.50*3.0 + 0.50*2.5)/2.0 = 1.375
-  12. SL: 2.2x -> 2.0x ATR
-  13. MAX_BARS: 120 (mantem)
+  SAIDAS (otimizacoes pontuais):
+  9. SL: 2.0x -> 2.2x ATR (reduz whipsaws de 1 barra)
+  10. MAX_BARS: 120 -> 96 (timeout mais rapido, libera capital)
 
-  Matematica v7:
+  MANTIDOS do v7 (funcionam bem):
+  - TP1: 3.0x ATR (partial 50%)
+  - Post-TP1 SL: TP1 - 0.5*ATR (floor 2.5*ATR)
+  - Trailing: 1.5x ATR (racheta acima do floor)
+  - R:R floor: 1.25 (com SL 2.2x)
+
+  Matematica v8:
     TP1 = entry + 3.0*ATR
     Post-TP1 SL = TP1 - 0.5*ATR = entry + 2.5*ATR
     Win floor = 0.50*3.0*ATR% + 0.50*2.5*ATR% = 2.75*ATR%
-    SL = 2.0*ATR%
-    R:R floor = 2.75/2.0 = 1.375
-    Com trailing rachetando acima: R:R real ~1.50-1.60
+    SL = 2.2*ATR%
+    R:R floor = 2.75/2.2 = 1.25
+    Com trailing rachetando acima: R:R real ~1.40-1.55
 
   Logica central:
-  1. BBWP < 12 nos ultimos 10 bars
+  1. BBWP < 15 nos ultimos 12 bars
   2. BBWP expandindo (delta > 0)
-  3. BB breakout com corpo (close > upper + 10% BB width)
-  4. ADX > 20 (confirma tendencia)
-  5. Stoch RSI confirma momentum (K>=58 LONG, K<=42 SHORT)
-  6. Volume >= 0.45 * SMA(Volume, 20)
+  3. BB breakout com corpo (close > upper + 5% BB width)
+  4. ADX > 16 (permite tendencias moderadas)
+  5. Stoch RSI confirma momentum (K>=56 LONG, K<=44 SHORT)
+  6. Volume >= 0.35 * SMA(Volume, 20)
   7. EMA50 alinha com tendencia
   8. EMA200 confirma tendencia macro
 
-Gestao de risco v7:
-  - SL: 2.0x ATR
+Gestao de risco v8:
+  - SL: 2.2x ATR
   - TP1: 3.0x ATR (partial 50%)
   - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR no trailing)
   - Trailing: 1.5x ATR (racheta acima do floor)
-  - Max bars: 120 (5 dias em 1h)
-  - Cooldown: 3 bars (2 apos trailing exit)
+  - Max bars: 96 (4 dias em 1h)
+  - Cooldown: 2 bars (1 apos trailing exit)
 
 Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
@@ -82,43 +83,43 @@ logger = logging.getLogger(__name__)
 # ==================================================================
 
 BBWP_SQUEEZE_PARAMS = {
-    # ---- Squeeze Detection (v7: meio-termo v5/v6) ----
-    "bbwp_threshold": 12,        # v7: 12 (v5=10, v6=15)
-    "squeeze_recent_bars": 10,    # v7: 10 (v5=10, v6=12)
+    # ---- Squeeze Detection (v8: janela maior) ----
+    "bbwp_threshold": 15,        # v8: 15 (v7=12, v6=15, v5=10)
+    "squeeze_recent_bars": 12,    # v8: 12 (v7=10, v6=12, v5=10)
     "require_bbwp_expansion": True,  # BBWP deve estar expandindo (delta > 0)
 
-    # ---- Entry Conditions (v7: qualidade > quantidade) ----
-    "volume_mult": 0.45,         # v7: 0.45 (v5=0.5, v6=0.4)
-    "stoch_rsi_ob": 58,           # v7: 58 (v5=60, v6=55)
-    "stoch_rsi_os": 42,           # v7: 42 (v5=40, v6=45)
+    # ---- Entry Conditions (v8: relaxado moderado) ----
+    "volume_mult": 0.35,         # v8: 0.35 (v7=0.45, v6=0.4, v5=0.5)
+    "stoch_rsi_ob": 56,           # v8: 56 (v7=58, v6=55, v5=60)
+    "stoch_rsi_os": 44,           # v8: 44 (v7=42, v6=45, v5=40)
     "stoch_rsi_cross_enable": True,
     "stoch_rsi_min_delta": 0,     # Minimo delta K para confirmar momentum (0=any)
-    "bb_breakout_buffer": 0.10,   # v7: 0.10 (v5=0.15, v6=0)
-    "adx_min": 20.0,              # v7: 20 (v6=18, v5=none)
+    "bb_breakout_buffer": 0.05,   # v8: 0.05 (v7=0.10, v6=0, v5=0.15)
+    "adx_min": 16.0,              # v8: 16 (v7=20, v6=18, v5=none)
 
-    # ---- Stop Loss (v7: volta ao 2.0x) ----
-    "sl_atr_mult": 2.0,           # v7: 2.0x ATR (v5=2.0, v6=2.2)
-    "sl_atr_mult_high_vol": 2.0, # Mesmo em alta volatilidade
-    "sl_atr_mult_low_vol": 2.0,  # Mesmo em baixa volatilidade
+    # ---- Stop Loss (v8: mais largo anti-whipsaw) ----
+    "sl_atr_mult": 2.2,           # v8: 2.2x ATR (v7=2.0, v6=2.2, v5=2.0)
+    "sl_atr_mult_high_vol": 2.2, # Mesmo em alta volatilidade
+    "sl_atr_mult_low_vol": 2.2,  # Mesmo em baixa volatilidade
 
-    # ---- Take Profit (v7: TP1 mais alcancavel, mais partial) ----
-    "tp_atr_mult": 3.0,           # v7: 3.0x ATR (v5=4.0, v6=3.5)
-    "tp1_pct": 0.50,              # v7: 50% no TP1 (v5=30%, v6=40%)
+    # ---- Take Profit (mantido do v7) ----
+    "tp_atr_mult": 3.0,           # v8: 3.0x ATR (igual v7)
+    "tp1_pct": 0.50,              # v8: 50% no TP1 (igual v7)
 
-    # ---- Trailing Stop (v7: trailing e post-TP1 SL separados) ----
+    # ---- Trailing Stop (mantido do v7) ----
     "use_trailing": True,         # REATIVADO
     "be_trigger_atr_mult": 1.0,  # BE trigger (referencia)
-    "trailing_atr_mult": 1.5,     # v7: 1.5x ATR (racheta acima do floor)
-    "post_tp1_sl_buffer": 0.5,    # v7: NOVO — SL = TP1 - 0.5*ATR (floor alto)
+    "trailing_atr_mult": 1.5,     # v8: 1.5x ATR (igual v7)
+    "post_tp1_sl_buffer": 0.5,    # v8: 0.5 ATR (igual v7)
 
     # ---- RSI Divergence (OFF) ----
     "use_divergence_exit": False, # Desativado
     "divergence_min_bars": 3,
 
-    # ---- General (v7: cooldown medio) ----
-    "max_bars_held": 120,         # v7: 120 (5 dias em 1h)
-    "cooldown": 3,                # v7: 3 (v5=4, v6=2)
-    "cooldown_trailing": 2,
+    # ---- General (v8: cooldown mais rapido) ----
+    "max_bars_held": 96,          # v8: 96 (v7=120) — 4 dias em 1h
+    "cooldown": 2,                # v8: 2 (v7=3, v6=2, v5=4)
+    "cooldown_trailing": 1,
 
     # ---- Filters ----
     "atr_pct_min": 0.10,
@@ -203,7 +204,7 @@ def _is_squeeze_breakout(row, prev_row, idx: int = 0, df=None) -> bool:
 def _adx_confirms_trend(row) -> bool:
     """
     Verifica se ADX confirma tendencia real.
-    ADX > 20 indica tendencia ativa, filtrando mercados laterais.
+    ADX > 16 indica tendencia ativa, filtrando mercados laterais.
     """
     p = BBWP_SQUEEZE_PARAMS
     adx_min = p.get("adx_min", 0)
@@ -309,7 +310,7 @@ def _build_signal(entry, sl, tp, row, is_long: bool) -> Signal:
         adx=float(row.get("adx", 0)),
         plus_di=float(row.get("plus_di", 0)),
         minus_di=float(row.get("minus_di", 0)),
-        regime="bbwp_squeeze_v7",
+        regime="bbwp_squeeze_v8",
         bb_lower=float(row.get("bb_lower", 0)),
         bb_upper=float(row.get("bb_upper", 0)),
         bb_width=float(row.get("bb_width", 0)),
@@ -320,7 +321,7 @@ def _build_signal(entry, sl, tp, row, is_long: bool) -> Signal:
         atr_percentile=float(row.get("atr_percentile", 0.5)),
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0,
         fib_direction=0, fib_proximity=0.0,
-        pullback_type="bbwp_squeeze_v7",
+        pullback_type="bbwp_squeeze_v8",
         ema50_slope=float(row.get("ema50_slope", 0)),
         timestamp=ts,
     )
@@ -437,7 +438,7 @@ def evaluate_bbwp_squeeze(df, profile=None) -> Optional[Signal]:
         sl, tp, atr, bbwp = result
         _register_signal(idx)
         logger.info(
-            "SIGNAL BBWP Squeeze v7 LONG | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
+            "SIGNAL BBWP Squeeze v8 LONG | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
             float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
         )
         return _build_signal(float(curr["close"]), sl, tp, curr, True)
@@ -447,7 +448,7 @@ def evaluate_bbwp_squeeze(df, profile=None) -> Optional[Signal]:
         sl, tp, atr, bbwp = result
         _register_signal(idx)
         logger.info(
-            "SIGNAL BBWP Squeeze v7 SHORT | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
+            "SIGNAL BBWP Squeeze v8 SHORT | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
             float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
         )
         return _build_signal(float(curr["close"]), sl, tp, curr, False)

@@ -84,7 +84,7 @@ def get_strategy_label(timeframe: str) -> str:
     st = get_strategy_type(timeframe)
     labels = {
         "atf": "ATF v2 StochRSI + BBWP",
-        "bbwp_squeeze": "BBWP Squeeze v7",
+        "bbwp_squeeze": "BBWP Squeeze v8",
         "regime_switching": "CTEV v7.1 Regime-Switching",
         "disabled": "DESATIVADO (sem edge valida)",
     }
