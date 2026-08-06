@@ -1799,15 +1799,15 @@ def _simulate_bbwp_squeeze(
     r"""
     Simulacao BBWP Squeeze v10 para 1h.
 
-    v10 - REVERTE v9 + UNICA RELAXACAO BBWP:
+    v10 - REVERTE saidas v9 + 2 OTIMIZACOES DE RETORNO:
     - SL: 2.2x ATR (v8)
     - TP1: 3.0x ATR (v8 — revertido do v9=2.8)
-    - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR no trailing)
+    - Pos-TP1 SL: TP1 - 0.3*ATR (floor de 2.7*ATR no trailing, v8=0.5)
     - Trailing: 1.5x ATR (v8 — revertido do v9=1.7)
-    - BBWP threshold: 16 (v10: unico cambio vs v8=15)
-    - buffer 5%, ADX>16 (v8 entry params)
-    - R:R floor: (0.50*3.0 + 0.50*2.5)/2.2 = 1.25
-    - Com trailing rachetando acima: R:R real ~1.30-1.40
+    - Cooldown: 1 (v8=2 — re-entrada mais rapida)
+    - BBWP threshold: 16 (v8=15 — squeeze mais largo)
+    - R:R floor: (0.50*3.0 + 0.50*2.7)/2.2 = 1.30 (v8=1.25)
+    - Com trailing rachetando acima: R:R real ~1.35-1.45
 
     Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
@@ -1821,7 +1821,7 @@ def _simulate_bbwp_squeeze(
     _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 120)
     _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", True)
     _tp1_pct = BBWP_SQUEEZE_PARAMS.get("tp1_pct", 0.50)
-    _post_tp1_sl_buf = BBWP_SQUEEZE_PARAMS.get("post_tp1_sl_buffer", 0.5)
+    _post_tp1_sl_buf = BBWP_SQUEEZE_PARAMS.get("post_tp1_sl_buffer", 0.3)
 
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -1954,8 +1954,8 @@ def _simulate_bbwp_squeeze(
                 _partial_tp_count += 1
                 _diag_tp1_exits += 1
 
-                # v7: After TP1, set SL at TP1 - post_tp1_sl_buffer*ATR
-                # This creates a HIGH FLOOR (2.5*ATR profit on trailing portion)
+                # v10: After TP1, set SL at TP1 - post_tp1_sl_buffer*ATR
+                # This creates a HIGH FLOOR (2.7*ATR profit on trailing portion)
                 # Trailing at 1.5x ATR then ratchets ABOVE this floor
                 if _use_trailing:
                     be_triggered = True

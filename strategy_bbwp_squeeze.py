@@ -3,35 +3,36 @@ strategy_bbwp_squeeze.py
 ------------------------
 Squeeze Momentum Breakout Strategy v10 para BTC/USDT (1h).
 
-v10 - REVERTE v9 + UNICA RELAXACAO BBWP:
+v10 - REVERTE saidas v9 + 2 OTIMIZACOES DE RETORNO:
 
-  Resultados v9 (730d): 146T, WR=49.3%, PF=1.17, PnL=+16.72%, DD=10.97% — REGRESSAO
-  v9 reduziu TP1 (3.0->2.8) e alargou trailing (1.5->1.7): mais trades mas PF caiu 1.33->1.17.
-  TP1 hit rate NAO melhorou (48.4%->48.6%) e cada vitoria gerou menos lucro.
-  Licao: saidas do v8 ja estavam otimizadas. Mudancas de saida destroem a edge.
+  Resultados v9 (730d REAL): 146T, WR=47.3%, PF=1.15, PnL=+15.78%, DD=12.72%
+  v8 baseline (730d):       122T, WR=48.4%, PF=1.33, PnL=+25.53%, DD=8.73%
+  v9 = REGRESSAO CLARA: PF -13.5%, PnL -38%, DD +46%
+  Causa raiz: TP1 3.0->2.8 (vitorias menores) + trailing 1.5->1.7 (devolve mais)
+  Licao: saidas do v8 estavam otimizadas. NAO mexer em saidas.
 
-  Mudancas v8 -> v10 (1 ajuste de ENTRADA apenas):
-  1. BBWP_THRESHOLD: 15 -> 16 (unica mudanca — adiciona ~3-5 trades borderline)
-
-  REVERTIDOS do v9 (voltar ao v8):
-  - TP1: 2.8x -> 3.0x ATR (v8)
-  - TRAILING: 1.7x -> 1.5x ATR (v8)
-  - SL: 2.2x ATR (mantido)
+  Mudancas v9 -> v10 (4 ajustes + 1 entrada):
+  1. REVERTIR TP1: 2.8x -> 3.0x ATR (v8 — vitorias maiores)
+  2. REVERTIR TRAILING: 1.7x -> 1.5x ATR (v8 — lock mais rapido)
+  3. REDUZIR COOLDOWN: 2 -> 1 (re-entrada mais rapida, +5-10 trades)
+  4. APERTAR POST-TP1 SL: 0.5 -> 0.3 ATR (trava mais lucro apos TP1)
+  5. BBWP_THRESHOLD: 15 -> 16 (squeeze ligeiramente mais largo)
 
   MANTIDOS do v8:
   - SQUEEZE_RECENT_BARS: 12
   - ADX_MIN: 16, VOLUME_MULT: 0.35
   - STOCH_RSI OB/OS: 56/44, BB_BREAKOUT_BUFFER: 0.05
-  - COOLDOWN: 2, COOLDOWN_TRAILING: 1
-  - TP1_PCT: 0.50, POST_TP1_SL_BUFFER: 0.5, MAX_BARS: 96
+  - COOLDOWN_TRAILING: 1
+  - TP1_PCT: 0.50, MAX_BARS: 96
+  - SL: 2.2x ATR
 
-  Matematica v10 (identica ao v8 exceto BBWP):
+  Matematica v10:
     TP1 = entry + 3.0*ATR
-    Post-TP1 SL = TP1 - 0.5*ATR = entry + 2.5*ATR
-    Win floor = 0.50*3.0*ATR% + 0.50*2.5*ATR% = 2.75*ATR%
+    Post-TP1 SL = TP1 - 0.3*ATR = entry + 2.7*ATR (v8=2.5*ATR)
+    Win floor = 0.50*3.0*ATR% + 0.50*2.7*ATR% = 2.85*ATR% (v8=2.75*ATR%)
     SL = 2.2*ATR%
-    R:R floor = 2.75/2.2 = 1.25
-    Com trailing rachetando acima: R:R real ~1.30-1.40
+    R:R floor = 2.85/2.2 = 1.30 (v8=1.25)
+    Com trailing rachetando acima: R:R real ~1.35-1.45
 
   Logica central:
   1. BBWP < 16 nos ultimos 12 bars
@@ -46,10 +47,10 @@ v10 - REVERTE v9 + UNICA RELAXACAO BBWP:
 Gestao de risco v10:
   - SL: 2.2x ATR
   - TP1: 3.0x ATR (partial 50%)
-  - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR no trailing)
+  - Pos-TP1 SL: TP1 - 0.3*ATR (floor de 2.7*ATR no trailing)
   - Trailing: 1.5x ATR (racheta acima do floor)
   - Max bars: 96 (4 dias em 1h)
-  - Cooldown: 2 bars (1 apos trailing exit)
+  - Cooldown: 1 bar (1 apos trailing exit)
 
 Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
@@ -94,22 +95,22 @@ BBWP_SQUEEZE_PARAMS = {
     "sl_atr_mult_low_vol": 2.2,  # Mesmo em baixa volatilidade
 
     # ---- Take Profit (v10: revertido ao v8) ----
-    "tp_atr_mult": 3.0,           # v10: 3.0x ATR (v8=3.0)
+    "tp_atr_mult": 3.0,           # v10: 3.0x ATR (revertido do v9=2.8)
     "tp1_pct": 0.50,              # v10: 50% no TP1 (igual v8)
 
-    # ---- Trailing Stop (v10: revertido ao v8) ----
+    # ---- Trailing Stop (v10: revertido ao v8 + melhoria) ----
     "use_trailing": True,         # REATIVADO
     "be_trigger_atr_mult": 1.0,  # BE trigger (referencia)
     "trailing_atr_mult": 1.5,     # v10: 1.5x ATR (revertido do v9=1.7)
-    "post_tp1_sl_buffer": 0.5,    # v10: 0.5 ATR (igual v8)
+    "post_tp1_sl_buffer": 0.3,    # v10: 0.3 ATR (v8=0.5 — trava mais lucro apos TP1)
 
     # ---- RSI Divergence (OFF) ----
     "use_divergence_exit": False, # Desativado
     "divergence_min_bars": 3,
 
-    # ---- General (v8 — nao mexer) ----
+    # ---- General (v10: cooldown reduzido) ----
     "max_bars_held": 96,          # v8: 96 (v7=120)
-    "cooldown": 2,                # v8: 2
+    "cooldown": 1,                # v10: 1 (v8=2 — re-entrada mais rapida)
     "cooldown_trailing": 1,       # v8: 1
 
     # ---- Filters ----

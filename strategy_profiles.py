@@ -247,12 +247,12 @@ PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
     timeframes=("1h",),
     description=(
-        "[BBWP Squeeze v10] Reverte v9 + unica relaxacao BBWP. "
-        "v10: TP1=3.0x ATR (50%), trailing=1.5x, SL=2.2x, "
-        "BBWP<16, buffer 5%, ADX>16, cooldown=2/1, max_bars=96, "
-        "vol>0.35x, StochRSI 56/44. "
-        "Pos-TP1 SL = TP1 - 0.5*ATR (floor 2.5*ATR no trailing). "
-        "R:R floor: 1.25. Trailing racheta acima do floor. "
+        "[BBWP Squeeze v10] Reverte saidas v9 + 2 otimizacoes de retorno. "
+        "v10: TP1=3.0x ATR (50%), trailing=1.5x, SL=2.2x, cooldown=1, "
+        "BBWP<16, buffer 5%, ADX>16, max_bars=96, "
+        "vol>0.35x, StochRSI 56/44, post-TP1 SL=0.3 ATR. "
+        "Pos-TP1 SL = TP1 - 0.3*ATR (floor 2.7*ATR no trailing). "
+        "R:R floor: 1.30. Trailing racheta acima do floor. "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
     # Filtros de entrada (BBWP Squeeze has its own internal logic)
