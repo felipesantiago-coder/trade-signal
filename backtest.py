@@ -1797,16 +1797,17 @@ def _simulate_bbwp_squeeze(
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int, dict]:
     r"""
-    Simulacao BBWP Squeeze v9 para 1h.
+    Simulacao BBWP Squeeze v10 para 1h.
 
-    v9 - OTIMIZACAO DE SAIDAS (entrada v8 mantida):
-    - SL: 2.2x ATR (v8 — funciona bem)
-    - TP1: 2.8x ATR (v9: reduzido de 3.0 para mais hits)
-    - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.3*ATR no trailing)
-    - Trailing: 1.7x ATR (v9: alargado de 1.5 para capturar mais)
-    - BBWP threshold: 15, buffer 5%, ADX>16 (v8 entry params)
-    - R:R floor: (0.50*2.8 + 0.50*2.3)/2.2 = 1.16
-    - Com trailing rachetando acima: R:R real ~1.25-1.35
+    v10 - REVERTE v9 + UNICA RELAXACAO BBWP:
+    - SL: 2.2x ATR (v8)
+    - TP1: 3.0x ATR (v8 — revertido do v9=2.8)
+    - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR no trailing)
+    - Trailing: 1.5x ATR (v8 — revertido do v9=1.7)
+    - BBWP threshold: 16 (v10: unico cambio vs v8=15)
+    - buffer 5%, ADX>16 (v8 entry params)
+    - R:R floor: (0.50*3.0 + 0.50*2.5)/2.2 = 1.25
+    - Com trailing rachetando acima: R:R real ~1.30-1.40
 
     Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
@@ -1816,7 +1817,7 @@ def _simulate_bbwp_squeeze(
 
     reset_cooldown()
     _be_trigger = BBWP_SQUEEZE_PARAMS.get("be_trigger_atr_mult", 1.0)
-    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.7)
+    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.5)
     _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 120)
     _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", True)
     _tp1_pct = BBWP_SQUEEZE_PARAMS.get("tp1_pct", 0.50)
@@ -1858,9 +1859,9 @@ def _simulate_bbwp_squeeze(
             _speed = i / _elapsed
             _scan_pct = 20 + (i / max(n, 1)) * 60
             _update_progress(
-                phase="Escaneando candles (BBWP Squeeze v9)", phase_num=4,
+                phase="Escaneando candles (BBWP Squeeze v10)", phase_num=4,
                 pct=round(_scan_pct, 1),
-                message=f"BBWP Squeeze v9 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                message=f"BBWP Squeeze v10 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
                 candles_total=n, candles_scanned=i, scan_speed=round(_speed),
                 current_price=round(float(row.get("close", 0)), 2),
             )
@@ -1869,7 +1870,7 @@ def _simulate_bbwp_squeeze(
             i += 1
             continue
 
-        # Check NaN (BBWP Squeeze v9 needs bbwp, stoch_rsi, bb bands, adx)
+        # Check NaN (BBWP Squeeze v10 needs bbwp, stoch_rsi, bb bands, adx)
         critical = [
             "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
             "bbwp", "stoch_rsi_k", "stoch_rsi_d", "bb_lower", "bb_upper",
@@ -2171,7 +2172,7 @@ def _simulate_bbwp_squeeze(
     # Summary
     avg_bbwp = np.mean(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0
     logger.info(
-        "BBWP Squeeze v9: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
+        "BBWP Squeeze v10: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
         "longs=%d, shorts=%d, avg_bbwp=%.1f, exits=[tp1=%d trail=%d sl=%d timeout=%d]",
         len(trades), atr_filtered, _be_count, _trail_count, _partial_tp_count,
         _diag_directions.get("long", 0), _diag_directions.get("short", 0),
@@ -2179,7 +2180,7 @@ def _simulate_bbwp_squeeze(
     )
 
     _diag = {
-        "strategy": "bbwp_squeeze_v9",
+        "strategy": "bbwp_squeeze_v10",
         "atr_filtered": atr_filtered,
         "be_triggered": _be_count,
         "trailing_updates": _trail_count,
