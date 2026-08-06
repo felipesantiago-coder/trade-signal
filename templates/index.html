@@ -670,6 +670,10 @@
                         <span id="btText">idle</span>
                     </div>
                     <button id="btBtn" onclick="runBacktest()" class="btn btn-primary">Rodar Simulacao</button>
+                    <button id="btExportBtn" onclick="exportBacktestMarkdown()" class="btn" style="display:none;background:rgba(100,116,139,0.15);color:#94a3b8;border:1px solid rgba(100,116,139,0.25);padding:5px 12px;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(100,116,139,0.25)'" onmouseout="this.style.background='rgba(100,116,139,0.15)'">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Exportar .md
+                    </button>
                 </div>
             </div>
 
@@ -1693,6 +1697,7 @@ async function runBacktest() {
     txt.textContent = 'executando';
     document.getElementById('btResults').style.display = 'none';
     document.getElementById('btPlaceholder').style.display = 'none';
+    document.getElementById('btExportBtn').style.display = 'none';
     if (document.getElementById('btDiag')) document.getElementById('btDiag').style.display = 'none';
 
     // Show animation overlay
@@ -1807,6 +1812,8 @@ function renderBt(res) {
 
     document.getElementById('btResults').style.display = 'block';
     document.getElementById('btPlaceholder').style.display = 'none';
+    document.getElementById('btExportBtn').style.display = 'inline-flex';
+    document.getElementById('btExportBtn').style.alignItems = 'center';
 
     // Show filter diagnostics if 0 trades
     const diag = (m.filter_diag || {});
@@ -1835,6 +1842,20 @@ function renderBt(res) {
         diagEl.style.display = 'none';
     }
 }
+async function exportBacktestMarkdown() {
+    try {
+        const link = document.createElement('a');
+        link.href = '/api/backtest/export';
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Relatorio Markdown exportado!', 'success');
+    } catch(e) {
+        showToast('Erro ao exportar: ' + e.message, 'error');
+    }
+}
+
 function resetBt() {
     document.getElementById('btBtn').disabled = false;
     document.getElementById('btBtn').style.opacity = '1';

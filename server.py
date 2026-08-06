@@ -18,6 +18,7 @@ Servidor web FastAPI que expoe:
 - GET  /api/backtest/status -> Status do backtest
 - GET  /api/backtest/progress -> Progresso em tempo real
 - GET  /api/backtest/stream  -> SSE stream de progresso
+- GET  /api/backtest/export -> Exporta resultado como Markdown (.md)
 
 MODO: Signal-Only — apenas analise e emissao de sinais.
 Nenhum endpoint de execucao de ordens esta disponivel.
@@ -77,6 +78,7 @@ _settings: Optional[Settings] = None
 _backtest_task: Optional[asyncio.Task] = None
 _backtest_result: Optional[dict] = None
 _backtest_running: bool = False
+_backtest_meta: dict = {"timeframe": "1h", "days": 730}
 
 
 def get_worker() -> CTEVWorker:
@@ -260,6 +262,7 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
 
     _backtest_running = True
     _backtest_result = None
+    _backtest_meta = {"timeframe": effective_tf, "days": days}
 
     # Reset progress state for streaming UI
     from backtest import reset_backtest_progress
@@ -382,6 +385,141 @@ async def api_trades(limit: int = 50) -> dict:
         "trades": list_recent_trades(limit=limit),
         "summary": get_trades_summary(),
     }
+
+
+@app.get("/api/backtest/export", summary="Exporta resultado do backtest como Markdown")
+async def api_backtest_export() -> Response:
+    """Gera e retorna arquivo .md com relatorio completo do ultimo backtest."""
+    global _backtest_result, _backtest_meta
+    if _backtest_result is None or not _backtest_result.get("ok"):
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "Nenhum backtest concluido disponivel para exportacao."},
+        )
+
+    from datetime import datetime as _dt
+
+    m = _backtest_result.get("metrics", {})
+    trades = _backtest_result.get("trades", [])
+    tf = _backtest_meta.get("timeframe", "1h")
+    days = _backtest_meta.get("days", 730)
+    now_str = _dt.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    tf_label = {"15m": "15 minutos", "30m": "30 minutos", "1h": "1 hora", "2h": "2 horas", "4h": "4 horas"}.get(tf, tf)
+
+    # Verdict
+    wr = m.get("win_rate", 0)
+    pnl = m.get("total_pnl_pct", 0)
+    bh = m.get("buy_hold_pct", 0)
+    pf = m.get("profit_factor", 0)
+    dd = m.get("max_drawdown_pct", 0)
+    alpha = pnl - bh
+
+    if wr >= 60 and alpha >= 20:
+        verdict = "**EXCELENTE** — Supera B&H com margem significativa."
+    elif wr >= 50 and alpha >= 10:
+        verdict = "**BOM** — Supera B&H com margem moderada."
+    elif wr >= 40 and pnl > 0:
+        verdict = "**ACEITAVEL** — Positivo, mas margem sobre B&H insuficiente."
+    else:
+        verdict = "**FRACO** — Precisa de otimizacao."
+
+    lines = [
+        f"# Relatorio de Backtest — CTEV Bot",
+        f"",
+        f"> Gerado em {now_str} | Timeframe: {tf_label} | Periodo: {days} dias",
+        f"> Veredicto: {verdict}",
+        f"",
+        f"---",
+        f"",
+        f"## Metricas de Performance",
+        f"",
+        f"| Metrica | Valor |",
+        f"|---------|-------|",
+        f"| Total de Trades | {m.get('total_trades', 0)} |",
+        f"| Trades Long | {m.get('long_trades', 0)} |",
+        f"| Trades Short | {m.get('short_trades', 0)} |",
+        f"| Vitorias | {m.get('wins', 0)} |",
+        f"| Derrotas | {m.get('losses', 0)} |",
+        f"| **Taxa de Acerto** | **{wr:.1f}%** |",
+        f"| **Fator de Lucro** | **{pf:.2f}** |",
+        f"| **Resultado Total** | **{pnl:+.2f}%** |",
+        f"| Buy & Hold | {bh:+.2f}% |",
+        f"| **Alpha vs B&H** | **{alpha:+.2f} pp** |",
+        f"| **Max Drawdown** | **{dd:.2f}%** |",
+        f"| Sharpe Ratio | {m.get('sharpe_ratio', 0):.2f} |",
+        f"| Ganho Medio | {m.get('avg_win_pct', 0):+.2f}% |",
+        f"| Perda Media | {m.get('avg_loss_pct', 0):+.2f}% |",
+        f"| Melhor Trade | {m.get('best_trade_pct', 0):+.2f}% |",
+        f"| Pior Trade | {m.get('worst_trade_pct', 0):+.2f}% |",
+        f"| Barras Medias em Posicao | {m.get('avg_bars_held', 0):.0f} |",
+        f"| R:R Medio | {m.get('avg_r_r', 0):.2f} |",
+        f"| Break-Even Triggered | {m.get('be_triggered_count', 0)} |",
+        f"| Trailing Stop Activated | {m.get('trailing_activated_count', 0)} |",
+        f"| Partial TP Filled | {m.get('partial_tp_count', 0)} |",
+        f"| Sinais Filtrados (ATR) | {m.get('atr_pct_filtered', 0)} |",
+        f"",
+        f"Periodo: `{m.get('period_start', '?')}` a `{m.get('period_end', '?')}`",
+        f"",
+        f"---",
+        f"",
+        f"## Historico de Trades",
+        f"",
+    ]
+
+    if trades:
+        lines.append(
+            f"| # | Entrada | Saida | Tipo | Preco Entrada | Preco Saida | Resultado | Motivo | Barras |"
+        )
+        lines.append(
+            f"|---|---------|-------|------|---------------|-------------|-----------|--------|--------|"
+        )
+        for i, t in enumerate(trades, 1):
+            pnl_val = t.get("pnl_pct", 0)
+            pnl_str = f"{pnl_val:+.2f}%"
+            entry_ts = str(t.get("entry_ts", ""))[:16]
+            exit_ts = str(t.get("exit_ts", ""))[:16]
+            lines.append(
+                f"| {i} | {entry_ts} | {exit_ts} | {t.get('type', '')} "
+                f"| ${t.get('entry_price', 0):,.2f} | ${t.get('exit_price', 0):,.2f} "
+                f"| {pnl_str} | {t.get('exit_reason', '-')} | {t.get('bars_held', 0)} |"
+            )
+    else:
+        lines.append("*Nenhum trade executado no periodo.*")
+
+    # Filter diagnostics
+    diag = m.get("filter_diag", {})
+    if diag and m.get("total_trades", 0) == 0:
+        lines.extend([
+            f"",
+            f"---",
+            f"",
+            f"## Diagnostico de Filtros (0 trades)",
+            f"",
+            f"| Regime | Quantidade |",
+            f"|--------|------------|",
+            f"| NaN (indicadores) | {diag.get('nan_filtered', 0):,} |",
+            f"| Trending Up | {diag.get('trending_up', 0):,} |",
+            f"| Trending Down | {diag.get('trending_down', 0):,} |",
+            f"| Regime Ranging | {diag.get('regime_ranging', 0):,} |",
+            f"| Regime Volatile | {diag.get('regime_volatile', 0):,} |",
+            f"| Transition | {diag.get('regime_transition', 0):,} |",
+            f"| Filtrado ATR | {diag.get('atr_filtered_diag', 0):,} |",
+            f"| Sem Sinal | {diag.get('no_signal', 0):,} |",
+        ])
+
+    lines.extend(["", f"---", f"", f"*Relatorio gerado automaticamente pelo CTEV Bot v4.0*"])
+
+    md_content = "\n".join(lines)
+    filename = f"backtest_{tf}_{days}d_{_dt.now(timezone.utc).strftime('%Y%m%d_%H%M')}.md"
+
+    return Response(
+        content=md_content.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @app.post("/api/settings/timeframe", summary="Altera timeframe em runtime (sem restart)")
