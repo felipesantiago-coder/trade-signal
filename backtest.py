@@ -1799,13 +1799,14 @@ def _simulate_bbwp_squeeze(
     r"""
     Simulacao BBWP Squeeze v9 para 1h.
 
-    v9 - EQUILIBRIO OTIMIZADO (sweet spot v7-v8):
-    - SL: 2.0x ATR
-    - TP1: 3.0x ATR (partial 50%)
-    - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR no trailing)
-    - Trailing: 1.5x ATR (racheta ACIMA do floor)
-    - BBWP threshold: 14, buffer 5%, ADX>18
-    - R:R floor: (0.50*3.0 + 0.50*2.5)/2.0 = 1.375
+    v9 - OTIMIZACAO DE SAIDAS (entrada v8 mantida):
+    - SL: 2.2x ATR (v8 — funciona bem)
+    - TP1: 2.8x ATR (v9: reduzido de 3.0 para mais hits)
+    - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.3*ATR no trailing)
+    - Trailing: 1.7x ATR (v9: alargado de 1.5 para capturar mais)
+    - BBWP threshold: 15, buffer 5%, ADX>16 (v8 entry params)
+    - R:R floor: (0.50*2.8 + 0.50*2.3)/2.2 = 1.16
+    - Com trailing rachetando acima: R:R real ~1.25-1.35
 
     Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
@@ -1815,7 +1816,7 @@ def _simulate_bbwp_squeeze(
 
     reset_cooldown()
     _be_trigger = BBWP_SQUEEZE_PARAMS.get("be_trigger_atr_mult", 1.0)
-    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.5)
+    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.7)
     _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 120)
     _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", True)
     _tp1_pct = BBWP_SQUEEZE_PARAMS.get("tp1_pct", 0.50)
