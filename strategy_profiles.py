@@ -247,18 +247,18 @@ PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
     timeframes=("1h",),
     description=(
-        "[BBWP Squeeze v8] Quantidade + Qualidade Equilibrada. "
-        "v8: Trailing 1.5x ATR, TP1=3.0x ATR (50%), SL=2.2x, "
-        "BBWP<15, buffer 5%, ADX>16, cooldown=2, max_bars=96, "
-        "vol>0.35x, StochRSI 56/44. "
+        "[BBWP Squeeze v9] Equilibrio Otimizado (sweet spot v7-v8). "
+        "v9: Trailing 1.5x ATR, TP1=3.0x ATR (50%), SL=2.0x, "
+        "BBWP<14, buffer 5%, ADX>18, cooldown=2, max_bars=96, "
+        "vol>0.40x, StochRSI 57/43. "
         "Pos-TP1 SL = TP1 - 0.5*ATR (floor 2.5*ATR no trailing). "
-        "R:R floor: 1.25. Trailing racheta acima do floor. "
+        "R:R floor: 1.375. Trailing racheta acima do floor. "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
     # Filtros de entrada (BBWP Squeeze has its own internal logic)
     atr_pct_min=0.10,
     atr_pct_max=0.90,
-    sl_atr_mult=2.2,
+    sl_atr_mult=2.0,
     tp_atr_mult=3.0,
     max_bars_held=96,
     # Reference params (actual logic in strategy_bbwp_squeeze.py)
