@@ -1797,16 +1797,17 @@ def _simulate_bbwp_squeeze(
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int, dict]:
     r"""
-    Simulacao BBWP Squeeze v5 para 1h.
+    Simulacao BBWP Squeeze v6 para 1h.
 
-    v5 - MAIORES RETORNOS + MAIS TRADES:
-    - SL: 2.0x ATR (evita fake breakouts)
-    - TP1: 4.0x ATR (saida parcial 30%)
-    - Trailing: 2.0x ATR apos BE trigger (1.5x ATR)
-    - BB Breakout Buffer: 15% da BB width alem da banda (filtra wicks)
-    - BBWP threshold: 10 (3x mais signals que v4)
-    - Max bars: 168 (7 dias em 1h)
-    - Cooldown: 3 bars (2 apos trailing exit)
+    v6 - MAIORES RETORNOS POR TRADE + MAIS TRADES + FILTRO ADX:
+    - SL: 2.2x ATR (evita fake breakouts)
+    - TP1: 3.5x ATR (saida parcial 40%)
+    - Pos-TP1 SL: TP1 - 1.5*ATR (garante lucro na porcao trailing)
+    - Trailing: 1.5x ATR (racheta mais rapido)
+    - BBWP threshold: 15 (sem breakout buffer)
+    - ADX > 18 (filtro de tendencia real)
+    - Max bars: 120 (5 dias em 1h)
+    - Cooldown: 2 bars (1 apos trailing exit)
 
     Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
@@ -1857,9 +1858,9 @@ def _simulate_bbwp_squeeze(
             _speed = i / _elapsed
             _scan_pct = 20 + (i / max(n, 1)) * 60
             _update_progress(
-                phase="Escaneando candles (BBWP Squeeze v5)", phase_num=4,
+                phase="Escaneando candles (BBWP Squeeze v6)", phase_num=4,
                 pct=round(_scan_pct, 1),
-                message=f"BBWP Squeeze v5 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                message=f"BBWP Squeeze v6 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
                 candles_total=n, candles_scanned=i, scan_speed=round(_speed),
                 current_price=round(float(row.get("close", 0)), 2),
             )
@@ -1868,11 +1869,11 @@ def _simulate_bbwp_squeeze(
             i += 1
             continue
 
-        # Check NaN (BBWP Squeeze needs bbwp, stoch_rsi, bb bands)
+        # Check NaN (BBWP Squeeze v6 needs bbwp, stoch_rsi, bb bands, adx)
         critical = [
             "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
             "bbwp", "stoch_rsi_k", "stoch_rsi_d", "bb_lower", "bb_upper",
-            "volume", "volume_sma20",
+            "volume", "volume_sma20", "adx",
         ]
         if any(pd.isna(row.get(c)) for c in critical):
             i += 1
@@ -1952,11 +1953,16 @@ def _simulate_bbwp_squeeze(
                 _partial_tp_count += 1
                 _diag_tp1_exits += 1
 
-                # After TP1, activate trailing immediately (skip BE wait)
+                # v6: After TP1, set SL at TP1 - trailing_distance (NOT entry/BE)
+                # This GUARANTEES the trailing portion exits with profit
                 if _use_trailing:
                     be_triggered = True
                     trailing_activated = True
-                    current_sl = entry_price  # Move SL to BE
+                    trail_dist = atr * _trail_dist
+                    if is_long:
+                        current_sl = tp - trail_dist  # TP1 - trail*ATR
+                    else:
+                        current_sl = tp + trail_dist  # TP1 + trail*ATR (SHORT)
                     _be_count += 1
 
                 # Don't break — continue with trailing on remaining 60%
@@ -2164,7 +2170,7 @@ def _simulate_bbwp_squeeze(
     # Summary
     avg_bbwp = np.mean(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0
     logger.info(
-        "BBWP Squeeze v5: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
+        "BBWP Squeeze v6: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
         "longs=%d, shorts=%d, avg_bbwp=%.1f, exits=[tp1=%d trail=%d sl=%d timeout=%d]",
         len(trades), atr_filtered, _be_count, _trail_count, _partial_tp_count,
         _diag_directions.get("long", 0), _diag_directions.get("short", 0),
@@ -2172,7 +2178,7 @@ def _simulate_bbwp_squeeze(
     )
 
     _diag = {
-        "strategy": "bbwp_squeeze_v5",
+        "strategy": "bbwp_squeeze_v6",
         "atr_filtered": atr_filtered,
         "be_triggered": _be_count,
         "trailing_updates": _trail_count,
