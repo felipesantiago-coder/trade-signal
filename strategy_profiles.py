@@ -145,10 +145,11 @@ PROFILE_INTRADAY = StrategyProfile(
     name="INTRADAY",
     timeframes=("15m", "30m"),
     description=(
-        "[ATF v1] Adaptive Trend-Follow para 15m/30m. Substitui EMA Cross v11. "
-        "Scoring composto 0-10 (EMA alignment, ADX, DI, MACD, RSI, OBV) + 6 tipos "
-        "de entrada (pullback EMA20/50, RSI dip, MACD cross, momentum burst, "
-        "BB bounce, trend aligned). Trailing adaptativo ao ADX (1.0-2.5x ATR), "
+        "[ATF v2] Adaptive Trend-Follow v2 para 15m/30m. Integracao dos indicadores "
+        "BBWP, Stoch RSI ao scoring composto ATF v1. Score 0-11 (adicionada: "
+        "Stoch RSI alinhado com direcao). BBWP modula SL (reduz em squeeze) e "
+        "trailing (amplifica em squeeze). 7 gatilhos de entrada incluindo "
+        "stoch_cross (K cruza D). Trailing adaptativo ao ADX (1.0-2.5x ATR), "
         "sem TP fixo. SL adaptativo por volatilidade (1.2-2.0x ATR). "
         "Cooldown 6 bars (3 apos trailing). Max 96 bars (24h). "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
@@ -242,6 +243,35 @@ PROFILE_SWING = StrategyProfile(
     max_bars_held=60,        # 60 candles: 5 dias(2h), 10 dias(4h)
 )
 
+PROFILE_BBWP_SQUEEZE = StrategyProfile(
+    name="BBWP_SQUEEZE",
+    timeframes=("1h",),
+    description=(
+        "[BBWP Squeeze v3] Otimizado via grid search 2160 combinacoes (1h, 6 meses). "
+        "Validado: WR=67.7%, PnL=+16.41% (+25.64pp vs B&H), PF=2.56, 31 trades. "
+        "Mudancas vs v2: BBWP<5 (mais sensivel), Vol>0.8x, TP=2.5x ATR, trailing OFF, "
+        "EMA200=ON, divergence OFF. SL fixo 2.0x ATR. Cooldown 6 bars. "
+        "Custos: taker fee 0.031% + spread 1bp + slip 1bp."
+    ),
+    # Filtros de entrada (BBWP Squeeze has its own internal logic)
+    atr_pct_min=0.10,
+    atr_pct_max=0.90,
+    sl_atr_mult=2.0,
+    tp_atr_mult=2.5,
+    max_bars_held=72,
+    # Reference params (actual logic in strategy_bbwp_squeeze.py)
+    adx_min=0.0,
+    allow_transition=True,
+    rsi_long_min=0.0,
+    rsi_long_max=100.0,
+    rsi_short_min=0.0,
+    rsi_short_max=100.0,
+    fib_tolerance_pct=0.025,
+    ema50_slope_min=-1.0,
+    volume_confirm=False,
+    volume_sma_ratio=0.0,
+)
+
 PROFILE_POSITION = StrategyProfile(
     name="POSITION",
     timeframes=("1d",),
@@ -283,6 +313,7 @@ _ALL_PROFILES: Dict[str, StrategyProfile] = {
         PROFILE_SCALP,
         PROFILE_INTRADAY,
         PROFILE_STANDARD,
+        PROFILE_BBWP_SQUEEZE,
         PROFILE_SWING,
         PROFILE_POSITION,
     ]
@@ -305,7 +336,7 @@ def get_profile(timeframe: str) -> StrategyProfile:
         >>> get_profile("4h").name
         'SWING'
         >>> get_profile("1h").name
-        'STANDARD'
+        'BBWP_SQUEEZE'
     """
     if timeframe in _TF_TO_PROFILE:
         return _ALL_PROFILES[_TF_TO_PROFILE[timeframe]]

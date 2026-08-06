@@ -17,15 +17,14 @@ Indicadores suportados:
 - Swing High/Low Detection — para calculo de Fibonacci
 - EMA(20/50) touch detection — pullback
 - Regime classification — trending_up, trending_down, ranging, volatile
+- RSI Divergence Detection — bearish/bullish divergence (rolling window)
 - EMA Slope — inclinacao da EMA para confirmacao de tendencia
 
 Todos os calculos operam sobre um DataFrame pandas com colunas
 OCHLV padrao (Open, High, Low, Close, Volume).
 
-v4: ADX + regime detection, BB squeeze percentile, EMA slope,
-     volume SMA(50), EMA(20), cost-aware indicators.
-     Baseado no estudo "Framework Multi-Timeframe e de Regimes"
-     para BTC/USDT no timeframe 1H.
+v5: Stoch RSI, BBWP, RSI divergence detection.
+     Baseado no estudo "Squeeze Momentum Breakout" para BTC/USDT.
 """
 
 from __future__ import annotations
@@ -491,6 +490,62 @@ def compute_indicators(df: pd.DataFrame, timeframe: str = "1h") -> pd.DataFrame:
     out["ema50_touched"] = out["low"] <= out["ema50"]
     # Para SHORT: high tocou EMA50 (pullback de baixa)
     out["ema50_touched_up"] = out["high"] >= out["ema50"]
+
+    # ── Stochastic RSI (v5: usado na estrategia SBS/ATF v2) ──
+    _srsi_period = max(14, int(14 * _tf_multiplier))  # timeframe-adaptive
+    rsi_min = out["rsi"].rolling(window=_srsi_period).min()
+    rsi_max = out["rsi"].rolling(window=_srsi_period).max()
+    rsi_range = rsi_max - rsi_min
+    _raw_stoch_rsi = pd.Series(0.0, index=out.index)
+    _mask = rsi_range > 0
+    _raw_stoch_rsi[_mask] = (
+        (out["rsi"][_mask] - rsi_min[_mask]) / rsi_range[_mask] * 100.0
+    )
+    out["stoch_rsi_k"] = _raw_stoch_rsi.rolling(window=3).mean()
+    out["stoch_rsi_d"] = out["stoch_rsi_k"].rolling(window=3).mean()
+
+    # ── BBWP — Bollinger Band Width Percentile (v5) ──
+    # Expressa a largura atual das BB como percentil do historico.
+    # BBWP < 10 = squeeze (volatilidade comprimida).
+    # Loop Python otimizado — 70k candles x 400 lookback = ~0.2s.
+    _bbwp_lookback = int(100 * _tf_multiplier)
+    _bbw_vals = out["bb_width"].values.astype(float)
+    _n = len(_bbw_vals)
+    _bbwp_result = np.full(_n, np.nan)
+    if _n > _bbwp_lookback:
+        for _i in range(_bbwp_lookback - 1, _n):
+            _bbwp_result[_i] = np.sum(
+                _bbw_vals[_i - _bbwp_lookback + 1:_i + 1] <= _bbw_vals[_i]
+            ) / _bbwp_lookback * 100
+    out["bbwp"] = pd.Series(_bbwp_result, index=out.index)
+
+    # ── RSI Divergence Detection (v5: Squeeze Momentum Breakout) ──
+    # Detecta divergencia RSI usando janelas rolantes comparativas.
+    # Bearish: preco faz maxima mais alta, RSI faz maxima mais baixa.
+    # Bullish: preco faz minima mais baixa, RSI faz minima mais alta.
+    _div_lb = max(15, int(15 * _tf_multiplier))
+    _div_sep = max(5, int(5 * _tf_multiplier))
+
+    # Janela recente
+    _recent_pmax = out["close"].rolling(_div_lb).max()
+    _recent_rsi_max = out["rsi"].rolling(_div_lb).max()
+    _recent_pmin = out["close"].rolling(_div_lb).min()
+    _recent_rsi_min = out["rsi"].rolling(_div_lb).min()
+
+    # Janela anterior (deslocada)
+    _prev_pmax = out["close"].shift(_div_sep).rolling(_div_lb).max()
+    _prev_rsi_max = out["rsi"].shift(_div_sep).rolling(_div_lb).max()
+    _prev_pmin = out["close"].shift(_div_sep).rolling(_div_lb).min()
+    _prev_rsi_min = out["rsi"].shift(_div_sep).rolling(_div_lb).min()
+
+    # Bearish: preco subiu mais, RSI nao confirmou
+    out["rsi_div_bearish"] = (
+        (_recent_pmax > _prev_pmax) & (_recent_rsi_max < _prev_rsi_max)
+    )
+    # Bullish: preco caiu mais, RSI nao confirmou
+    out["rsi_div_bullish"] = (
+        (_recent_pmin < _prev_pmin) & (_recent_rsi_min > _prev_rsi_min)
+    )
 
     return out
 

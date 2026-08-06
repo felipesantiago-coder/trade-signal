@@ -1638,6 +1638,428 @@ def _simulate_atf(
 
 
 # ------------------------------------------------------------------
+# v13: ATF v2 Simulation (StochRSI + BBWP integration)
+# ------------------------------------------------------------------
+def _simulate_atf_v2(
+    df_ind: pd.DataFrame,
+    atr_pct_min: float = 0.15,
+    atr_pct_max: float = 0.85,
+    profile=None,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
+) -> Tuple[List[TradeResult], int, dict]:
+    r"""
+    Simulacao ATF v2 para 15m/30m.
+    Identico ao _simulate_atf mas usa evaluate_atf_v2_row.
+    Retorna (signal, score, trigger_name, adx, trail_mult, sl_mult).
+    """
+    from strategy_atf_v2 import evaluate_atf_v2_row, reset_cooldown, ATF_V2_PARAMS
+
+    reset_cooldown()
+    _be_trigger = ATF_V2_PARAMS["be_trigger_atr"]
+    _max_bars = ATF_V2_PARAMS["max_bars"]
+    trades: List[TradeResult] = []
+    atr_filtered = 0
+    i = 0; n = len(df_ind)
+    _scan_t0 = time.time(); _last_progress_time = 0.0
+    _eq_points: list = []; _running_pnl = 0.0
+    _fee = 0.016; _spread = 2.0; _slip = 2.0
+    _be_count = 0; _trail_count = 0
+    _diag_triggers = {}; _diag_scores = []
+    _diag_trail_types = {"strong": 0, "medium": 0, "weak": 0}
+    _diag_bbwp_squeeze = 0
+
+    while i < n:
+        row = df_ind.iloc[i]
+        _now = time.time()
+        if _now - _last_progress_time > 0.25:
+            _last_progress_time = _now
+            _elapsed = max(_now - _scan_t0, 0.01)
+            _speed = i / _elapsed
+            _scan_pct = 20 + (i / max(n, 1)) * 60
+            _update_progress(
+                phase="Escaneando candles (ATF v2)", phase_num=4,
+                pct=round(_scan_pct, 1),
+                message=f"ATF v2 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                candles_total=n, candles_scanned=i, scan_speed=round(_speed),
+                current_price=round(float(row.get("close", 0)), 2),
+            )
+        if i < 1: i += 1; continue
+        critical = ["ema20","ema50","ema200","rsi","atr","rsi_delta",
+                     "atr_percentile","adx","macd","macd_signal","macd_hist",
+                     "obv_trend","bb_lower","bb_upper","bb_middle","stoch_rsi_k","bbwp"]
+        if any(pd.isna(row.get(c)) for c in critical): i += 1; continue
+        atr_pct = float(row.get("atr_percentile", 0.5))
+        if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
+            atr_filtered += 1; i += 1; continue
+        prev = df_ind.iloc[i - 1]
+        result = evaluate_atf_v2_row(row, prev, i, profile=profile)
+        if result is None: i += 1; continue
+        signal, score, trigger_name, adx_at_entry, trail_mult, sl_mult = result
+        _diag_triggers[trigger_name] = _diag_triggers.get(trigger_name, 0) + 1
+        _diag_scores.append(score)
+        if adx_at_entry >= 35: _diag_trail_types["strong"] += 1
+        elif adx_at_entry >= 25: _diag_trail_types["medium"] += 1
+        else: _diag_trail_types["weak"] += 1
+        bbwp_val = float(row.get("bbwp", 50))
+        if bbwp_val < 15: _diag_bbwp_squeeze += 1
+
+        entry_price = signal.entry_price; sl = signal.stop_loss; atr = signal.atr
+        is_long = signal.type == SignalType.LONG
+        exit_price = None; exit_reason = None; bars = 0
+        current_sl = sl; be_triggered = False; trailing_activated = False
+        highest_favorable = entry_price; sl_updates = 0; was_trailing_exit = False
+        trail_distance = atr * trail_mult
+
+        for j in range(i + 1, min(i + _max_bars, n)):
+            future = df_ind.iloc[j]
+            f_close = float(future["close"]); f_low = float(future["low"])
+            f_high = float(future["high"]); bars = j - i
+            if is_long: highest_favorable = max(highest_favorable, f_high)
+            else: highest_favorable = min(highest_favorable, f_low)
+            sl_hit = False
+            if is_long:
+                if f_low <= current_sl: sl_hit = True
+            else:
+                if f_high >= current_sl: sl_hit = True
+            if not be_triggered:
+                fav_dist = abs(highest_favorable - entry_price)
+                if fav_dist >= atr * _be_trigger:
+                    be_triggered = True; trailing_activated = True
+                    current_sl = entry_price; _be_count += 1
+            if trailing_activated:
+                if is_long:
+                    new_trail = highest_favorable - trail_distance
+                    if new_trail > current_sl: current_sl = new_trail; sl_updates += 1; _trail_count += 1
+                else:
+                    new_trail = highest_favorable + trail_distance
+                    if new_trail < current_sl: current_sl = new_trail; sl_updates += 1; _trail_count += 1
+            if sl_hit:
+                exit_price = current_sl
+                exit_reason = "trailing_sl" if trailing_activated else "sl"
+                was_trailing_exit = trailing_activated; break
+        if exit_price is None:
+            last_j = min(i + _max_bars, n) - 1
+            exit_price = float(df_ind.iloc[last_j]["close"])
+            exit_reason = "timeout"; bars = last_j - i
+        _, adj_exit, cost_pct = _apply_costs(entry_price, exit_price, is_long, _fee, _spread, _slip)
+        if is_long: pnl_pct = (adj_exit - entry_price) / entry_price * 100
+        else: pnl_pct = (entry_price - adj_exit) / entry_price * 100
+        trades.append(TradeResult(
+            entry_ts=row.name, exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
+            type=signal.type.value, entry_price=entry_price, exit_price=exit_price,
+            stop_loss=sl, take_profit=signal.take_profit, atr=atr, rsi=signal.rsi,
+            pnl_pct=round(pnl_pct, 4), pnl_abs=round(exit_price - entry_price, 2),
+            bars_held=bars, exit_reason=exit_reason, atr_percentile=atr_pct,
+            be_triggered=be_triggered, trailing_activated=trailing_activated,
+            partial_tp_filled=False, sl_updates=sl_updates))
+        _from_atf_v2 = __import__("strategy_atf_v2")
+        _from_atf_v2._register_signal(i + bars, was_trailing=was_trailing_exit)
+        _running_pnl += pnl_pct; _eq_points.append(round(_running_pnl, 2))
+        _update_progress(
+            signals_found=len(trades), last_signal_type=signal.type.value,
+            last_signal_price=round(entry_price, 2), last_signal_pnl=round(pnl_pct, 2),
+            equity_snapshot=list(_eq_points[-50:]))
+        i += bars + 1
+
+    avg_score = np.mean(_diag_scores) if _diag_scores else 0
+    logger.info(
+        "ATF v2: %d trades, %d ATR filt, BE=%d, trail=%d, avg_score=%.1f, "
+        "triggers=%s, bbwp_squeeze=%d",
+        len(trades), atr_filtered, _be_count, _trail_count, avg_score,
+        _diag_triggers, _diag_bbwp_squeeze,
+    )
+    _diag = {
+        "strategy": "atf_v2", "atr_filtered": atr_filtered,
+        "be_triggered": _be_count, "trailing_updates": _trail_count,
+        "avg_score": round(avg_score, 2), "triggers": _diag_triggers,
+        "trail_types": _diag_trail_types, "bbwp_squeeze_trades": _diag_bbwp_squeeze,
+        "score_distribution": {
+            "min": min(_diag_scores) if _diag_scores else 0,
+            "max": max(_diag_scores) if _diag_scores else 0,
+            "avg": round(avg_score, 2),
+        },
+    }
+    return trades, atr_filtered, _diag
+
+
+# ------------------------------------------------------------------
+# BBWP Squeeze v2 Simulation
+# ------------------------------------------------------------------
+def _simulate_bbwp_squeeze(
+    df_ind: pd.DataFrame,
+    atr_pct_min: float = 0.10,
+    atr_pct_max: float = 0.90,
+    profile=None,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
+) -> Tuple[List[TradeResult], int, dict]:
+    r"""
+    Simulacao BBWP Squeeze v2 para 1h.
+
+    Detecta squeeze (BBWP < threshold) seguido de expansao e breakout
+    das Bollinger Bands com Stoch RSI + volume + EMA trend confirmation.
+
+    SL: adaptativo ao ATR percentile (1.5-2.5x ATR)
+    TP: 3.5x ATR
+    Trailing: ativo apos BE trigger (1.0x ATR)
+    Cooldown: 6 bars (3 apos trailing exit)
+
+    Custos: fee=0.016% + spread=2bps + slip=2bps (limit orders).
+    """
+    from strategy_bbwp_squeeze import (
+        evaluate_bbwp_squeeze_row, reset_cooldown, BBWP_SQUEEZE_PARAMS,
+    )
+
+    reset_cooldown()
+    _be_trigger = BBWP_SQUEEZE_PARAMS.get("be_trigger_atr_mult", 1.0)
+    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.5)
+    _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 72)
+    _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", False)
+
+    trades: List[TradeResult] = []
+    atr_filtered = 0
+    i = 0
+    n = len(df_ind)
+    _scan_t0 = time.time()
+    _last_progress_time = 0.0
+    _eq_points: list = []
+    _running_pnl = 0.0
+
+    # Limit order costs (maker)
+    _fee = 0.016
+    _spread = 2.0
+    _slip = 2.0
+
+    # Diagnostics
+    _be_count = 0
+    _trail_count = 0
+    _diag_directions = {"long": 0, "short": 0}
+    _diag_bbwp_at_entry = []
+
+    while i < n:
+        row = df_ind.iloc[i]
+
+        # Progress (throttled to ~4Hz)
+        _now = time.time()
+        if _now - _last_progress_time > 0.25:
+            _last_progress_time = _now
+            _elapsed = max(_now - _scan_t0, 0.01)
+            _speed = i / _elapsed
+            _scan_pct = 20 + (i / max(n, 1)) * 60
+            _update_progress(
+                phase="Escaneando candles (BBWP Squeeze v2)", phase_num=4,
+                pct=round(_scan_pct, 1),
+                message=f"BBWP Squeeze v2 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                candles_total=n, candles_scanned=i, scan_speed=round(_speed),
+                current_price=round(float(row.get("close", 0)), 2),
+            )
+
+        if i < 1:
+            i += 1
+            continue
+
+        # Check NaN (BBWP Squeeze needs bbwp, stoch_rsi, bb bands)
+        critical = [
+            "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
+            "bbwp", "stoch_rsi_k", "stoch_rsi_d", "bb_lower", "bb_upper",
+            "volume", "volume_sma20",
+        ]
+        if any(pd.isna(row.get(c)) for c in critical):
+            i += 1
+            continue
+
+        # ATR filter (strategy has internal filter too, but pre-filter here)
+        atr_pct = float(row.get("atr_percentile", 0.5))
+        if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
+            atr_filtered += 1
+            i += 1
+            continue
+
+        # Evaluate BBWP Squeeze signal
+        prev = df_ind.iloc[i - 1]
+        result = evaluate_bbwp_squeeze_row(
+            row, prev, i, df=df_ind, profile=profile,
+        )
+
+        if result is None:
+            i += 1
+            continue
+
+        signal, bbwp_val, direction = result
+        _diag_directions[direction] = _diag_directions.get(direction, 0) + 1
+        _diag_bbwp_at_entry.append(round(bbwp_val, 1))
+
+        # ---- Trade simulation with trailing stop ----
+        entry_price = signal.entry_price
+        sl = signal.stop_loss
+        tp = signal.take_profit
+        atr = signal.atr
+        is_long = signal.type == SignalType.LONG
+        exit_price = None
+        exit_reason = None
+        bars = 0
+
+        current_sl = sl
+        be_triggered = False
+        trailing_activated = False
+        highest_favorable = entry_price
+        sl_updates = 0
+        was_trailing_exit = False
+
+        for j in range(i + 1, min(i + _max_bars, n)):
+            future = df_ind.iloc[j]
+            f_close = float(future["close"])
+            f_low = float(future["low"])
+            f_high = float(future["high"])
+            bars = j - i
+
+            # Track high water mark
+            if is_long:
+                highest_favorable = max(highest_favorable, f_high)
+            else:
+                highest_favorable = min(highest_favorable, f_low)
+
+            # Check SL/TP hit
+            sl_hit = False
+            tp_hit = False
+            if is_long:
+                if f_low <= current_sl:
+                    sl_hit = True
+                if f_high >= tp:
+                    tp_hit = True
+            else:
+                if f_high >= current_sl:
+                    sl_hit = True
+                if f_low <= tp:
+                    tp_hit = True
+
+            # TP hit (with trailing active or not)
+            if tp_hit and not sl_hit:
+                exit_price = tp
+                exit_reason = "tp"
+                break
+            elif tp_hit and sl_hit:
+                # Both hit same bar → conservative: use SL
+                exit_price = current_sl
+                exit_reason = "trailing_sl" if trailing_activated else "sl"
+                break
+
+            # BE trigger: price moved be_trigger * ATR in favor
+            if not be_triggered and _use_trailing:
+                fav_dist = abs(highest_favorable - entry_price)
+                if fav_dist >= atr * _be_trigger:
+                    be_triggered = True
+                    trailing_activated = True
+                    current_sl = entry_price
+                    _be_count += 1
+
+            # Trailing stop (ratchet-only — only moves in favor)
+            if trailing_activated and _use_trailing:
+                trail_distance = atr * _trail_dist
+                if is_long:
+                    new_trail = highest_favorable - trail_distance
+                    if new_trail > current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                        _trail_count += 1
+                else:
+                    new_trail = highest_favorable + trail_distance
+                    if new_trail < current_sl:
+                        current_sl = new_trail
+                        sl_updates += 1
+                        _trail_count += 1
+
+            # SL hit
+            if sl_hit and not tp_hit:
+                exit_price = current_sl
+                exit_reason = "trailing_sl" if trailing_activated else "sl"
+                was_trailing_exit = trailing_activated
+                break
+
+        if exit_price is None:
+            last_j = min(i + _max_bars, n) - 1
+            exit_price = float(df_ind.iloc[last_j]["close"])
+            exit_reason = "timeout"
+            bars = last_j - i
+
+        # Apply costs (limit order pricing)
+        _, adj_exit, cost_pct = _apply_costs(
+            entry_price, exit_price, is_long,
+            _fee, _spread, _slip,
+        )
+        if is_long:
+            pnl_pct = (adj_exit - entry_price) / entry_price * 100
+        else:
+            pnl_pct = (entry_price - adj_exit) / entry_price * 100
+
+        trades.append(TradeResult(
+            entry_ts=row.name,
+            exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
+            type=signal.type.value,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=sl,
+            take_profit=tp,
+            atr=atr,
+            rsi=signal.rsi,
+            pnl_pct=round(pnl_pct, 4),
+            pnl_abs=round(exit_price - entry_price, 2),
+            bars_held=bars,
+            exit_reason=exit_reason,
+            atr_percentile=atr_pct,
+            be_triggered=be_triggered,
+            trailing_activated=trailing_activated,
+            partial_tp_filled=False,
+            sl_updates=sl_updates,
+        ))
+
+        # Register trailing exit for shorter cooldown on re-entry
+        _from_bbwp = __import__("strategy_bbwp_squeeze")
+        _from_bbwp._register_signal(i + bars, was_trailing=was_trailing_exit)
+
+        _running_pnl += pnl_pct
+        _eq_points.append(round(_running_pnl, 2))
+
+        _update_progress(
+            signals_found=len(trades),
+            last_signal_type=signal.type.value,
+            last_signal_price=round(entry_price, 2),
+            last_signal_pnl=round(pnl_pct, 2),
+            equity_snapshot=list(_eq_points[-50:]),
+        )
+
+        i += bars + 1
+
+    # Summary
+    avg_bbwp = np.mean(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0
+    logger.info(
+        "BBWP Squeeze v2: %d trades, %d ATR filt, BE=%d, trail=%d, "
+        "longs=%d, shorts=%d, avg_bbwp=%.1f",
+        len(trades), atr_filtered, _be_count, _trail_count,
+        _diag_directions.get("long", 0), _diag_directions.get("short", 0),
+        avg_bbwp,
+    )
+
+    _diag = {
+        "strategy": "bbwp_squeeze_v2",
+        "atr_filtered": atr_filtered,
+        "be_triggered": _be_count,
+        "trailing_updates": _trail_count,
+        "directions": _diag_directions,
+        "bbwp_at_entry": {
+            "min": min(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0,
+            "max": max(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0,
+            "avg": round(avg_bbwp, 1),
+        },
+        "costs": {"fee_pct": _fee, "spread_bps": _spread, "slippage_bps": _slip},
+    }
+    return trades, atr_filtered, _diag
+
+
+# ------------------------------------------------------------------
 # v7: Regime-Switching simulation
 # ------------------------------------------------------------------
 def _simulate_regime_switching(
@@ -1944,8 +2366,13 @@ def run_backtest(
     # 4. Simula trades — ROUTING INTELIGENTE POR TIMEFRAME
     _diag = {}
     if profile.name == "INTRADAY":
-        # v12: ATF v1 para 15m/30m (composite scoring + adaptive trailing)
-        trades, atr_filtered, _diag = _simulate_atf(
+        # v13: ATF v2 para 15m/30m (ATF v1 + StochRSI + BBWP)
+        trades, atr_filtered, _diag = _simulate_atf_v2(
+            df_clean, _atr_min, _atr_max, profile=profile,
+        )
+    elif profile.name == "BBWP_SQUEEZE":
+        # BBWP Squeeze v2 para 1h
+        trades, atr_filtered, _diag = _simulate_bbwp_squeeze(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
     elif regime_switching:

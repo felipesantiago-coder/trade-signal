@@ -7,13 +7,13 @@ Este e o cerebro do sistema de multi-estrategia. Em vez de usar a mesma
 logica (CTEV trend-following) para todos os timeframes, o router escolhe
 a estrategia otimizada para cada escala temporal:
 
-  Timeframe  |  Estrategia      |  Engine              |  Validacao
-  -----------+-----------------+---------------------+--------------
-  15m, 30m   |  ATF v1          |  strategy_atf        |  scoring+trailing
-  1h          |  CTEV v7.1       |  regime-switching    | +25.44% PnL
-  2h, 4h     |  CTEV (wider)    |  regime-switching    |  NAO validado
-  1d          |  CTEV (position) |  regime-switching    |  NAO validado
-  1m,3m,5m   |  DESATIVADO      |  N/A                 |  Sem edge
+  Timeframe  |  Estrategia         |  Engine              |  Validacao
+  -----------+---------------------+---------------------+--------------
+  15m, 30m   |  ATF v2              |  strategy_atf_v2     |  StochRSI+BBWP
+  1h          |  BBWP Squeeze v2    |  strategy_bbwp_squeeze| squeeze+breakout
+  2h, 4h     |  CTEV (wider)        |  regime-switching    |  NAO validado
+  1d          |  CTEV (position)     |  regime-switching    |  NAO validado
+  1m,3m,5m   |  DESATIVADO          |  N/A                 |  Sem edge
 
 Principio de design:
   1. Cada timeframe tem uma estrategia DIFERENTE, nao apenas parametros
@@ -46,11 +46,14 @@ logger = logging.getLogger(__name__)
 # TIMEFRAME -> STRATEGY TYPE MAPPING
 # ==================================================================
 
-# Timeframes que usam EMA Cross (intraday momentum)
-EMA_CROSS_TIMEFRAMES = {"15m", "30m"}
+# Timeframes que usam ATF v2 (intraday momentum)
+ATF_TIMEFRAMES = {"15m", "30m"}
+
+# Timeframes que usam BBWP Squeeze v2 (squeeze + breakout)
+BBWP_SQUEEZE_TIMEFRAMES = {"1h"}
 
 # Timeframes que usam CTEV Regime-Switching (trend-following + mean-reversion)
-REGIME_SWITCHING_TIMEFRAMES = {"1h", "2h", "4h", "1d"}
+REGIME_SWITCHING_TIMEFRAMES = {"2h", "4h", "1d"}
 
 # Timeframes desativados (sem edge valida)
 DISABLED_TIMEFRAMES = {"1m", "3m", "5m"}
@@ -61,12 +64,15 @@ def get_strategy_type(timeframe: str) -> str:
     Retorna o tipo de estrategia para o timeframe dado.
 
     Returns:
-        "atf" — Para 15m/30m (ATF v1 Adaptive Trend-Follow)
-        "regime_switching" — Para 1h+ (CTEV v7.1)
+        "atf" — Para 15m/30m (ATF v2 StochRSI + BBWP)
+        "bbwp_squeeze" — Para 1h (BBWP Squeeze v2)
+        "regime_switching" — Para 2h/4h/1d (CTEV v7.1)
         "disabled" — Para 1m/3m/5m (sem edge)
     """
-    if timeframe in EMA_CROSS_TIMEFRAMES:
+    if timeframe in ATF_TIMEFRAMES:
         return "atf"
+    elif timeframe in BBWP_SQUEEZE_TIMEFRAMES:
+        return "bbwp_squeeze"
     elif timeframe in DISABLED_TIMEFRAMES:
         return "disabled"
     else:
@@ -77,7 +83,8 @@ def get_strategy_label(timeframe: str) -> str:
     """Retorna label descritivo da estrategia ativa."""
     st = get_strategy_type(timeframe)
     labels = {
-        "atf": "ATF v1 Adaptive Trend-Follow",
+        "atf": "ATF v2 StochRSI + BBWP",
+        "bbwp_squeeze": "BBWP Squeeze v3"
         "regime_switching": "CTEV v7.1 Regime-Switching",
         "disabled": "DESATIVADO (sem edge valida)",
     }
@@ -141,13 +148,19 @@ def evaluate_signal(
         logger.debug("Timeframe %s desativado (sem edge valida)", timeframe)
         return None
 
-    # ---- ATF v1 (15m/30m) ----
+    # ---- ATF v2 (15m/30m) ----
     if strategy_type == "atf":
-        from strategy_atf import evaluate_atf
-        logger.debug("Router [%s] -> ATF v1", timeframe)
-        return evaluate_atf(df, profile=profile)
+        from strategy_atf_v2 import evaluate_atf_v2
+        logger.debug("Router [%s] -> ATF v2 StochRSI + BBWP", timeframe)
+        return evaluate_atf_v2(df, profile=profile)
 
-    # ---- REGIME SWITCHING (1h+) ----
+    # ---- BBWP SQUEEZE v2 (1h) ----
+    if strategy_type == "bbwp_squeeze":
+        from strategy_bbwp_squeeze import evaluate_bbwp_squeeze
+        logger.debug("Router [%s] -> BBWP Squeeze v2", timeframe)
+        return evaluate_bbwp_squeeze(df, profile=profile)
+
+    # ---- REGIME SWITCHING (2h/4h/1d) ----
     if strategy_type == "regime_switching":
         from regime_engine import classify_regimes_v2
         from strategy_regime import evaluate_signal_regime_aware
@@ -187,8 +200,12 @@ def evaluate_signal_row(
         return None
 
     if strategy_type == "atf":
-        from strategy_atf import evaluate_atf_row
-        return evaluate_atf_row(row, prev_row, bar_index, profile=profile)
+        from strategy_atf_v2 import evaluate_atf_v2_row
+        return evaluate_atf_v2_row(row, prev_row, bar_index, profile=profile)
+
+    if strategy_type == "bbwp_squeeze":
+        from strategy_bbwp_squeeze import evaluate_bbwp_squeeze_row
+        return evaluate_bbwp_squeeze_row(row, prev_row, bar_index, df=None, profile=profile)
 
     # Para regime_switching, usa o fluxo padrao do backtest
     # (a logica de regime e aplicada em _simulate_regime_switching)
