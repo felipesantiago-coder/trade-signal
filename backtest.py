@@ -1785,7 +1785,7 @@ def _simulate_atf_v2(
 
 
 # ------------------------------------------------------------------
-# BBWP Squeeze v2 Simulation
+# BBWP Squeeze v4 Simulation
 # ------------------------------------------------------------------
 def _simulate_bbwp_squeeze(
     df_ind: pd.DataFrame,
@@ -1797,17 +1797,19 @@ def _simulate_bbwp_squeeze(
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int, dict]:
     r"""
-    Simulacao BBWP Squeeze v2 para 1h.
+    Simulacao BBWP Squeeze v4 para 1h.
 
-    Detecta squeeze (BBWP < threshold) seguido de expansao e breakout
-    das Bollinger Bands com Stoch RSI + volume + EMA trend confirmation.
+    v4 - FOCO EM MAXIMIZAR RETORNO POR TRADE:
+    - SL: 1.8x ATR (mais justo)
+    - TP1: 3.0x ATR (saida parcial 40%)
+    - Trailing: REATIVADO (1.2x ATR apos BE trigger 1.0x ATR)
+    - Partial TP: 40% sai no TP1, 60% roda com trailing
+    - Max bars: 120 (5 dias em 1h)
+    - Cooldown: 4 bars (3 apos trailing exit)
+    - Entry: BBWP<5 + expansao + BB breakout + StochRSI + Vol>0.6x
+    - EMA200 filter: ON
 
-    SL: adaptativo ao ATR percentile (1.5-2.5x ATR)
-    TP: 3.5x ATR
-    Trailing: ativo apos BE trigger (1.0x ATR)
-    Cooldown: 6 bars (3 apos trailing exit)
-
-    Custos: fee=0.016% + spread=2bps + slip=2bps (limit orders).
+    Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
     from strategy_bbwp_squeeze import (
         evaluate_bbwp_squeeze_row, reset_cooldown, BBWP_SQUEEZE_PARAMS,
@@ -1815,9 +1817,10 @@ def _simulate_bbwp_squeeze(
 
     reset_cooldown()
     _be_trigger = BBWP_SQUEEZE_PARAMS.get("be_trigger_atr_mult", 1.0)
-    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.5)
-    _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 72)
-    _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", False)
+    _trail_dist = BBWP_SQUEEZE_PARAMS.get("trailing_atr_mult", 1.2)
+    _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 120)
+    _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", True)
+    _tp1_pct = BBWP_SQUEEZE_PARAMS.get("tp1_pct", 0.40)
 
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -1836,8 +1839,13 @@ def _simulate_bbwp_squeeze(
     # Diagnostics
     _be_count = 0
     _trail_count = 0
+    _partial_tp_count = 0
     _diag_directions = {"long": 0, "short": 0}
     _diag_bbwp_at_entry = []
+    _diag_tp1_exits = 0
+    _diag_trailing_exits = 0
+    _diag_sl_exits = 0
+    _diag_timeout_exits = 0
 
     while i < n:
         row = df_ind.iloc[i]
@@ -1850,9 +1858,9 @@ def _simulate_bbwp_squeeze(
             _speed = i / _elapsed
             _scan_pct = 20 + (i / max(n, 1)) * 60
             _update_progress(
-                phase="Escaneando candles (BBWP Squeeze v2)", phase_num=4,
+                phase="Escaneando candles (BBWP Squeeze v4)", phase_num=4,
                 pct=round(_scan_pct, 1),
-                message=f"BBWP Squeeze v2 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                message=f"BBWP Squeeze v4 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
                 candles_total=n, candles_scanned=i, scan_speed=round(_speed),
                 current_price=round(float(row.get("close", 0)), 2),
             )
@@ -1892,14 +1900,12 @@ def _simulate_bbwp_squeeze(
         _diag_directions[direction] = _diag_directions.get(direction, 0) + 1
         _diag_bbwp_at_entry.append(round(bbwp_val, 1))
 
-        # ---- Trade simulation with trailing stop ----
+        # ---- Trade simulation with v4: partial TP + trailing ----
         entry_price = signal.entry_price
         sl = signal.stop_loss
-        tp = signal.take_profit
+        tp = signal.take_profit  # This is TP1 (3.0x ATR)
         atr = signal.atr
         is_long = signal.type == SignalType.LONG
-        exit_price = None
-        exit_reason = None
         bars = 0
 
         current_sl = sl
@@ -1908,6 +1914,10 @@ def _simulate_bbwp_squeeze(
         highest_favorable = entry_price
         sl_updates = 0
         was_trailing_exit = False
+
+        # v4: Partial TP state
+        tp1_filled = False
+        tp1_fill_price = 0.0
 
         for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]
@@ -1936,27 +1946,126 @@ def _simulate_bbwp_squeeze(
                 if f_low <= tp:
                     tp_hit = True
 
-            # TP hit (with trailing active or not)
-            if tp_hit and not sl_hit:
-                exit_price = tp
-                exit_reason = "tp"
-                break
-            elif tp_hit and sl_hit:
-                # Both hit same bar → conservative: use SL
-                exit_price = current_sl
-                exit_reason = "trailing_sl" if trailing_activated else "sl"
-                break
+            # --- v4: TP1 hit (partial exit) ---
+            if tp_hit and not tp1_filled:
+                tp1_filled = True
+                tp1_fill_price = tp
+                _partial_tp_count += 1
+                _diag_tp1_exits += 1
 
-            # BE trigger: price moved be_trigger * ATR in favor
-            if not be_triggered and _use_trailing:
-                fav_dist = abs(highest_favorable - entry_price)
-                if fav_dist >= atr * _be_trigger:
+                # After TP1, activate trailing immediately (skip BE wait)
+                if _use_trailing:
                     be_triggered = True
                     trailing_activated = True
-                    current_sl = entry_price
+                    current_sl = entry_price  # Move SL to BE
                     _be_count += 1
 
-            # Trailing stop (ratchet-only — only moves in favor)
+                # Don't break — continue with trailing on remaining 60%
+                if not _use_trailing:
+                    # No trailing = full exit at TP1
+                    break
+                # Continue to trailing loop below
+
+            # --- Both SL and TP hit same bar after TP1 filled ---
+            if tp_hit and sl_hit and tp1_filled:
+                # SL hit on remaining position — exit at SL
+                # Calculate weighted PnL from TP1 (40%) + SL (60%)
+                if is_long:
+                    tp1_pnl = (tp1_fill_price - entry_price) / entry_price
+                    sl_pnl = (current_sl - entry_price) / entry_price
+                else:
+                    tp1_pnl = (entry_price - tp1_fill_price) / entry_price
+                    sl_pnl = (entry_price - current_sl) / entry_price
+
+                # Apply costs
+                _, adj_tp1, cost1 = _apply_costs(entry_price, tp1_fill_price, is_long, _fee, _spread, _slip)
+                _, adj_sl, cost2 = _apply_costs(entry_price, current_sl, is_long, _fee, _spread, _slip)
+                if is_long:
+                    tp1_pnl = (adj_tp1 - entry_price) / entry_price * 100
+                    sl_pnl = (adj_sl - entry_price) / entry_price * 100
+                else:
+                    tp1_pnl = (entry_price - adj_tp1) / entry_price * 100
+                    sl_pnl = (entry_price - adj_sl) / entry_price * 100
+
+                weighted_pnl = _tp1_pct * tp1_pnl + (1 - _tp1_pct) * sl_pnl
+
+                trades.append(TradeResult(
+                    entry_ts=row.name,
+                    exit_ts=df_ind.iloc[j].name,
+                    type=signal.type.value,
+                    entry_price=entry_price,
+                    exit_price=tp,  # TP1 price as reference
+                    stop_loss=sl, take_profit=tp, atr=atr, rsi=signal.rsi,
+                    pnl_pct=round(weighted_pnl, 4),
+                    pnl_abs=round(tp - entry_price, 2),
+                    bars_held=bars, exit_reason="tp1_then_sl",
+                    atr_percentile=atr_pct, be_triggered=be_triggered,
+                    trailing_activated=trailing_activated,
+                    partial_tp_filled=True, sl_updates=sl_updates,
+                ))
+                _diag_sl_exits += 1
+                was_trailing_exit = True
+                break
+
+            # --- SL hit (before TP1 or after TP1 on remaining) ---
+            if sl_hit and not tp_hit:
+                if tp1_filled:
+                    # TP1 already filled — exit remaining at SL
+                    # Apply costs
+                    _, adj_tp1, cost1 = _apply_costs(entry_price, tp1_fill_price, is_long, _fee, _spread, _slip)
+                    _, adj_sl, cost2 = _apply_costs(entry_price, current_sl, is_long, _fee, _spread, _slip)
+                    if is_long:
+                        tp1_pnl = (adj_tp1 - entry_price) / entry_price * 100
+                        sl_pnl = (adj_sl - entry_price) / entry_price * 100
+                    else:
+                        tp1_pnl = (entry_price - adj_tp1) / entry_price * 100
+                        sl_pnl = (entry_price - adj_sl) / entry_price * 100
+                    weighted_pnl = _tp1_pct * tp1_pnl + (1 - _tp1_pct) * sl_pnl
+
+                    trades.append(TradeResult(
+                        entry_ts=row.name,
+                        exit_ts=df_ind.iloc[j].name,
+                        type=signal.type.value,
+                        entry_price=entry_price,
+                        exit_price=current_sl,
+                        stop_loss=sl, take_profit=tp, atr=atr, rsi=signal.rsi,
+                        pnl_pct=round(weighted_pnl, 4),
+                        pnl_abs=round(current_sl - entry_price, 2),
+                        bars_held=bars, exit_reason="trailing_sl",
+                        atr_percentile=atr_pct, be_triggered=be_triggered,
+                        trailing_activated=trailing_activated,
+                        partial_tp_filled=True, sl_updates=sl_updates,
+                    ))
+                    _diag_trailing_exits += 1
+                    was_trailing_exit = True
+                else:
+                    # SL hit before TP1 — full loss
+                    _, adj_exit, cost_pct = _apply_costs(
+                        entry_price, current_sl, is_long, _fee, _spread, _slip,
+                    )
+                    if is_long:
+                        pnl_pct = (adj_exit - entry_price) / entry_price * 100
+                    else:
+                        pnl_pct = (entry_price - adj_exit) / entry_price * 100
+
+                    trades.append(TradeResult(
+                        entry_ts=row.name,
+                        exit_ts=df_ind.iloc[j].name,
+                        type=signal.type.value,
+                        entry_price=entry_price,
+                        exit_price=current_sl, stop_loss=sl, take_profit=tp,
+                        atr=atr, rsi=signal.rsi,
+                        pnl_pct=round(pnl_pct, 4),
+                        pnl_abs=round(current_sl - entry_price, 2),
+                        bars_held=bars, exit_reason="sl",
+                        atr_percentile=atr_pct, be_triggered=False,
+                        trailing_activated=False, partial_tp_filled=False,
+                        sl_updates=0,
+                    ))
+                    _diag_sl_exits += 1
+                break
+
+            # --- Trailing stop (ratchet-only — only moves in favor) ---
             if trailing_activated and _use_trailing:
                 trail_distance = atr * _trail_dist
                 if is_long:
@@ -1972,62 +2081,82 @@ def _simulate_bbwp_squeeze(
                         sl_updates += 1
                         _trail_count += 1
 
-            # SL hit
-            if sl_hit and not tp_hit:
-                exit_price = current_sl
-                exit_reason = "trailing_sl" if trailing_activated else "sl"
-                was_trailing_exit = trailing_activated
-                break
-
-        if exit_price is None:
+        # === End of bar loop — handle exit ===
+        if len(trades) > 0 and trades[-1].entry_ts == row.name:
+            # Trade was already appended inside the loop (SL/TP hit)
+            pass
+        else:
+            # Timeout or no exit triggered
             last_j = min(i + _max_bars, n) - 1
-            exit_price = float(df_ind.iloc[last_j]["close"])
-            exit_reason = "timeout"
+            exit_price_close = float(df_ind.iloc[last_j]["close"])
             bars = last_j - i
 
-        # Apply costs (limit order pricing)
-        _, adj_exit, cost_pct = _apply_costs(
-            entry_price, exit_price, is_long,
-            _fee, _spread, _slip,
-        )
-        if is_long:
-            pnl_pct = (adj_exit - entry_price) / entry_price * 100
-        else:
-            pnl_pct = (entry_price - adj_exit) / entry_price * 100
+            if tp1_filled:
+                # TP1 was hit, remaining exited at close (timeout)
+                _, adj_tp1, cost1 = _apply_costs(entry_price, tp1_fill_price, is_long, _fee, _spread, _slip)
+                _, adj_close, cost2 = _apply_costs(entry_price, exit_price_close, is_long, _fee, _spread, _slip)
+                if is_long:
+                    tp1_pnl = (adj_tp1 - entry_price) / entry_price * 100
+                    close_pnl = (adj_close - entry_price) / entry_price * 100
+                else:
+                    tp1_pnl = (entry_price - adj_tp1) / entry_price * 100
+                    close_pnl = (entry_price - adj_close) / entry_price * 100
+                weighted_pnl = _tp1_pct * tp1_pnl + (1 - _tp1_pct) * close_pnl
 
-        trades.append(TradeResult(
-            entry_ts=row.name,
-            exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
-            type=signal.type.value,
-            entry_price=entry_price,
-            exit_price=exit_price,
-            stop_loss=sl,
-            take_profit=tp,
-            atr=atr,
-            rsi=signal.rsi,
-            pnl_pct=round(pnl_pct, 4),
-            pnl_abs=round(exit_price - entry_price, 2),
-            bars_held=bars,
-            exit_reason=exit_reason,
-            atr_percentile=atr_pct,
-            be_triggered=be_triggered,
-            trailing_activated=trailing_activated,
-            partial_tp_filled=False,
-            sl_updates=sl_updates,
-        ))
+                trades.append(TradeResult(
+                    entry_ts=row.name,
+                    exit_ts=df_ind.iloc[last_j].name,
+                    type=signal.type.value,
+                    entry_price=entry_price,
+                    exit_price=exit_price_close,
+                    stop_loss=sl, take_profit=tp, atr=atr, rsi=signal.rsi,
+                    pnl_pct=round(weighted_pnl, 4),
+                    pnl_abs=round(exit_price_close - entry_price, 2),
+                    bars_held=bars, exit_reason="tp1_then_timeout",
+                    atr_percentile=atr_pct, be_triggered=be_triggered,
+                    trailing_activated=trailing_activated,
+                    partial_tp_filled=True, sl_updates=sl_updates,
+                ))
+                _diag_timeout_exits += 1
+                was_trailing_exit = trailing_activated
+            else:
+                # No TP1 hit — full exit at close
+                _, adj_exit, cost_pct = _apply_costs(
+                    entry_price, exit_price_close, is_long, _fee, _spread, _slip,
+                )
+                if is_long:
+                    pnl_pct = (adj_exit - entry_price) / entry_price * 100
+                else:
+                    pnl_pct = (entry_price - adj_exit) / entry_price * 100
+
+                trades.append(TradeResult(
+                    entry_ts=row.name,
+                    exit_ts=df_ind.iloc[last_j].name,
+                    type=signal.type.value,
+                    entry_price=entry_price,
+                    exit_price=exit_price_close, stop_loss=sl, take_profit=tp,
+                    atr=atr, rsi=signal.rsi,
+                    pnl_pct=round(pnl_pct, 4),
+                    pnl_abs=round(exit_price_close - entry_price, 2),
+                    bars_held=bars, exit_reason="timeout",
+                    atr_percentile=atr_pct, be_triggered=False,
+                    trailing_activated=False, partial_tp_filled=False,
+                    sl_updates=0,
+                ))
+                _diag_timeout_exits += 1
 
         # Register trailing exit for shorter cooldown on re-entry
         _from_bbwp = __import__("strategy_bbwp_squeeze")
         _from_bbwp._register_signal(i + bars, was_trailing=was_trailing_exit)
 
-        _running_pnl += pnl_pct
+        _running_pnl += trades[-1].pnl_pct
         _eq_points.append(round(_running_pnl, 2))
 
         _update_progress(
             signals_found=len(trades),
             last_signal_type=signal.type.value,
             last_signal_price=round(entry_price, 2),
-            last_signal_pnl=round(pnl_pct, 2),
+            last_signal_pnl=round(trades[-1].pnl_pct, 2),
             equity_snapshot=list(_eq_points[-50:]),
         )
 
@@ -2036,19 +2165,26 @@ def _simulate_bbwp_squeeze(
     # Summary
     avg_bbwp = np.mean(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0
     logger.info(
-        "BBWP Squeeze v2: %d trades, %d ATR filt, BE=%d, trail=%d, "
-        "longs=%d, shorts=%d, avg_bbwp=%.1f",
-        len(trades), atr_filtered, _be_count, _trail_count,
+        "BBWP Squeeze v4: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
+        "longs=%d, shorts=%d, avg_bbwp=%.1f, exits=[tp1=%d trail=%d sl=%d timeout=%d]",
+        len(trades), atr_filtered, _be_count, _trail_count, _partial_tp_count,
         _diag_directions.get("long", 0), _diag_directions.get("short", 0),
-        avg_bbwp,
+        avg_bbwp, _diag_tp1_exits, _diag_trailing_exits, _diag_sl_exits, _diag_timeout_exits,
     )
 
     _diag = {
-        "strategy": "bbwp_squeeze_v2",
+        "strategy": "bbwp_squeeze_v4",
         "atr_filtered": atr_filtered,
         "be_triggered": _be_count,
         "trailing_updates": _trail_count,
+        "partial_tp_count": _partial_tp_count,
         "directions": _diag_directions,
+        "exits": {
+            "tp1": _diag_tp1_exits,
+            "trailing": _diag_trailing_exits,
+            "sl": _diag_sl_exits,
+            "timeout": _diag_timeout_exits,
+        },
         "bbwp_at_entry": {
             "min": min(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0,
             "max": max(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0,
@@ -2371,7 +2507,7 @@ def run_backtest(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
     elif profile.name == "BBWP_SQUEEZE":
-        # BBWP Squeeze v2 para 1h
+        # BBWP Squeeze v4 para 1h (partial TP + trailing)
         trades, atr_filtered, _diag = _simulate_bbwp_squeeze(
             df_clean, _atr_min, _atr_max, profile=profile,
         )

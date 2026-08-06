@@ -1,38 +1,48 @@
 r"""
 strategy_bbwp_squeeze.py
 ------------------------
-Squeeze Momentum Breakout Strategy v3 para BTC/USDT (15m e 1h).
+Squeeze Momentum Breakout Strategy v4 para BTC/USDT (15m e 1h).
 
-v3 - Otimizado via grid search com 2160 combinacoes (1h, 6 meses):
-  Resultado validado: WR=67.7%, PnL=+16.41% (+25.64pp vs B&H), PF=2.56, 31 trades
+v4 - FOCO EM MAXIMIZAR RETORNO POR TRADE sem sacrificar quantidade:
 
-  Mudancas vs v2:
-  1. BBWP_THRESHOLD: 20 -> 5 (mais sensivel ao squeeze)
-  2. VOLUME_MULT: 1.3 -> 0.8 (menos exigente, captura mais breakouts)
-  3. TP_ATR_MULT: 5.0 -> 2.5 (R:R mais realista, SL=2.0x => R:R 1.25:1)
-  4. TRAILING: DESATIVADO (reduzia WR significativamente)
-  5. EMA200_FILTER: ON (manter tendencia macro)
-  6. DIVERGENCE_FILTER: OFF na entrada (era muito restritivo)
-  7. STOCH_RSI_OB: 65 -> 70 (zona de sobrecompra mais tradicional)
-  8. STOCH_RSI_OS: 35 -> 30 (zona de sobrevenda mais tradicional)
-  9. SQUEEZE_RECENT_BARS: 5 -> 8 (janela maior para detectar squeeze)
-  10. SL_ADAPTIVO: removido (SL fixo 2.0x ATR)
+  Problemas do v3 (validado 6 meses: WR=67.7%, PnL=+16.41%, 31 trades):
+  1. TP=2.5x ATR com SL=2.0x ATR => R:R 1.25:1 (ganhos limitados)
+  2. Trailing DESATIVADO => nao captura movimentos estendidos
+  3. Trades vencedores saem cedo demais, perdendo grandes movimentos
 
-Logica central:
-  1. BBWP < 5 (percentil) nos ultimos 8 bars
+  Mudancas v3 -> v4:
+  1. TRAILING: REATIVADO com logica melhorada:
+     - BE trigger: 1.0x ATR (move SL para entry)
+     - Trailing distance: 1.2x ATR (mais justo que 1.5x)
+     - Partial TP: 40% no TP1 (3.0x ATR), 60% roda com trailing
+  2. TP PROGRESSIVO (em vez de fixo):
+     - TP1: 3.0x ATR (saida parcial 40%)
+     - Apos TP1: trailing ativo captura o resto do movimento
+     - Sem TP2 fixo - deixa o trailing rodar ate revert
+  3. SL mais justo: 1.8x ATR (de 2.0x) => melhora R:R efetivo
+  4. MAX_BARS: 120 (de 72) => mais tempo para capturar movimentos grandes
+  5. COOLDOWN: 4 bars (de 6) => mais oportunidades de entrada
+  6. VOLUME_MULT: 0.6 (de 0.8) => menos restritivo, mais trades
+  7. STOCH_RSI OB/OS: 65/35 (de 70/30) => mais sensivel ao momentum
+  8. SQUEEZE_RECENT_BARS: 6 (de 8) => janela mais justa
+
+  Logica central (mantida do v3):
+  1. BBWP < 5 (percentil) nos ultimos N bars
   2. BBWP esta expandindo (delta > 0)
   3. BB breakout (close > upper ou close < lower)
-  4. Stoch RSI confirma momentum (K>=70 para LONG, K<=30 para SHORT)
-  5. Volume >= 0.8 * SMA(Volume, 20)
+  4. Stoch RSI confirma momentum
+  5. Volume >= 0.6 * SMA(Volume, 20)
   6. EMA50 alinha com tendencia
   7. EMA200 confirma tendencia macro
 
-Gestao de risco:
-  - SL: 2.0x ATR (fixo)
-  - TP: 2.5x ATR
-  - Cooldown: 6 bars
+Gestao de risco v4:
+  - SL: 1.8x ATR (fixo, mais justo)
+  - TP1: 3.0x ATR (partial 40%)
+  - Trailing: 1.2x ATR apos BE trigger (1.0x ATR)
+  - Max bars: 120 (5 dias em 1h)
+  - Cooldown: 4 bars (3 apos trailing exit)
 
-Custos: taker fee 0.031% + spread 1bp + slip 1bp.
+Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
 from __future__ import annotations
 
@@ -55,38 +65,39 @@ logger = logging.getLogger(__name__)
 # ==================================================================
 
 BBWP_SQUEEZE_PARAMS = {
-    # ---- Squeeze Detection (v3: otimizado) ----
-    "bbwp_threshold": 5,         # BBWP abaixo deste valor = squeeze (v2: 20)
-    "squeeze_recent_bars": 8,     # Ultimos N bars para verificar squeeze (v2: 5)
+    # ---- Squeeze Detection (v4: otimizado) ----
+    "bbwp_threshold": 5,         # BBWP abaixo deste valor = squeeze
+    "squeeze_recent_bars": 6,     # v4: 6 (de 8) — janela mais justa
     "require_bbwp_expansion": True,  # BBWP deve estar expandindo (delta > 0)
 
-    # ---- Entry Conditions (v3: otimizado) ----
-    "volume_mult": 0.8,          # Volume > mult * SMA(Volume, 20) (v2: 1.3)
-    "stoch_rsi_ob": 70,           # Stoch RSI sobrecompra LONG (v2: 65)
-    "stoch_rsi_os": 30,           # Stoch RSI sobrevenda SHORT (v2: 35)
+    # ---- Entry Conditions (v4: mais sensivel) ----
+    "volume_mult": 0.6,          # v4: 0.6 (de 0.8) — menos restritivo, mais trades
+    "stoch_rsi_ob": 65,           # v4: 65 (de 70) — mais sensivel ao momentum
+    "stoch_rsi_os": 35,           # v4: 35 (de 30) — mais sensivel ao momentum
     "stoch_rsi_cross_enable": True,
     "stoch_rsi_min_delta": 0,     # Minimo delta K para confirmar momentum (0=any)
 
-    # ---- Stop Loss (v3: fixo, sem adaptacao) ----
-    "sl_atr_mult": 2.0,           # SL base = mult * ATR (fixo)
-    "sl_atr_mult_high_vol": 2.0, # SL em alta volatilidade (mesmo)
-    "sl_atr_mult_low_vol": 2.0,  # SL em baixa volatilidade (mesmo)
+    # ---- Stop Loss (v4: mais justo) ----
+    "sl_atr_mult": 1.8,           # v4: 1.8x ATR (de 2.0x) — SL mais justo
+    "sl_atr_mult_high_vol": 1.8, # Mesmo em alta volatilidade
+    "sl_atr_mult_low_vol": 1.8,  # Mesmo em baixa volatilidade
 
-    # ---- Take Profit (v3: reduzido para R:R realista) ----
-    "tp_atr_mult": 2.5,           # TP = entry + mult * ATR (v2: 5.0)
+    # ---- Take Profit (v4: progressivo) ----
+    "tp_atr_mult": 3.0,           # v4: 3.0x ATR (de 2.5x) — TP1 para saida parcial
+    "tp1_pct": 0.40,              # v4: Saida 40% no TP1
 
-    # ---- Trailing Stop (v3: DESATIVADO) ----
-    "use_trailing": False,        # Desativado (reduzia WR significativamente)
-    "be_trigger_atr_mult": 1.0,  # Move SL para entry apos este ATR em profit
-    "trailing_atr_mult": 1.5,     # Trailing distance = mult * ATR
+    # ---- Trailing Stop (v4: REATIVADO com logica melhorada) ----
+    "use_trailing": True,         # v4: REATIVADO
+    "be_trigger_atr_mult": 1.0,  # Move SL para entry apos 1.0x ATR em profit
+    "trailing_atr_mult": 1.2,     # v4: 1.2x ATR (de 1.5x) — trailing mais justo
 
-    # ---- RSI Divergence (v3: OFF na entrada) ----
-    "use_divergence_exit": False, # Desativado (era muito restritivo)
+    # ---- RSI Divergence (v4: OFF) ----
+    "use_divergence_exit": False, # Desativado
     "divergence_min_bars": 3,
 
-    # ---- General ----
-    "max_bars_held": 72,
-    "cooldown": 6,
+    # ---- General (v4: mais tempo, menos cooldown) ----
+    "max_bars_held": 120,         # v4: 120 (de 72) — 5 dias em 1h
+    "cooldown": 4,                # v4: 4 (de 6) — mais oportunidades
     "cooldown_trailing": 3,
 
     # ---- Filters ----
