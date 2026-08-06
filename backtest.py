@@ -1785,7 +1785,7 @@ def _simulate_atf_v2(
 
 
 # ------------------------------------------------------------------
-# BBWP Squeeze v4 Simulation
+# BBWP Squeeze v5 Simulation
 # ------------------------------------------------------------------
 def _simulate_bbwp_squeeze(
     df_ind: pd.DataFrame,
@@ -1797,17 +1797,16 @@ def _simulate_bbwp_squeeze(
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int, dict]:
     r"""
-    Simulacao BBWP Squeeze v4 para 1h.
+    Simulacao BBWP Squeeze v5 para 1h.
 
-    v4 - FOCO EM MAXIMIZAR RETORNO POR TRADE:
-    - SL: 1.8x ATR (mais justo)
-    - TP1: 3.0x ATR (saida parcial 40%)
-    - Trailing: REATIVADO (1.2x ATR apos BE trigger 1.0x ATR)
-    - Partial TP: 40% sai no TP1, 60% roda com trailing
-    - Max bars: 120 (5 dias em 1h)
-    - Cooldown: 4 bars (3 apos trailing exit)
-    - Entry: BBWP<5 + expansao + BB breakout + StochRSI + Vol>0.6x
-    - EMA200 filter: ON
+    v5 - MAIORES RETORNOS + MAIS TRADES:
+    - SL: 2.0x ATR (evita fake breakouts)
+    - TP1: 4.0x ATR (saida parcial 30%)
+    - Trailing: 2.0x ATR apos BE trigger (1.5x ATR)
+    - BB Breakout Buffer: 15% da BB width alem da banda (filtra wicks)
+    - BBWP threshold: 10 (3x mais signals que v4)
+    - Max bars: 168 (7 dias em 1h)
+    - Cooldown: 3 bars (2 apos trailing exit)
 
     Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
@@ -1858,9 +1857,9 @@ def _simulate_bbwp_squeeze(
             _speed = i / _elapsed
             _scan_pct = 20 + (i / max(n, 1)) * 60
             _update_progress(
-                phase="Escaneando candles (BBWP Squeeze v4)", phase_num=4,
+                phase="Escaneando candles (BBWP Squeeze v5)", phase_num=4,
                 pct=round(_scan_pct, 1),
-                message=f"BBWP Squeeze v4 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                message=f"BBWP Squeeze v5 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
                 candles_total=n, candles_scanned=i, scan_speed=round(_speed),
                 current_price=round(float(row.get("close", 0)), 2),
             )
@@ -2165,7 +2164,7 @@ def _simulate_bbwp_squeeze(
     # Summary
     avg_bbwp = np.mean(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0
     logger.info(
-        "BBWP Squeeze v4: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
+        "BBWP Squeeze v5: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
         "longs=%d, shorts=%d, avg_bbwp=%.1f, exits=[tp1=%d trail=%d sl=%d timeout=%d]",
         len(trades), atr_filtered, _be_count, _trail_count, _partial_tp_count,
         _diag_directions.get("long", 0), _diag_directions.get("short", 0),
@@ -2173,7 +2172,7 @@ def _simulate_bbwp_squeeze(
     )
 
     _diag = {
-        "strategy": "bbwp_squeeze_v4",
+        "strategy": "bbwp_squeeze_v5",
         "atr_filtered": atr_filtered,
         "be_triggered": _be_count,
         "trailing_updates": _trail_count,

@@ -1,46 +1,52 @@
 r"""
 strategy_bbwp_squeeze.py
 ------------------------
-Squeeze Momentum Breakout Strategy v4 para BTC/USDT (15m e 1h).
+Squeeze Momentum Breakout Strategy v5 para BTC/USDT (15m e 1h).
 
-v4 - FOCO EM MAXIMIZAR RETORNO POR TRADE sem sacrificar quantidade:
+v5 - MAIORES RETORNOS + MAIS TRADES:
 
-  Problemas do v3 (validado 6 meses: WR=67.7%, PnL=+16.41%, 31 trades):
-  1. TP=2.5x ATR com SL=2.0x ATR => R:R 1.25:1 (ganhos limitados)
-  2. Trailing DESATIVADO => nao captura movimentos estendidos
-  3. Trades vencedores saem cedo demais, perdendo grandes movimentos
+  Problemas do v4 (730d: 72 trades, WR=43.1%, PF=1.35, PnL=+14.65%):
+  1. Trailing 1.2x ATR MUITO JUSTO => 100% dos wins sao tp1_then_sl (trailing sai no BE)
+  2. TP1=3.0x com 40% partial => avg win so +1.80% (trailing nao contribui)
+  3. BBWP<5 ultra-raro => apenas 72 trades em 730 dias (1 a cada 10 dias)
+  4. SL 1.8x aperta demais => 8 trades com SL em 1-2 barras (fake breakouts)
+  5. R:R medio 1.25 => trailing nao cumpre seu papel
 
-  Mudancas v3 -> v4:
-  1. TRAILING: REATIVADO com logica melhorada:
-     - BE trigger: 1.0x ATR (move SL para entry)
-     - Trailing distance: 1.2x ATR (mais justo que 1.5x)
-     - Partial TP: 40% no TP1 (3.0x ATR), 60% roda com trailing
-  2. TP PROGRESSIVO (em vez de fixo):
-     - TP1: 3.0x ATR (saida parcial 40%)
-     - Apos TP1: trailing ativo captura o resto do movimento
-     - Sem TP2 fixo - deixa o trailing rodar ate revert
-  3. SL mais justo: 1.8x ATR (de 2.0x) => melhora R:R efetivo
-  4. MAX_BARS: 120 (de 72) => mais tempo para capturar movimentos grandes
-  5. COOLDOWN: 4 bars (de 6) => mais oportunidades de entrada
-  6. VOLUME_MULT: 0.6 (de 0.8) => menos restritivo, mais trades
-  7. STOCH_RSI OB/OS: 65/35 (de 70/30) => mais sensivel ao momentum
-  8. SQUEEZE_RECENT_BARS: 6 (de 8) => janela mais justa
+  Mudancas v4 -> v5:
+  MAIORES RETORNOS POR TRADE:
+  1. TRAILING: 1.2x -> 2.0x ATR (deixa ganhadores correrem de verdade)
+  2. TP1: 3.0x -> 4.0x ATR (primeira saida maior)
+  3. TP1_PCT: 40% -> 30% (deixa 70% para trailing capturar o movimento)
+  4. BE_TRIGGER: 1.0x -> 1.5x ATR (espera mais profit antes de mover para BE)
 
-  Logica central (mantida do v3):
-  1. BBWP < 5 (percentil) nos ultimos N bars
-  2. BBWP esta expandindo (delta > 0)
-  3. BB breakout (close > upper ou close < lower)
-  4. Stoch RSI confirma momentum
-  5. Volume >= 0.6 * SMA(Volume, 20)
+  MAIS TRADES:
+  5. BBWP_THRESHOLD: 5 -> 10 (3x mais squeeze events detectados)
+  6. SQUEEZE_RECENT_BARS: 6 -> 10 (janela maior para detectar squeeze)
+  7. VOLUME_MULT: 0.6 -> 0.5 (ainda menos restritivo)
+  8. STOCH_RSI OB/OS: 65/35 -> 60/40 (mais sensivel ao momentum)
+  9. COOLDOWN: 4 -> 3 (mais oportunidades)
+
+  MENOS WHIPSAWS:
+  10. SL: 1.8x -> 2.0x ATR (volta ao v3, evita fake breakouts 1-2 bars)
+  11. BB_BREAKOUT_BUFFER: NOVO - close deve estar 15% da largura BB alem da banda
+      (filtra wicks/toques vs breakouts reais com corpo)
+  12. MAX_BARS: 120 -> 168 (7 dias em 1h - mais tempo para tendencias)
+
+  Logica central:
+  1. BBWP < 10 nos ultimos 10 bars (v4: < 5 em 6 bars)
+  2. BBWP expandindo (delta > 0)
+  3. BB breakout com corpo (close > upper + 15% BB width)
+  4. Stoch RSI confirma momentum (K>=60 LONG, K<=40 SHORT)
+  5. Volume >= 0.5 * SMA(Volume, 20)
   6. EMA50 alinha com tendencia
   7. EMA200 confirma tendencia macro
 
-Gestao de risco v4:
-  - SL: 1.8x ATR (fixo, mais justo)
-  - TP1: 3.0x ATR (partial 40%)
-  - Trailing: 1.2x ATR apos BE trigger (1.0x ATR)
-  - Max bars: 120 (5 dias em 1h)
-  - Cooldown: 4 bars (3 apos trailing exit)
+Gestao de risco v5:
+  - SL: 2.0x ATR (volta ao v3 - evita whipsaws)
+  - TP1: 4.0x ATR (partial 30%)
+  - Trailing: 2.0x ATR apos BE trigger (1.5x ATR)
+  - Max bars: 168 (7 dias em 1h)
+  - Cooldown: 3 bars (2 apos trailing exit)
 
 Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
@@ -65,40 +71,41 @@ logger = logging.getLogger(__name__)
 # ==================================================================
 
 BBWP_SQUEEZE_PARAMS = {
-    # ---- Squeeze Detection (v4: otimizado) ----
-    "bbwp_threshold": 5,         # BBWP abaixo deste valor = squeeze
-    "squeeze_recent_bars": 6,     # v4: 6 (de 8) — janela mais justa
+    # ---- Squeeze Detection (v5: muito mais sensivel) ----
+    "bbwp_threshold": 10,        # v5: 10 (de 5) — 3x mais squeeze events
+    "squeeze_recent_bars": 10,    # v5: 10 (de 6) — janela maior
     "require_bbwp_expansion": True,  # BBWP deve estar expandindo (delta > 0)
 
-    # ---- Entry Conditions (v4: mais sensivel) ----
-    "volume_mult": 0.6,          # v4: 0.6 (de 0.8) — menos restritivo, mais trades
-    "stoch_rsi_ob": 65,           # v4: 65 (de 70) — mais sensivel ao momentum
-    "stoch_rsi_os": 35,           # v4: 35 (de 30) — mais sensivel ao momentum
+    # ---- Entry Conditions (v5: significativamente mais sensivel) ----
+    "volume_mult": 0.5,          # v5: 0.5 (de 0.6) — menos restritivo
+    "stoch_rsi_ob": 60,           # v5: 60 (de 65) — mais sensivel ao momentum
+    "stoch_rsi_os": 40,           # v5: 40 (de 35) — mais sensivel ao momentum
     "stoch_rsi_cross_enable": True,
     "stoch_rsi_min_delta": 0,     # Minimo delta K para confirmar momentum (0=any)
+    "bb_breakout_buffer": 0.15,   # v5: NOVO — close deve estar 15% da BB width alem da banda
 
-    # ---- Stop Loss (v4: mais justo) ----
-    "sl_atr_mult": 1.8,           # v4: 1.8x ATR (de 2.0x) — SL mais justo
-    "sl_atr_mult_high_vol": 1.8, # Mesmo em alta volatilidade
-    "sl_atr_mult_low_vol": 1.8,  # Mesmo em baixa volatilidade
+    # ---- Stop Loss (v5: volta ao 2.0x para evitar whipsaws) ----
+    "sl_atr_mult": 2.0,           # v5: 2.0x ATR (de 1.8x) — evita fake breakouts
+    "sl_atr_mult_high_vol": 2.0, # Mesmo em alta volatilidade
+    "sl_atr_mult_low_vol": 2.0,  # Mesmo em baixa volatilidade
 
-    # ---- Take Profit (v4: progressivo) ----
-    "tp_atr_mult": 3.0,           # v4: 3.0x ATR (de 2.5x) — TP1 para saida parcial
-    "tp1_pct": 0.40,              # v4: Saida 40% no TP1
+    # ---- Take Profit (v5: TP1 maior, menos partial) ----
+    "tp_atr_mult": 4.0,           # v5: 4.0x ATR (de 3.0x) — TP1 maior
+    "tp1_pct": 0.30,              # v5: Saida 30% no TP1 (de 40%), 70% para trailing
 
-    # ---- Trailing Stop (v4: REATIVADO com logica melhorada) ----
-    "use_trailing": True,         # v4: REATIVADO
-    "be_trigger_atr_mult": 1.0,  # Move SL para entry apos 1.0x ATR em profit
-    "trailing_atr_mult": 1.2,     # v4: 1.2x ATR (de 1.5x) — trailing mais justo
+    # ---- Trailing Stop (v5: muito mais largo) ----
+    "use_trailing": True,         # REATIVADO
+    "be_trigger_atr_mult": 1.5,  # v5: 1.5x ATR (de 1.0x) — espera mais antes de BE
+    "trailing_atr_mult": 2.0,     # v5: 2.0x ATR (de 1.2x) — DEIXA GANHADORES CORREREM
 
-    # ---- RSI Divergence (v4: OFF) ----
+    # ---- RSI Divergence (OFF) ----
     "use_divergence_exit": False, # Desativado
     "divergence_min_bars": 3,
 
-    # ---- General (v4: mais tempo, menos cooldown) ----
-    "max_bars_held": 120,         # v4: 120 (de 72) — 5 dias em 1h
-    "cooldown": 4,                # v4: 4 (de 6) — mais oportunidades
-    "cooldown_trailing": 3,
+    # ---- General (v5: mais tempo, menos cooldown) ----
+    "max_bars_held": 168,         # v5: 168 (de 120) — 7 dias em 1h
+    "cooldown": 3,                # v5: 3 (de 4) — mais oportunidades
+    "cooldown_trailing": 2,
 
     # ---- Filters ----
     "atr_pct_min": 0.10,
@@ -314,6 +321,8 @@ def _evaluate_direction(row, prev_row, direction: str, idx: int = 0, df=None, pr
     close = float(row["close"])
     bb_upper = float(row.get("bb_upper", 0))
     bb_lower = float(row.get("bb_lower", 0))
+    bb_middle = float(row.get("bb_middle", 0))
+    bb_width = float(row.get("bb_width", 0))
     ema50 = float(row.get("ema50", 0))
     ema200 = float(row.get("ema200", 0))
     atr = float(row.get("atr", 0))
@@ -324,9 +333,14 @@ def _evaluate_direction(row, prev_row, direction: str, idx: int = 0, df=None, pr
     
     sl_mult = _get_sl_mult(row)
     
+    # v5: BB breakout buffer — close deve estar alem da banda + buffer
+    bb_buffer = p.get("bb_breakout_buffer", 0)
+    bb_range = bb_upper - bb_lower
+    
     if direction == "long":
-        # 4. BB breakout (close above upper band)
-        if close <= bb_upper:
+        # 4. BB breakout com corpo (close > upper + buffer * BB width)
+        breakout_level = bb_upper + bb_buffer * bb_range
+        if close <= breakout_level:
             return None
         
         # 5. Stoch RSI confirmation
@@ -349,8 +363,9 @@ def _evaluate_direction(row, prev_row, direction: str, idx: int = 0, df=None, pr
         
         return (sl, tp, atr, bbwp)
     else:
-        # 4. BB breakout (close below lower band)
-        if close >= bb_lower:
+        # 4. BB breakout com corpo (close < lower - buffer * BB width)
+        breakout_level = bb_lower - bb_buffer * bb_range
+        if close >= breakout_level:
             return None
         
         # 5. Stoch RSI confirmation

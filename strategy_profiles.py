@@ -247,18 +247,18 @@ PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
     timeframes=("1h",),
     description=(
-        "[BBWP Squeeze v4] Foco em maximizar retorno por trade. "
-        "v3->v4: Trailing REATIVADO (1.2x ATR), TP1=3.0x ATR (partial 40%), "
-        "SL=1.8x ATR (mais justo), max_bars=120, cooldown=4, vol>0.6x. "
-        "StochRSI OB/OS=65/35 (mais sensivel). Partial TP + trailing captura movimentos estendidos. "
+        "[BBWP Squeeze v5] Maiores retornos + mais trades. "
+        "v5: Trailing 2.0x ATR (de 1.2x), TP1=4.0x ATR (30%), SL=2.0x, "
+        "BBWP<10 (de 5), BB breakout buffer 15%, BE=1.5x ATR, "
+        "cooldown=3, max_bars=168, vol>0.5x, StochRSI 60/40. "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
     # Filtros de entrada (BBWP Squeeze has its own internal logic)
     atr_pct_min=0.10,
     atr_pct_max=0.90,
-    sl_atr_mult=1.8,
-    tp_atr_mult=3.0,
-    max_bars_held=120,
+    sl_atr_mult=2.0,
+    tp_atr_mult=4.0,
+    max_bars_held=168,
     # Reference params (actual logic in strategy_bbwp_squeeze.py)
     adx_min=0.0,
     allow_transition=True,
