@@ -1,35 +1,38 @@
 r"""
 strategy_bbwp_squeeze.py
 ------------------------
-Squeeze Momentum Breakout Strategy v12 para BTC/USDT (1h).
+Squeeze Momentum Breakout Strategy v14 para BTC/USDT (1h).
 
-v12 - COOLDOWN DIRECIONAL INTELIGENTE (versao de producao):
+v14 - SAIDAS AMPLIADAS (versao de producao):
 
-  Resultados v12 (730d): 140T, WR=49.3%, PF=1.23, PnL=+21.53%, DD=11.34%
-  Resultados v8  (730d): 122T, WR=48.4%, PF=1.33, PnL=+25.53%, DD=8.73%
-  Resultados v13 (730d): 131T, WR=47.3%, PF=1.15, PnL=+14.19%, DD=9.96% REGRESSAO
+  Resultados v14 (730d, risk=2% composto):
+    95T, WR=41.1%, PF=1.53, +115.1% composto, DD=22.4%, +57.5% anual
 
-  v13 adicionou ADX>20 para reversoes e FOI PIOR — o filtro removeu
-  boas reversoes em tendencias moderadas (ADX 16-20). Licao encerrada.
+  Resultados v13 (730d, retorno simples):
+    131T, WR=47.3%, PF=1.15, +14.19%, DD=9.96%, ~7% anual composto
 
-  v12 e o melhor compromisso: +18 trades vs v8 (-15.7% PnL), PF=1.23
-  solido, 365d excelente (PF=1.48, PnL=+22.53%). Cooldown direcional
-  sem filtros extras e o sweet spot.
+  v14 = v13 com saidas ampliadas (UNICA mudanca):
+  - TP: 3.0x -> 6.0x ATR (deixa winners correrem mais)
+  - Trailing: 1.5x -> 2.5x ATR (mais espaco apos TP1)
+  - Post-TP1 buffer: 0.5 -> 0.2 ATR (floor mais justo)
+  - Position sizing: 2% risk/trade com reinvestimento composto
 
-  Logica v12:
-  1. BBWP < 15 nos ultimos 12 bars (v8)
+  R:R efetivo: (0.50*6.0 + 0.50*5.8)/2.2 = 2.68 (era 1.25 no v13)
+
+  Logica de entrada IDENTICA ao v12/v13:
+  1. BBWP < 15 nos ultimos 12 bars
   2. BBWP expandindo (delta > 0)
   3. BB breakout com corpo (close > upper + 5% BB width)
-  4. ADX > 16 (v8)
+  4. ADX > 16
   5. Stoch RSI confirma momentum (K>=56 LONG, K<=44 SHORT)
   6. Volume >= 0.35 * SMA(Volume, 20)
   7. EMA50 + EMA200 alinham com tendencia
   8. COOLDOWN DIRECIONAL: dir oposta=1 bar, mesma dir=2 bars
 
-  Saidas v8 (NAO mexer):
-  - SL: 2.2x ATR | TP1: 3.0x ATR (50%) | Trailing: 1.5x ATR
-  - Post-TP1 SL: 0.5 ATR buffer (floor 2.5*ATR)
-  - Max bars: 96 | R:R floor: 1.25
+  Saidas v14:
+  - SL: 2.2x ATR | TP1: 6.0x ATR (50%) | Trailing: 2.5x ATR
+  - Post-TP1 SL: 0.2 ATR buffer (floor 5.8*ATR)
+  - Max bars: 96 | R:R floor: 2.68
 
 Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
@@ -73,15 +76,15 @@ BBWP_SQUEEZE_PARAMS = {
     "sl_atr_mult_high_vol": 2.2, # Mesmo em alta volatilidade
     "sl_atr_mult_low_vol": 2.2,  # Mesmo em baixa volatilidade
 
-    # ---- Take Profit (v10: revertido ao v8) ----
-    "tp_atr_mult": 3.0,           # v10: 3.0x ATR (revertido do v9=2.8)
-    "tp1_pct": 0.50,              # v10: 50% no TP1 (igual v8)
+    # ---- Take Profit (v14: saidas ampliadas) ----
+    "tp_atr_mult": 6.0,           # v14: 6.0x ATR (era 3.0x — winners maiores)
+    "tp1_pct": 0.50,              # v14: 50% no TP1 (mantido)
 
-    # ---- Trailing Stop (v8 — nao mexer) ----
-    "use_trailing": True,         # REATIVADO
-    "be_trigger_atr_mult": 1.0,  # BE trigger (referencia)
-    "trailing_atr_mult": 1.5,     # v10: 1.5x ATR (revertido do v9=1.7)
-    "post_tp1_sl_buffer": 0.5,    # v8: 0.5 ATR (sweet spot)
+    # ---- Trailing Stop (v14: mais espaco) ----
+    "use_trailing": True,
+    "be_trigger_atr_mult": 1.0,
+    "trailing_atr_mult": 2.5,     # v14: 2.5x ATR (era 1.5x — deixa correr)
+    "post_tp1_sl_buffer": 0.2,    # v14: 0.2 ATR (era 0.5 — floor mais justo)
 
     # ---- RSI Divergence (OFF) ----
     "use_divergence_exit": False, # Desativado
@@ -307,7 +310,7 @@ def _build_signal(entry, sl, tp, row, is_long: bool) -> Signal:
         adx=float(row.get("adx", 0)),
         plus_di=float(row.get("plus_di", 0)),
         minus_di=float(row.get("minus_di", 0)),
-        regime="bbwp_squeeze_v12",
+        regime="bbwp_squeeze_v14",
         bb_lower=float(row.get("bb_lower", 0)),
         bb_upper=float(row.get("bb_upper", 0)),
         bb_width=float(row.get("bb_width", 0)),
@@ -318,7 +321,7 @@ def _build_signal(entry, sl, tp, row, is_long: bool) -> Signal:
         atr_percentile=float(row.get("atr_percentile", 0.5)),
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0,
         fib_direction=0, fib_proximity=0.0,
-        pullback_type="bbwp_squeeze_v12",
+        pullback_type="bbwp_squeeze_v14",
         ema50_slope=float(row.get("ema50_slope", 0)),
         timestamp=ts,
     )
@@ -435,7 +438,7 @@ def evaluate_bbwp_squeeze(df, profile=None) -> Optional[Signal]:
             sl, tp, atr, bbwp = result
             _register_signal(idx, direction="long")
             logger.info(
-                "SIGNAL BBWP Squeeze v12 LONG | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
+                "SIGNAL BBWP Squeeze v14 LONG | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
                 float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
             )
             return _build_signal(float(curr["close"]), sl, tp, curr, True)
@@ -448,7 +451,7 @@ def evaluate_bbwp_squeeze(df, profile=None) -> Optional[Signal]:
         sl, tp, atr, bbwp = result
         _register_signal(idx, direction="short")
         logger.info(
-            "SIGNAL BBWP Squeeze v12 SHORT | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
+            "SIGNAL BBWP Squeeze v14 SHORT | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
             float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
         )
         return _build_signal(float(curr["close"]), sl, tp, curr, False)
