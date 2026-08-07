@@ -1,31 +1,36 @@
 r"""
 strategy_bbwp_squeeze.py
 ------------------------
-Squeeze Momentum Breakout Strategy v11 para BTC/USDT (1h).
+Squeeze Momentum Breakout Strategy v12 para BTC/USDT (1h).
 
-v11 - REVERTE buffer 0.3 que matou ganhos de trailing:
+v12 - COOLDOWN DIRECIONAL INTELIGENTE:
 
-  Resultados v10 (730d): 147T, WR=46.9%, PF=1.15, PnL=+15.50%, DD=13.08%
-  Resultados v9 (730d): 146T, WR=47.3%, PF=1.15, PnL=+15.78%, DD=12.72%
-  v10 = MESMO PF que v9. Os reverts de TP1/trailing foram cancelados pelo
-  post_tp1_sl_buffer=0.3 (muito apertado, mata ganhos de trailing).
-  Licao: NAO apertar post-TP1 SL. 0.5 e o sweet spot.
+  Resultados v11 (730d): 147T, WR=47.6%, PF=1.16, PnL=+16.15%, DD=12.71%
+  Resultados v8  (730d): 122T, WR=48.4%, PF=1.33, PnL=+25.53%, DD=8.73%
 
-  Mudancas v10 -> v11 (UNICA mudanca):
-  1. REVERTER POST-TP1 SL BUFFER: 0.3 -> 0.5 ATR (v8)
+  v10/v11 provaram que cooldown=1 generico + BBWP=16 adicionam 25 trades
+  com PF=1.0 (ruido puro). v11 reverteu buffer e foi IDENTICO ao v10.
+  Licao: o problema era a RELAXACAO DE ENTRADA, nao o buffer de saida.
 
-  MANTIDOS do v10 (que vieram do v8):
-  - TP1: 3.0x ATR (revertido do v9=2.8)
-  - TRAILING: 1.5x ATR (revertido do v9=1.7)
+  Mudancas v11 -> v12:
+  1. COOLDOWN DIRECIONAL: mesma dir=2 bars, dir oposta=1 bar
+     - Apos trade LONG: re-entrar LONG em 2 bars, SHORT em 1 bar
+     - Apos trade SHORT: re-entrar SHORT em 2 bars, LONG em 1 bar
+     - Logica: reversoes capturam virada do mercado, whipsaw mesma dir e ruido
+  2. REVERTER BBWP_THRESHOLD: 16 -> 15 (v8 baseline)
+  3. REVERTER COOLDOWN: 1 -> 2 (fallback para mesma direcao, v8)
+
+  MANTIDOS do v8 (saidas otimizadas — NAO mexer):
+  - TP1: 3.0x ATR, partial 50%
+  - TRAILING: 1.5x ATR (racheta acima do floor)
   - SL: 2.2x ATR
-  - COOLDOWN: 1 (v8=2)
-  - BBWP_THRESHOLD: 16 (v8=15)
+  - POST-TP1 SL BUFFER: 0.5 ATR (floor 2.5*ATR)
   - SQUEEZE_RECENT_BARS: 12
   - ADX_MIN: 16, VOLUME_MULT: 0.35
   - STOCH_RSI OB/OS: 56/44, BB_BREAKOUT_BUFFER: 0.05
   - TP1_PCT: 0.50, MAX_BARS: 96
 
-  Matematica v11 (identica ao v8 exceto BBWP e cooldown):
+  Matematica v12 (identica ao v8):
     TP1 = entry + 3.0*ATR
     Post-TP1 SL = TP1 - 0.5*ATR = entry + 2.5*ATR
     Win floor = 0.50*3.0*ATR% + 0.50*2.5*ATR% = 2.75*ATR%
@@ -34,7 +39,7 @@ v11 - REVERTE buffer 0.3 que matou ganhos de trailing:
     Com trailing rachetando acima: R:R real ~1.30-1.40
 
   Logica central:
-  1. BBWP < 16 nos ultimos 12 bars
+  1. BBWP < 15 nos ultimos 12 bars
   2. BBWP expandindo (delta > 0)
   3. BB breakout com corpo (close > upper + 5% BB width)
   4. ADX > 16 (tendencias moderadas-fortes)
@@ -42,14 +47,15 @@ v11 - REVERTE buffer 0.3 que matou ganhos de trailing:
   6. Volume >= 0.35 * SMA(Volume, 20)
   7. EMA50 alinha com tendencia
   8. EMA200 confirma tendencia macro
+  9. COOLDOWN DIRECIONAL: dir oposta=1 bar, mesma dir=2 bars
 
-Gestao de risco v11:
+Gestao de risco v12:
   - SL: 2.2x ATR
   - TP1: 3.0x ATR (partial 50%)
   - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR no trailing)
   - Trailing: 1.5x ATR (racheta acima do floor)
   - Max bars: 96 (4 dias em 1h)
-  - Cooldown: 1 bar (1 apos trailing exit)
+  - Cooldown direcional: oposto=1, mesmo=2
 
 Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
@@ -75,7 +81,7 @@ logger = logging.getLogger(__name__)
 
 BBWP_SQUEEZE_PARAMS = {
     # ---- Squeeze Detection (v8 — nao mexer) ----
-    "bbwp_threshold": 16,        # v10: 16 (v8=15, v7=12, v5=10)
+    "bbwp_threshold": 15,        # v12: 15 (revertido do v10=16, v8=15)
     "squeeze_recent_bars": 12,    # v8: 12 (v7=10, v5=10)
     "require_bbwp_expansion": True,  # BBWP deve estar expandindo (delta > 0)
 
@@ -97,20 +103,22 @@ BBWP_SQUEEZE_PARAMS = {
     "tp_atr_mult": 3.0,           # v10: 3.0x ATR (revertido do v9=2.8)
     "tp1_pct": 0.50,              # v10: 50% no TP1 (igual v8)
 
-    # ---- Trailing Stop (v10: revertido ao v8 + melhoria) ----
+    # ---- Trailing Stop (v8 — nao mexer) ----
     "use_trailing": True,         # REATIVADO
     "be_trigger_atr_mult": 1.0,  # BE trigger (referencia)
     "trailing_atr_mult": 1.5,     # v10: 1.5x ATR (revertido do v9=1.7)
-    "post_tp1_sl_buffer": 0.5,    # v11: 0.5 ATR (revertido do v10=0.3 — 0.3 matou trailing)
+    "post_tp1_sl_buffer": 0.5,    # v8: 0.5 ATR (sweet spot)
 
     # ---- RSI Divergence (OFF) ----
     "use_divergence_exit": False, # Desativado
     "divergence_min_bars": 3,
 
-    # ---- General (v10: cooldown reduzido) ----
+    # ---- General (v12: cooldown direcional) ----
     "max_bars_held": 96,          # v8: 96 (v7=120)
-    "cooldown": 1,                # v10: 1 (v8=2 — re-entrada mais rapida)
-    "cooldown_trailing": 1,       # v8: 1
+    "cooldown": 2,                # v12: 2 (revertido do v10=1 — mesma direcao)
+    "cooldown_trailing": 2,       # v12: 2 (revertido — mesma direcao apos trailing)
+    "cooldown_opp_dir": 1,        # v12: 1 — direcao oposta (captura reversoes rapido)
+    "use_directional_cooldown": True,  # v12: ativa cooldown direcional
 
     # ---- Filters ----
     "atr_pct_min": 0.10,
@@ -123,24 +131,48 @@ BBWP_SQUEEZE_PARAMS = {
 # ---- Cooldown State ----
 _last_signal_bar: int = -999
 _last_exit_was_trailing: bool = False
+_last_signal_direction: str = ""  # "long" or "short" — v12
 
 
 def reset_cooldown() -> None:
-    global _last_signal_bar, _last_exit_was_trailing
+    global _last_signal_bar, _last_exit_was_trailing, _last_signal_direction
     _last_signal_bar = -999
     _last_exit_was_trailing = False
+    _last_signal_direction = ""
 
 
-def _check_cooldown(current_idx: int) -> bool:
-    global _last_signal_bar, _last_exit_was_trailing
-    cd = BBWP_SQUEEZE_PARAMS["cooldown_trailing"] if _last_exit_was_trailing else BBWP_SQUEEZE_PARAMS["cooldown"]
+def _check_cooldown(current_idx: int, direction: str = "") -> bool:
+    """
+    v12: Cooldown direcional.
+    - Direcao oposta ao ultimo trade: cooldown_opp_dir (1 bar)
+    - Mesma direcao: cooldown ou cooldown_trailing (2 bars)
+    - Sem trade anterior: sem cooldown
+    """
+    global _last_signal_bar, _last_exit_was_trailing, _last_signal_direction
+    p = BBWP_SQUEEZE_PARAMS
+
+    if _last_signal_bar < 0:
+        return True
+
+    # v12: cooldown direcional
+    if p.get("use_directional_cooldown", False) and direction and _last_signal_direction:
+        is_opposite = (direction != _last_signal_direction)
+        if is_opposite:
+            cd = p.get("cooldown_opp_dir", p["cooldown"])
+        else:
+            cd = p["cooldown_trailing"] if _last_exit_was_trailing else p["cooldown"]
+    else:
+        cd = p["cooldown_trailing"] if _last_exit_was_trailing else p["cooldown"]
+
     return (current_idx - _last_signal_bar) >= cd
 
 
-def _register_signal(current_idx: int, was_trailing: bool = False) -> None:
-    global _last_signal_bar, _last_exit_was_trailing
+def _register_signal(current_idx: int, was_trailing: bool = False, direction: str = "") -> None:
+    global _last_signal_bar, _last_exit_was_trailing, _last_signal_direction
     _last_signal_bar = current_idx
     _last_exit_was_trailing = was_trailing
+    if direction:
+        _last_signal_direction = direction
 
 
 # ==================================================================
@@ -301,7 +333,7 @@ def _build_signal(entry, sl, tp, row, is_long: bool) -> Signal:
         adx=float(row.get("adx", 0)),
         plus_di=float(row.get("plus_di", 0)),
         minus_di=float(row.get("minus_di", 0)),
-        regime="bbwp_squeeze_v11",
+        regime="bbwp_squeeze_v12",
         bb_lower=float(row.get("bb_lower", 0)),
         bb_upper=float(row.get("bb_upper", 0)),
         bb_width=float(row.get("bb_width", 0)),
@@ -312,7 +344,7 @@ def _build_signal(entry, sl, tp, row, is_long: bool) -> Signal:
         atr_percentile=float(row.get("atr_percentile", 0.5)),
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0,
         fib_direction=0, fib_proximity=0.0,
-        pullback_type="bbwp_squeeze_v11",
+        pullback_type="bbwp_squeeze_v12",
         ema50_slope=float(row.get("ema50_slope", 0)),
         timestamp=ts,
     )
@@ -421,25 +453,28 @@ def evaluate_bbwp_squeeze(df, profile=None) -> Optional[Signal]:
     curr = df.iloc[-1]
     prev = df.iloc[-2]
     idx = len(df) - 1
-    if not _check_cooldown(idx):
-        return None
+    if not _check_cooldown(idx, direction="long"):
+        pass  # nao bloqueia short se long em cooldown direcional
+    else:
+        result = _evaluate_direction(curr, prev, "long", idx=idx, df=df, profile=profile)
+        if result is not None:
+            sl, tp, atr, bbwp = result
+            _register_signal(idx, direction="long")
+            logger.info(
+                "SIGNAL BBWP Squeeze v12 LONG | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
+                float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
+            )
+            return _build_signal(float(curr["close"]), sl, tp, curr, True)
 
-    result = _evaluate_direction(curr, prev, "long", idx=idx, df=df, profile=profile)
-    if result is not None:
-        sl, tp, atr, bbwp = result
-        _register_signal(idx)
-        logger.info(
-            "SIGNAL BBWP Squeeze v11 LONG | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
-            float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
-        )
-        return _build_signal(float(curr["close"]), sl, tp, curr, True)
+    if not _check_cooldown(idx, direction="short"):
+        return None
 
     result = _evaluate_direction(curr, prev, "short", idx=idx, df=df, profile=profile)
     if result is not None:
         sl, tp, atr, bbwp = result
-        _register_signal(idx)
+        _register_signal(idx, direction="short")
         logger.info(
-            "SIGNAL BBWP Squeeze v11 SHORT | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
+            "SIGNAL BBWP Squeeze v12 SHORT | entry=%.2f SL=%.2f TP=%.2f BBWP=%.1f ADX=%.1f",
             float(curr["close"]), sl, tp, bbwp, float(curr.get("adx", 0)),
         )
         return _build_signal(float(curr["close"]), sl, tp, curr, False)
@@ -452,21 +487,24 @@ def evaluate_bbwp_squeeze_row(row, prev_row, bar_index: int, df=None, profile=No
     Avalia sinal para uma linha individual (para backtest loop).
     Returns: (Signal, bbwp, trigger_direction) ou None
     """
-    if not _check_cooldown(bar_index):
-        return None
+    # v12: checa cada direcao com seu proprio cooldown
+    long_ok = _check_cooldown(bar_index, direction="long")
+    short_ok = _check_cooldown(bar_index, direction="short")
 
-    result = _evaluate_direction(row, prev_row, "long", idx=bar_index, df=df, profile=profile)
-    if result is not None:
-        sl, tp, atr, bbwp = result
-        _register_signal(bar_index)
-        signal = _build_signal(float(row["close"]), sl, tp, row, True)
-        return (signal, bbwp, "long")
+    if long_ok:
+        result = _evaluate_direction(row, prev_row, "long", idx=bar_index, df=df, profile=profile)
+        if result is not None:
+            sl, tp, atr, bbwp = result
+            _register_signal(bar_index, direction="long")
+            signal = _build_signal(float(row["close"]), sl, tp, row, True)
+            return (signal, bbwp, "long")
 
-    result = _evaluate_direction(row, prev_row, "short", idx=bar_index, df=df, profile=profile)
-    if result is not None:
-        sl, tp, atr, bbwp = result
-        _register_signal(bar_index)
-        signal = _build_signal(float(row["close"]), sl, tp, row, False)
-        return (signal, bbwp, "short")
+    if short_ok:
+        result = _evaluate_direction(row, prev_row, "short", idx=bar_index, df=df, profile=profile)
+        if result is not None:
+            sl, tp, atr, bbwp = result
+            _register_signal(bar_index, direction="short")
+            signal = _build_signal(float(row["close"]), sl, tp, row, False)
+            return (signal, bbwp, "short")
 
     return None
