@@ -1797,17 +1797,17 @@ def _simulate_bbwp_squeeze(
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
 ) -> Tuple[List[TradeResult], int, dict]:
     r"""
-    Simulacao BBWP Squeeze v10 para 1h.
+    Simulacao BBWP Squeeze v11 para 1h.
 
-    v10 - REVERTE saidas v9 + 2 OTIMIZACOES DE RETORNO:
+    v11 - REVERTE buffer 0.3 que matou trailing:
     - SL: 2.2x ATR (v8)
     - TP1: 3.0x ATR (v8 — revertido do v9=2.8)
-    - Pos-TP1 SL: TP1 - 0.3*ATR (floor de 2.7*ATR no trailing, v8=0.5)
+    - Pos-TP1 SL: TP1 - 0.5*ATR (floor de 2.5*ATR — revertido do v10=0.3)
     - Trailing: 1.5x ATR (v8 — revertido do v9=1.7)
-    - Cooldown: 1 (v8=2 — re-entrada mais rapida)
-    - BBWP threshold: 16 (v8=15 — squeeze mais largo)
-    - R:R floor: (0.50*3.0 + 0.50*2.7)/2.2 = 1.30 (v8=1.25)
-    - Com trailing rachetando acima: R:R real ~1.35-1.45
+    - Cooldown: 1 (v8=2)
+    - BBWP threshold: 16 (v8=15)
+    - R:R floor: (0.50*3.0 + 0.50*2.5)/2.2 = 1.25
+    - Com trailing rachetando acima: R:R real ~1.30-1.40
 
     Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
     """
@@ -1821,7 +1821,7 @@ def _simulate_bbwp_squeeze(
     _max_bars = BBWP_SQUEEZE_PARAMS.get("max_bars_held", 120)
     _use_trailing = BBWP_SQUEEZE_PARAMS.get("use_trailing", True)
     _tp1_pct = BBWP_SQUEEZE_PARAMS.get("tp1_pct", 0.50)
-    _post_tp1_sl_buf = BBWP_SQUEEZE_PARAMS.get("post_tp1_sl_buffer", 0.3)
+    _post_tp1_sl_buf = BBWP_SQUEEZE_PARAMS.get("post_tp1_sl_buffer", 0.5)
 
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -1859,9 +1859,9 @@ def _simulate_bbwp_squeeze(
             _speed = i / _elapsed
             _scan_pct = 20 + (i / max(n, 1)) * 60
             _update_progress(
-                phase="Escaneando candles (BBWP Squeeze v10)", phase_num=4,
+                phase="Escaneando candles (BBWP Squeeze v11)", phase_num=4,
                 pct=round(_scan_pct, 1),
-                message=f"BBWP Squeeze v10 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
+                message=f"BBWP Squeeze v11 {i:,}/{n:,} ({_speed:.0f}c/s) trades={len(trades)}",
                 candles_total=n, candles_scanned=i, scan_speed=round(_speed),
                 current_price=round(float(row.get("close", 0)), 2),
             )
@@ -1870,7 +1870,7 @@ def _simulate_bbwp_squeeze(
             i += 1
             continue
 
-        # Check NaN (BBWP Squeeze v10 needs bbwp, stoch_rsi, bb bands, adx)
+        # Check NaN (BBWP Squeeze v11 needs bbwp, stoch_rsi, bb bands, adx)
         critical = [
             "ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
             "bbwp", "stoch_rsi_k", "stoch_rsi_d", "bb_lower", "bb_upper",
@@ -1954,8 +1954,8 @@ def _simulate_bbwp_squeeze(
                 _partial_tp_count += 1
                 _diag_tp1_exits += 1
 
-                # v10: After TP1, set SL at TP1 - post_tp1_sl_buffer*ATR
-                # This creates a HIGH FLOOR (2.7*ATR profit on trailing portion)
+                # v11: After TP1, set SL at TP1 - post_tp1_sl_buffer*ATR
+                # This creates a HIGH FLOOR (2.5*ATR profit on trailing portion)
                 # Trailing at 1.5x ATR then ratchets ABOVE this floor
                 if _use_trailing:
                     be_triggered = True
@@ -2172,7 +2172,7 @@ def _simulate_bbwp_squeeze(
     # Summary
     avg_bbwp = np.mean(_diag_bbwp_at_entry) if _diag_bbwp_at_entry else 0
     logger.info(
-        "BBWP Squeeze v10: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
+        "BBWP Squeeze v11: %d trades, %d ATR filt, BE=%d, trail=%d, partial=%d, "
         "longs=%d, shorts=%d, avg_bbwp=%.1f, exits=[tp1=%d trail=%d sl=%d timeout=%d]",
         len(trades), atr_filtered, _be_count, _trail_count, _partial_tp_count,
         _diag_directions.get("long", 0), _diag_directions.get("short", 0),
@@ -2180,7 +2180,7 @@ def _simulate_bbwp_squeeze(
     )
 
     _diag = {
-        "strategy": "bbwp_squeeze_v10",
+        "strategy": "bbwp_squeeze_v11",
         "atr_filtered": atr_filtered,
         "be_triggered": _be_count,
         "trailing_updates": _trail_count,
