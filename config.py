@@ -74,12 +74,13 @@ class RiskConfig:
 class PositionConfig:
     """Configuracoes de position sizing e gestao de posicoes."""
     account_balance: float = 10000.0      # Saldo da conta em USD
-    risk_per_trade_pct: float = 0.01     # 1% do balance por trade
+    risk_per_trade_pct: float = 0.02     # v14: 2% do balance por trade (composto)
     min_position_usd: float = 10.0       # Tamanho minimo em USD
     max_position_pct: float = 0.10       # Max 10% do balance em 1 trade
     be_trigger_atr_mult: float = 1.0      # ATR mult para ativar break-even
-    trailing_atr_mult: float = 1.5        # ATR mult para distancia do trailing stop
+    trailing_atr_mult: float = 2.5        # v14: 2.5x ATR (era 1.5x — deixa winners correrem)
     partial_tp_pct: float = 0.50          # 50% no TP1
+    post_tp1_sl_buffer: float = 0.2      # v14: 0.2 ATR buffer abaixo do TP1 (floor)
     max_open_positions: int = 1           # Max posicoes abertas simultaneas
 
 
@@ -171,12 +172,13 @@ def load_settings() -> Settings:
 
     position = PositionConfig(
         account_balance=float(os.getenv("ACCOUNT_BALANCE", "10000.0")),
-        risk_per_trade_pct=float(os.getenv("RISK_PER_TRADE_PCT", "0.01")),
+        risk_per_trade_pct=float(os.getenv("RISK_PER_TRADE_PCT", "0.02")),
         min_position_usd=float(os.getenv("MIN_POSITION_USD", "10.0")),
         max_position_pct=float(os.getenv("MAX_POSITION_PCT", "0.10")),
         be_trigger_atr_mult=float(os.getenv("BE_TRIGGER_ATR_MULT", "1.0")),
-        trailing_atr_mult=float(os.getenv("TRAILING_ATR_MULT", "1.5")),
+        trailing_atr_mult=float(os.getenv("TRAILING_ATR_MULT", "2.5")),
         partial_tp_pct=float(os.getenv("PARTIAL_TP_PCT", "0.50")),
+        post_tp1_sl_buffer=float(os.getenv("POST_TP1_SL_BUFFER", "0.2")),
         max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "1")),
     )
 

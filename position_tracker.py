@@ -68,6 +68,7 @@ class Position:
     # Trailing stop
     trailing_activated: bool = False
     trailing_stop: float = 0.0          # SL atual (pode ser diferente do original)
+    trailing_atr_mult: float = 2.5      # v14: 2.5x ATR (era 1.5x)
     highest_favorable: float = 0.0       # Maior preco favoravel visto (high para LONG, low para SHORT)
 
     # Break-even
@@ -77,6 +78,7 @@ class Position:
     # Partial TP
     partial_tp_filled: bool = False
     partial_tp_pct: float = 0.50        # Percentual do TP para partial (50%)
+    post_tp1_sl_buffer: float = 0.2    # v14: ATR buffer abaixo do TP1 para SL (floor)
 
     # Sizing (opcional)
     position_size: float = 0.0
@@ -141,8 +143,9 @@ class PositionTracker:
         position_size: float = 0.0,
         position_usd: float = 0.0,
         be_trigger_atr_mult: float = 1.0,
-        trailing_atr_mult: float = 1.5,
+        trailing_atr_mult: float = 2.5,
         partial_tp_pct: float = 0.50,
+        post_tp1_sl_buffer: float = 0.2,
     ) -> Position:
         """
         Abre uma nova posicao.
@@ -161,7 +164,9 @@ class PositionTracker:
                 position_size=position_size,
                 position_usd=position_usd,
                 be_trigger_atr_mult=be_trigger_atr_mult,
+                trailing_atr_mult=trailing_atr_mult,
                 partial_tp_pct=partial_tp_pct,
+                post_tp1_sl_buffer=post_tp1_sl_buffer,
             )
             # Inicializa highest_favorable
             if type_ == "LONG":
@@ -236,13 +241,18 @@ class PositionTracker:
                         # Primeira vez no TP: partial close (50%)
                         pos.partial_tp_filled = True
                         pos.status = PositionStatus.PARTIAL_TP
-                        # Move SL para breakeven imediatamente
+                        # v14: Move SL para TP - buffer*ATR (floor, nao breakeven)
+                        # Isso garante que o trade ja esta em lucro significativo
+                        buffer = pos.atr * pos.post_tp1_sl_buffer
+                        if is_long:
+                            pos.trailing_stop = pos.take_profit - buffer
+                        else:
+                            pos.trailing_stop = pos.take_profit + buffer
                         pos.be_triggered = True
-                        pos.trailing_stop = pos.entry_price
                         pos.trailing_activated = True
                         logger.info(
-                            "Posicao #%d: Partial TP atingido em %.2f. SL movido para BE (%.2f)",
-                            pos.id, pos.take_profit, pos.entry_price,
+                            "Posicao #%d: Partial TP atingido em %.2f. SL movido para floor (%.2f, buffer=%.2f*ATR)",
+                            pos.id, pos.take_profit, pos.trailing_stop, pos.post_tp1_sl_buffer,
                         )
                     else:
                         # Segundo TP: fecha a posicao inteira
@@ -285,7 +295,7 @@ class PositionTracker:
 
                     # 4. Trailing stop update (apos BE)
                     if pos.trailing_activated:
-                        trail_distance = pos.atr * trailing_atr_mult
+                        trail_distance = pos.atr * pos.trailing_atr_mult
                         if is_long:
                             new_trail = pos.highest_favorable - trail_distance
                             # Trailing so move PARA CIMA
