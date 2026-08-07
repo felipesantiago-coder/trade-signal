@@ -247,11 +247,11 @@ PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
     timeframes=("1h",),
     description=(
-        "[BBWP Squeeze v13] Cooldown direcional + ADX reversao. "
-        "v13: TP1=3.0x ATR (50%), trailing=1.5x, SL=2.2x, "
+        "[BBWP Squeeze v12] Cooldown direcional inteligente. "
+        "v12: TP1=3.0x ATR (50%), trailing=1.5x, SL=2.2x, "
         "BBWP<15, buffer 5%, ADX>16, max_bars=96, "
         "vol>0.35x, StochRSI 56/44, post-TP1 SL=0.5 ATR. "
-        "Cooldown direcional: mesma dir=2, oposta=1 (com ADX>20). "
+        "Cooldown direcional: mesma dir=2 bars, dir oposta=1 bar. "
         "R:R floor: 1.25. Trailing racheta acima do floor. "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
