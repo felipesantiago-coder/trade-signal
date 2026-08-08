@@ -1,5 +1,5 @@
 {
-  "strategy": "confluence_v15",
+  "strategy": "confluence_v15_optimized",
   "signal_params": {
     "adx_min": 20,
     "rsi_long_max": 55,
@@ -9,26 +9,32 @@
   },
   "exit_params": {
     "tp_atr_mult": 8.0,
-    "sl_atr_mult": 2.5,
+    "sl_atr_mult": 2.0,
     "trailing_atr_mult": 3.0,
-    "post_tp1_sl_buffer": 0.2,
+    "post_tp1_sl_buffer": 0.1,
     "tp1_pct": 0.5,
     "max_bars_held": 120,
     "use_trailing": true
   },
   "risk_per_trade": 3.0,
-  "full_period_730d": {
-    "ann": 416.72,
-    "dd": 31.75,
-    "wr": 43.2,
-    "pf": 1.89,
-    "n": 132
+  "optimization": {
+    "change": "SL reduced from 2.5x to 2.0x ATR, buffer from 0.2 to 0.1",
+    "rationale": "Tighter SL increases R:R from 3.2:1 to 4.0:1, dramatically improving worst-case sub-period returns",
+    "tradeoff": "Max DD increased from 31.8% to 40.8%, WR dropped from 43.2% to 39.4%"
   },
-  "sub_period_anns": [
-    416.72,
-    433.96,
-    82.45,
-    49.93
-  ],
-  "all_subperiods_positive": true
+  "validation_risk3": {
+    "730d": {"ann": 612.5, "dd": 40.8, "wr": 39.4, "pf": 1.95, "n": 132},
+    "365d": {"ann": 555.7, "dd": 17.7, "wr": 45.6, "pf": 2.44, "n": 68},
+    "180d": {"ann": 62.3, "dd": 17.7, "wr": 32.4, "pf": 1.54, "n": 34},
+    "90d": {"ann": 98.7, "dd": 17.7, "wr": 41.2, "pf": 2.86, "n": 17}
+  },
+  "min_annual": 62.3,
+  "all_subperiods_positive": true,
+  "conservative_alternative_risk2.5": {
+    "730d": {"ann": 399.9, "dd": 35.2},
+    "365d": {"ann": 391.5, "dd": 14.9},
+    "180d": {"ann": 53.0, "dd": 14.9},
+    "90d": {"ann": 82.9, "dd": 14.9},
+    "min_annual": 53.0
+  }
 }

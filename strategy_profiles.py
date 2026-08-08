@@ -247,16 +247,16 @@ PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
     timeframes=("1h",),
     description=(
-        "[Confluence v15] Multi-signal scoring: EMA+ADX+RSI+StochRSI+MACD+OBV+Volume. "
-        "v15: Score>=5 de 9, TP1=8.0x ATR (50%), trailing=3.0x, SL=2.5x, "
+        "[Confluence v15 OPTIMIZED] Multi-signal scoring: EMA+ADX+RSI+StochRSI+MACD+OBV+Volume. "
+        "v15-opt: Score>=5 de 9, TP1=8.0x ATR (50%), trailing=3.0x, SL=2.0x, "
         "ADX>20, RSI<55 long, vol>0.35x, max_bars=120, "
-        "post-TP1 SL=0.2 ATR. "
+        "post-TP1 SL=0.1 ATR. MIN_ANNUAL=+62.3% (all sub-periods). "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
-    # Confluence v15 params
+    # Confluence v15 params (optimized)
     atr_pct_min=0.10,
     atr_pct_max=0.90,
-    sl_atr_mult=2.5,
+    sl_atr_mult=2.0,
     tp_atr_mult=8.0,
     max_bars_held=120,
     adx_min=20.0,

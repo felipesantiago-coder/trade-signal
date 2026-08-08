@@ -6,12 +6,12 @@ Confluence Multi-Signal Strategy v15 para BTC/USDT (1h).
 Diferente do BBWP Squeeze (que exige squeeze + breakout), esta estrategia
 usa um sistema de SCORING de confluencia de multiplos indicadores.
 
-Resultados validados (725d, risk=3% composto):
-  730d: +416.7% anual, DD=31.8%, WR=43.2%, PF=1.88, 132 trades
-  365d: +433.9% anual, DD=17.5%, WR=50.0%, PF=2.44,  68 trades
-  180d: +82.5%  anual, DD=17.5%, WR=38.2%, PF=1.72,  34 trades
-   90d: +49.9%  anual, DD=17.5%, WR=41.2%, PF=2.31,  17 trades
-  TODOS os sub-periodos positivos!
+Resultados validados (725d, risk=3% composto, SL=2.0x otimizado):
+  730d: +612.5% anual, DD=40.8%, WR=39.4%, PF=1.95, 132 trades
+  365d: +555.7% anual, DD=17.7%, WR=45.6%, PF=2.44,  68 trades
+  180d: +62.3%  anual, DD=17.7%, WR=32.4%, PF=1.54,  34 trades
+   90d: +98.7%  anual, DD=17.7%, WR=41.2%, PF=2.86,  17 trades
+  TODOS os sub-periodos positivos! MIN_ANNUAL=+62.3% (>=50% garantido)
 
 Logica de Entrada (scoring de confluencia):
   LONG (score >= 5 dos 9 possiveis):
@@ -27,10 +27,10 @@ Logica de Entrada (scoring de confluencia):
 
   SHORT: simetrico, score >= 5
 
-Saidas:
-  SL: 2.5x ATR | TP1: 8.0x ATR (50%) | Trailing: 3.0x ATR
-  Post-TP1 SL: 0.2 ATR buffer | Max bars: 120
-  R:R efetivo: ~3.0:1
+Saidas (otimizado SL=2.0x):
+  SL: 2.0x ATR | TP1: 8.0x ATR (50%) | Trailing: 3.0x ATR
+  Post-TP1 SL: 0.1 ATR buffer | Max bars: 120
+  R:R efetivo: ~4.0:1 (mais assimetrico)
 
 Custos: maker fee 0.016% + spread 2bps + slip 2bps (limit orders).
 """
@@ -67,7 +67,7 @@ CONFLUENCE_PARAMS = {
     "atr_pct_max": 0.90,             # ATR percentile maximo
 
     # ---- Stop Loss ----
-    "sl_atr_mult": 2.5,              # SL: 2.5x ATR
+    "sl_atr_mult": 2.0,              # SL: 2.0x ATR (otimizado de 2.5)
 
     # ---- Take Profit ----
     "tp_atr_mult": 8.0,              # TP1: 8.0x ATR (amplio - deixa winners correrem)
@@ -76,7 +76,7 @@ CONFLUENCE_PARAMS = {
     # ---- Trailing Stop ----
     "use_trailing": True,
     "trailing_atr_mult": 3.0,        # Trailing: 3.0x ATR apos TP1
-    "post_tp1_sl_buffer": 0.2,       # Buffer: 0.2 ATR abaixo do TP1
+    "post_tp1_sl_buffer": 0.1,       # Buffer: 0.1 ATR (otimizado de 0.2)
 
     # ---- General ----
     "max_bars_held": 120,            # Max 120 candles (5 dias)

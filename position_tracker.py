@@ -78,7 +78,7 @@ class Position:
     # Partial TP
     partial_tp_filled: bool = False
     partial_tp_pct: float = 0.50        # Percentual do TP para partial (50%)
-    post_tp1_sl_buffer: float = 0.2    # v14: ATR buffer abaixo do TP1 para SL (floor)
+    post_tp1_sl_buffer: float = 0.1    # v15: 0.1 ATR buffer (otimizado de 0.2)
 
     # Sizing (opcional)
     position_size: float = 0.0
@@ -145,7 +145,7 @@ class PositionTracker:
         be_trigger_atr_mult: float = 1.0,
         trailing_atr_mult: float = 3.0,
         partial_tp_pct: float = 0.50,
-        post_tp1_sl_buffer: float = 0.2,
+        post_tp1_sl_buffer: float = 0.1,
     ) -> Position:
         """
         Abre uma nova posicao.
