@@ -1,0 +1,427 @@
+{
+  "total_tests": 325,
+  "qualified_count": 75,
+  "period_days": 725,
+  "top": [
+    {
+      "strat": "conf_adx20_rsi60",
+      "risk": 4.0,
+      "ann": 644.55,
+      "ret": 1280.26,
+      "dd": 38.88,
+      "eq": 1380.26,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.68,
+      "score": 16.6,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi60",
+      "risk": 4.0,
+      "ann": 638.41,
+      "ret": 1268.07,
+      "dd": 38.91,
+      "eq": 1368.07,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.68,
+      "score": 16.4,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 4.0,
+      "ann": 521.86,
+      "ret": 1036.57,
+      "dd": 34.14,
+      "eq": 1136.57,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.58,
+      "score": 15.3,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 4.0,
+      "ann": 517.03,
+      "ret": 1026.98,
+      "dd": 34.14,
+      "eq": 1126.98,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.57,
+      "score": 15.1,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi55",
+      "risk": 3.0,
+      "ann": 416.68,
+      "ret": 827.66,
+      "dd": 31.75,
+      "eq": 927.66,
+      "n": 132,
+      "wr": 43.2,
+      "pf": 1.88,
+      "score": 13.1,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.5,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi55",
+      "risk": 3.0,
+      "ann": 411.64,
+      "ret": 817.64,
+      "dd": 31.75,
+      "eq": 917.64,
+      "n": 132,
+      "wr": 43.2,
+      "pf": 1.88,
+      "score": 13.0,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.5,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi60",
+      "risk": 3.0,
+      "ann": 346.44,
+      "ret": 688.14,
+      "dd": 30.54,
+      "eq": 788.14,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.68,
+      "score": 11.3,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi60",
+      "risk": 3.0,
+      "ann": 343.71,
+      "ret": 682.71,
+      "dd": 30.56,
+      "eq": 782.71,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.68,
+      "score": 11.2,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 3.0,
+      "ann": 291.67,
+      "ret": 579.35,
+      "dd": 26.23,
+      "eq": 679.35,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.58,
+      "score": 11.1,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 3.0,
+      "ann": 289.42,
+      "ret": 574.87,
+      "dd": 26.23,
+      "eq": 674.87,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.57,
+      "score": 11.0,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 4.0,
+      "ann": 379.87,
+      "ret": 754.54,
+      "dd": 39.91,
+      "eq": 854.54,
+      "n": 135,
+      "wr": 41.5,
+      "pf": 1.54,
+      "score": 9.5,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.5,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 4.0,
+      "ann": 376.87,
+      "ret": 748.59,
+      "dd": 39.91,
+      "eq": 848.59,
+      "n": 135,
+      "wr": 41.5,
+      "pf": 1.54,
+      "score": 9.4,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.5,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi55",
+      "risk": 3.0,
+      "ann": 292.69,
+      "ret": 581.38,
+      "dd": 32.59,
+      "eq": 681.38,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.6,
+      "score": 9.0,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi55",
+      "risk": 3.0,
+      "ann": 290.43,
+      "ret": 576.89,
+      "dd": 32.59,
+      "eq": 676.89,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.6,
+      "score": 8.9,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi55",
+      "risk": 2.0,
+      "ann": 245.23,
+      "ret": 487.11,
+      "dd": 29.26,
+      "eq": 587.11,
+      "n": 132,
+      "wr": 39.4,
+      "pf": 1.93,
+      "score": 8.4,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi55",
+      "risk": 2.0,
+      "ann": 242.53,
+      "ret": 481.73,
+      "dd": 29.26,
+      "eq": 581.73,
+      "n": 132,
+      "wr": 39.4,
+      "pf": 1.93,
+      "score": 8.3,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi55",
+      "risk": 2.0,
+      "ann": 183.72,
+      "ret": 364.92,
+      "dd": 22.29,
+      "eq": 464.92,
+      "n": 132,
+      "wr": 43.2,
+      "pf": 1.88,
+      "score": 8.2,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.5,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx20_rsi55",
+      "risk": 2.0,
+      "ann": 181.97,
+      "ret": 361.45,
+      "dd": 22.29,
+      "eq": 461.45,
+      "n": 132,
+      "wr": 43.2,
+      "pf": 1.88,
+      "score": 8.2,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.5,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 2.0,
+      "ann": 142.24,
+      "ret": 282.53,
+      "dd": 17.93,
+      "eq": 382.53,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.58,
+      "score": 7.9,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 3.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    },
+    {
+      "strat": "conf_adx15_rsi60",
+      "risk": 2.0,
+      "ann": 141.36,
+      "ret": 280.78,
+      "dd": 17.93,
+      "eq": 380.78,
+      "n": 135,
+      "wr": 36.3,
+      "pf": 1.57,
+      "score": 7.9,
+      "params": {
+        "tp": 8.0,
+        "sl": 2.0,
+        "tr": 4.0,
+        "trailing": true,
+        "tp1": 0.5,
+        "buf": 0.2,
+        "mb": 120
+      }
+    }
+  ]
+}

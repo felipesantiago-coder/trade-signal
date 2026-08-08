@@ -247,31 +247,28 @@ PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
     timeframes=("1h",),
     description=(
-        "[BBWP Squeeze v14] Saidas ampliadas para maiores ganhos. "
-        "v14: TP1=6.0x ATR (50%), trailing=2.5x, SL=2.2x, "
-        "BBWP<15, buffer 5%, ADX>16, max_bars=96, "
-        "vol>0.35x, StochRSI 56/44, post-TP1 SL=0.2 ATR. "
-        "Cooldown direcional: mesma dir=2 bars, dir oposta=1 bar. "
-        "R:R floor: 2.68. Trailing racheta acima do floor. "
+        "[Confluence v15] Multi-signal scoring: EMA+ADX+RSI+StochRSI+MACD+OBV+Volume. "
+        "v15: Score>=5 de 9, TP1=8.0x ATR (50%), trailing=3.0x, SL=2.5x, "
+        "ADX>20, RSI<55 long, vol>0.35x, max_bars=120, "
+        "post-TP1 SL=0.2 ATR. "
         "Custos: maker fee 0.016% + spread 2bps + slip 2bps."
     ),
-    # Filtros de entrada (BBWP Squeeze has its own internal logic)
+    # Confluence v15 params
     atr_pct_min=0.10,
     atr_pct_max=0.90,
-    sl_atr_mult=2.2,
-    tp_atr_mult=3.0,
-    max_bars_held=96,
-    # Reference params (actual logic in strategy_bbwp_squeeze.py)
-    adx_min=0.0,
+    sl_atr_mult=2.5,
+    tp_atr_mult=8.0,
+    max_bars_held=120,
+    adx_min=20.0,
     allow_transition=True,
-    rsi_long_min=0.0,
-    rsi_long_max=100.0,
-    rsi_short_min=0.0,
-    rsi_short_max=100.0,
+    rsi_long_min=40.0,
+    rsi_long_max=55.0,
+    rsi_short_min=45.0,
+    rsi_short_max=60.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-1.0,
-    volume_confirm=False,
-    volume_sma_ratio=0.0,
+    volume_confirm=True,
+    volume_sma_ratio=0.35,
 )
 
 PROFILE_POSITION = StrategyProfile(

@@ -50,7 +50,9 @@ logger = logging.getLogger(__name__)
 ATF_TIMEFRAMES = {"15m", "30m"}
 
 # Timeframes que usam BBWP Squeeze v2 (squeeze + breakout)
-BBWP_SQUEEZE_TIMEFRAMES = {"1h"}
+CONFLUENCE_V15_TIMEFRAMES = {"1h"}
+BBWP_SQUEEZE_TIMEFRAMES = set()  # desativado em favor de Confluence v15
+ADAPTIVE_MOM_TIMEFRAMES = set()    # desativado em favor de Confluence v15
 
 # Timeframes que usam CTEV Regime-Switching (trend-following + mean-reversion)
 REGIME_SWITCHING_TIMEFRAMES = {"2h", "4h", "1d"}
@@ -71,6 +73,8 @@ def get_strategy_type(timeframe: str) -> str:
     """
     if timeframe in ATF_TIMEFRAMES:
         return "atf"
+    elif timeframe in CONFLUENCE_V15_TIMEFRAMES:
+        return "confluence_v15"
     elif timeframe in BBWP_SQUEEZE_TIMEFRAMES:
         return "bbwp_squeeze"
     elif timeframe in DISABLED_TIMEFRAMES:
@@ -84,7 +88,9 @@ def get_strategy_label(timeframe: str) -> str:
     st = get_strategy_type(timeframe)
     labels = {
         "atf": "ATF v2 StochRSI + BBWP",
+        "confluence_v15": "Confluence v15 Multi-Signal",
         "bbwp_squeeze": "BBWP Squeeze v14",
+        "adaptive_momentum": "Adaptive Momentum v1",
         "regime_switching": "CTEV v7.1 Regime-Switching",
         "disabled": "DESATIVADO (sem edge valida)",
     }
@@ -154,11 +160,23 @@ def evaluate_signal(
         logger.debug("Router [%s] -> ATF v2 StochRSI + BBWP", timeframe)
         return evaluate_atf_v2(df, profile=profile)
 
+    # ---- CONFLUENCE v15 (1h) ----
+    if strategy_type == "confluence_v15":
+        from strategy_confluence_v15 import evaluate_confluence_v15
+        logger.debug("Router [%s] -> Confluence v15 Multi-Signal", timeframe)
+        return evaluate_confluence_v15(df, profile=profile)
+
     # ---- BBWP SQUEEZE v2 (1h) ----
     if strategy_type == "bbwp_squeeze":
         from strategy_bbwp_squeeze import evaluate_bbwp_squeeze
-        logger.debug("Router [%s] -> BBWP Squeeze v2", timeframe)
+        logger.debug("Router [%s] -> BBWP Squeeze v14", timeframe)
         return evaluate_bbwp_squeeze(df, profile=profile)
+
+    # ---- ADAPTIVE MOMENTUM v1 (1h) ----
+    if strategy_type == "adaptive_momentum":
+        from strategy_adaptive_momentum import evaluate_adaptive_momentum
+        logger.debug("Router [%s] -> Adaptive Momentum v1", timeframe)
+        return evaluate_adaptive_momentum(df, profile=profile)
 
     # ---- REGIME SWITCHING (2h/4h/1d) ----
     if strategy_type == "regime_switching":
@@ -199,13 +217,27 @@ def evaluate_signal_row(
     if strategy_type == "disabled":
         return None
 
+    # ---- ADAPTIVE MOMENTUM v1 (1h) ----
+    if strategy_type == "adaptive_momentum":
+        from strategy_adaptive_momentum import evaluate_adaptive_momentum
+        logger.debug("Router [%s] -> Adaptive Momentum v1", timeframe)
+        return evaluate_adaptive_momentum(df, profile=profile)
+
     if strategy_type == "atf":
         from strategy_atf_v2 import evaluate_atf_v2_row
         return evaluate_atf_v2_row(row, prev_row, bar_index, profile=profile)
 
+    if strategy_type == "confluence_v15":
+        from strategy_confluence_v15 import evaluate_confluence_v15_row
+        return evaluate_confluence_v15_row(row, prev_row, bar_index, df=None, profile=profile)
+
     if strategy_type == "bbwp_squeeze":
         from strategy_bbwp_squeeze import evaluate_bbwp_squeeze_row
         return evaluate_bbwp_squeeze_row(row, prev_row, bar_index, df=None, profile=profile)
+
+    elif strategy_type == "adaptive_momentum":
+        from strategy_adaptive_momentum import evaluate_adaptive_momentum_row
+        return evaluate_adaptive_momentum_row(row, prev_row, bar_index, df=df, profile=profile)
 
     # Para regime_switching, usa o fluxo padrao do backtest
     # (a logica de regime e aplicada em _simulate_regime_switching)

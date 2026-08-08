@@ -1,0 +1,96 @@
+{
+  "total_tested": 188,
+  "qualified": 0,
+  "best_overall": [
+    {
+      "name": "P2_v0.2_ob52_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.2_ob54_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.2_ob56_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.25_ob52_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.25_ob54_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.25_ob56_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.3_ob52_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.3_ob54_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P2_v0.3_ob56_adx12.0",
+      "risk_pct": 1.0,
+      "annual_return_pct": 139.39,
+      "max_dd_pct": 78.89,
+      "trades": 153,
+      "win_rate": 49.7,
+      "profit_factor": 1.15
+    },
+    {
+      "name": "P3_sl2.0_tp3.5",
+      "risk_pct": 1.0,
+      "annual_return_pct": 141.82,
+      "max_dd_pct": 84.46,
+      "trades": 137,
+      "win_rate": 43.8,
+      "profit_factor": 1.14
+    }
+  ]
+}

@@ -74,13 +74,13 @@ class RiskConfig:
 class PositionConfig:
     """Configuracoes de position sizing e gestao de posicoes."""
     account_balance: float = 10000.0      # Saldo da conta em USD
-    risk_per_trade_pct: float = 0.02     # v14: 2% do balance por trade (composto)
+    risk_per_trade_pct: float = 0.03     # v15: 3% do balance por trade (composto)
     min_position_usd: float = 10.0       # Tamanho minimo em USD
     max_position_pct: float = 0.10       # Max 10% do balance em 1 trade
     be_trigger_atr_mult: float = 1.0      # ATR mult para ativar break-even
-    trailing_atr_mult: float = 2.5        # v14: 2.5x ATR (era 1.5x — deixa winners correrem)
+    trailing_atr_mult: float = 3.0        # v15: 3.0x ATR (deixa winners correrem mais)
     partial_tp_pct: float = 0.50          # 50% no TP1
-    post_tp1_sl_buffer: float = 0.2      # v14: 0.2 ATR buffer abaixo do TP1 (floor)
+    post_tp1_sl_buffer: float = 0.2      # v15: 0.2 ATR buffer abaixo do TP1 (floor)
     max_open_positions: int = 1           # Max posicoes abertas simultaneas
 
 

@@ -1,0 +1,34 @@
+{
+  "strategy": "confluence_v15",
+  "signal_params": {
+    "adx_min": 20,
+    "rsi_long_max": 55,
+    "rsi_short_min": 45,
+    "vol_mult": 0.35,
+    "confluence_score_min": 5
+  },
+  "exit_params": {
+    "tp_atr_mult": 8.0,
+    "sl_atr_mult": 2.5,
+    "trailing_atr_mult": 3.0,
+    "post_tp1_sl_buffer": 0.2,
+    "tp1_pct": 0.5,
+    "max_bars_held": 120,
+    "use_trailing": true
+  },
+  "risk_per_trade": 3.0,
+  "full_period_730d": {
+    "ann": 416.72,
+    "dd": 31.75,
+    "wr": 43.2,
+    "pf": 1.89,
+    "n": 132
+  },
+  "sub_period_anns": [
+    416.72,
+    433.96,
+    82.45,
+    49.93
+  ],
+  "all_subperiods_positive": true
+}

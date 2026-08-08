@@ -68,7 +68,7 @@ class Position:
     # Trailing stop
     trailing_activated: bool = False
     trailing_stop: float = 0.0          # SL atual (pode ser diferente do original)
-    trailing_atr_mult: float = 2.5      # v14: 2.5x ATR (era 1.5x)
+    trailing_atr_mult: float = 3.0      # v15: 3.0x ATR
     highest_favorable: float = 0.0       # Maior preco favoravel visto (high para LONG, low para SHORT)
 
     # Break-even
@@ -143,7 +143,7 @@ class PositionTracker:
         position_size: float = 0.0,
         position_usd: float = 0.0,
         be_trigger_atr_mult: float = 1.0,
-        trailing_atr_mult: float = 2.5,
+        trailing_atr_mult: float = 3.0,
         partial_tp_pct: float = 0.50,
         post_tp1_sl_buffer: float = 0.2,
     ) -> Position:

@@ -2202,6 +2202,124 @@ def _simulate_bbwp_squeeze(
 
 
 # ------------------------------------------------------------------
+# v15: Confluence Multi-Signal simulation
+# ------------------------------------------------------------------
+def _simulate_confluence_v15(
+    df_ind: pd.DataFrame,
+    atr_pct_min: float = 0.10,
+    atr_pct_max: float = 0.90,
+    profile=None,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
+) -> Tuple[List[TradeResult], int, dict]:
+    r"""Simulacao Confluence v15 para 1h."""
+    from strategy_confluence_v15 import (
+        evaluate_confluence_v15_row, reset_cooldown, CONFLUENCE_PARAMS,
+    )
+    from strategy import SignalType
+
+    reset_cooldown()
+    _trail_dist = CONFLUENCE_PARAMS.get("trailing_atr_mult", 3.0)
+    _max_bars = CONFLUENCE_PARAMS.get("max_bars_held", 120)
+    _tp1_pct = CONFLUENCE_PARAMS.get("tp1_pct", 0.50)
+    _post_tp1_buf = CONFLUENCE_PARAMS.get("post_tp1_sl_buffer", 0.2)
+
+    trades: List[TradeResult] = []
+    atr_filtered = 0
+    i = 0
+    n = len(df_ind)
+    _fee = 0.016; _spread = 2.0; _slip = 2.0
+
+    while i < n - 1:
+        row = df_ind.iloc[i]
+        prev = df_ind.iloc[i - 1] if i > 0 else row
+        critical = ["ema20", "ema50", "ema200", "rsi", "atr", "atr_percentile",
+                    "macd", "macd_signal", "volume", "volume_sma20", "adx",
+                    "stoch_rsi_k", "stoch_rsi_d", "obv", "obv_sma20", "obv_trend"]
+        if any(pd.isna(row.get(c)) for c in critical):
+            i += 1; continue
+        atr_pct = float(row.get("atr_percentile", 0.5))
+        if not (atr_pct_min <= atr_pct <= atr_pct_max):
+            atr_filtered += 1; i += 1; continue
+
+        result = evaluate_confluence_v15_row(row, prev, i, df=df_ind)
+        if result is None:
+            i += 1; continue
+
+        signal, score, direction = result
+        is_long = signal.type == SignalType.LONG
+        entry_price = signal.entry_price
+        sl, tp, atr = signal.stop_loss, signal.take_profit, signal.atr
+        if atr <= 0 or entry_price <= 0:
+            i += 1; continue
+
+        csl = sl; tp1f = False; tp1_price = 0.0; hwm = entry_price
+        was_trailing = False; exit_done = False; bars = 0
+        hit_sl = hit_tp = False
+
+        for j in range(i + 1, min(i + _max_bars, n)):
+            f = df_ind.iloc[j]
+            fc, fl, fh = float(f["close"]), float(f["low"]), float(f["high"])
+            bars = j - i
+            hwm = max(hwm, fh) if is_long else min(hwm, fl)
+            hit_sl = (fl <= csl) if is_long else (fh >= csl)
+            hit_tp = (fh >= tp) if is_long else (fl <= tp)
+
+            if hit_tp and not tp1f:
+                tp1f = True; tp1_price = tp
+                buf = atr * _post_tp1_buf
+                csl = (tp - buf) if is_long else (tp + buf)
+                was_trailing = True
+            if hit_sl or (hit_tp and tp1f):
+                exit_done = True; break
+
+            if tp1f:
+                td = atr * _trail_dist
+                if is_long:
+                    ns = hwm - td
+                    if ns > csl: csl = ns
+                else:
+                    ns = hwm + td
+                    if ns < csl: csl = ns
+
+        last_j = min(i + max(bars, 1), n - 1)
+        xp = float(df_ind.iloc[last_j]["close"])
+
+        if tp1f:
+            a1, _, _ = _apply_costs(entry_price, tp1_price, is_long, _fee, _spread, _slip)
+            a2, _, _ = _apply_costs(entry_price, csl if exit_done else xp, is_long, _fee, _spread, _slip)
+            if is_long:
+                pnl = _tp1_pct * (a1 - entry_price) / entry_price * 100 + (1 - _tp1_pct) * (a2 - entry_price) / entry_price * 100
+            else:
+                pnl = _tp1_pct * (entry_price - a1) / entry_price * 100 + (1 - _tp1_pct) * (entry_price - a2) / entry_price * 100
+        else:
+            _, adj_exit, _ = _apply_costs(entry_price, csl if exit_done else xp, is_long, _fee, _spread, _slip)
+            pnl = (adj_exit - entry_price) / entry_price * 100 if is_long else (entry_price - adj_exit) / entry_price * 100
+
+        if exit_done and hit_sl and not hit_tp: reason = "sl"
+        elif tp1f and exit_done: reason = "trailing"
+        elif exit_done: reason = "tp"
+        else: reason = "timeout"
+
+        trades.append(TradeResult(
+            entry_ts=df_ind.index[i], exit_ts=df_ind.index[last_j],
+            type=direction.upper(), entry_price=entry_price, exit_price=xp,
+            stop_loss=sl, take_profit=tp, atr=atr, rsi=float(row.get("rsi", 0)),
+            pnl_pct=round(pnl, 4), pnl_abs=round(xp - entry_price, 2),
+            bars_held=bars, exit_reason=reason, atr_percentile=atr_pct,
+            be_triggered=tp1f, trailing_activated=was_trailing, partial_tp_filled=tp1f, sl_updates=0))
+
+        from strategy_confluence_v15 import _register_signal as _cr
+        _cr(i + max(bars, 1), direction=direction)
+        i += max(bars, 1) + 1
+
+    _diag = {"strategy": "confluence_v15", "atr_filtered": atr_filtered,
+            "costs": {"fee_pct": _fee, "spread_bps": _spread, "slippage_bps": _slip}}
+    return trades, atr_filtered, _diag
+
+
+# ------------------------------------------------------------------
 # v7: Regime-Switching simulation
 # ------------------------------------------------------------------
 def _simulate_regime_switching(
@@ -2512,7 +2630,43 @@ def run_backtest(
         trades, atr_filtered, _diag = _simulate_atf_v2(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
-    elif profile.name == "BBWP_SQUEEZE":
+    elif advanced or profile.name == 'ADAPTIVE_MOM':
+        from strategy_adaptive_momentum import evaluate_adaptive_momentum, reset_cooldown
+        ADAPTIVE_MOM_PARAMS = {
+            'adx_trend_threshold': 22,
+            'adx_range_max': 28,
+            'roc_fast_period': 8,
+            'roc_slow_period': 16,
+            'volume_mult': 1.0,
+            'adx_min_trend': 12,
+            'rsi_long_min': 45, 'rsi_long_max': 80,
+            'rsi_short_min': 20, 'rsi_short_max': 50,
+            'roc_min_pct': 0.3,
+            'use_ema200_trend': False,
+            'rsi_oversold': 28, 'rsi_overbought': 73,
+            'bb_touch_pct': 0.08,
+            'stoch_rsi_oversold': 30, 'stoch_rsi_overbought': 70,
+            'sl_range_mult': 1.5, 'tp_range_mult': 3.0,
+            'sl_trend_mult': 2.0, 'tp_trend_mult': 5.0,
+            'cooldown': 3,
+            'cooldown_opp_dir': 1, 'cooldown_same_dir': 2,
+            'sl_atr_mult': 1.8, 'tp_atr_mult': 5.0,
+            'trailing_atr_mult': 2.5, 'post_tp1_sl_buffer': 0.1,
+            'max_bars_held': 120,
+        }
+        _be_trigger = ADAPTIVE_MOM_PARAMS.get('be_trigger_atr_mult', 1.0)
+        _trail_dist = ADAPTIVE_MOM_PARAMS.get('trailing_atr_mult', 2.5)
+        _max_bars = ADAPTIVE_MOM_PARAMS.get('max_bars_held', 120)
+        trades, atr_filtered, _diag = _simulate_bbwp_squeeze(
+            df_clean, _atr_min, _atr_max, profile=ADAPTIVE_MOM_PARAMS,
+        )
+        _diag['strategy'] = 'adaptive_momentum_v1'
+    elif profile.name == 'BBWP_SQUEEZE':
+        # v15: Confluence Multi-Signal para 1h
+        trades, atr_filtered, _diag = _simulate_confluence_v15(
+            df_clean, _atr_min, _atr_max, profile=profile,
+        )
+    elif _strategy_key == "BBWP_SQUEEZE":
         # BBWP Squeeze v4 para 1h (partial TP + trailing)
         trades, atr_filtered, _diag = _simulate_bbwp_squeeze(
             df_clean, _atr_min, _atr_max, profile=profile,
