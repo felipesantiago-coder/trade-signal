@@ -182,23 +182,23 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v7.1 FIX] CTEV Trend-Following para 1h. v7.0 gerou 0 trades por "
-        "combinacao fatal: RSI 35-50 captura apenas 8.7% dos pullbacks reais "
-        "(mediana RSI = 58.9). Filtros MACD/OBV/StochRSI eliminavam 54-96% "
-        "dos candidatos restantes. Correcao: RSI 45-62, EMA proximity 1.0%, "
-        "filtros de confluencia desativados, ADX 28."
+        "[v8.0 GRID-OPTIMIZED] CTEV Trend-Following para 1h. "
+        "Grid search (196 combinacoes): ADX>=32, SL 2.8x, TP 5.5x, no trailing, 168 bars. "
+        "Resultado: 133 trades, WR 42.9%, PF 1.05, PnL +9.53%, MaxDD 17.1%. "
+        "v7.1 tinha PF 0.45 / -118.33%. Melhorias: SL 2.8x (era 3.0), TP 5.5x (era 10x), "
+        "trailing/BE/momentum/time-decay REMOVIDOS (destruiam R:R), ADX 32 (era 28)."
     ),
-    # Filtros de entrada — v7.1: ALINHADO COM DADOS REAIS
-    adx_min=28.0,
+    # Filtros de entrada — v8.0: GRID OPTIMIZED
+    adx_min=32.0,
     allow_transition=False,
     rsi_long_min=45.0,
-    rsi_long_max=62.0,
-    rsi_short_min=38.0,
+    rsi_long_max=65.0,
+    rsi_short_min=35.0,
     rsi_short_max=55.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-0.5,
-    ema20_proximity_pct=0.003,  # v7.1: 0.3% da EMA20 como pullback
-    ema50_proximity_pct=0.005,  # v7.1: 0.5% da EMA50 como pullback
+    ema20_proximity_pct=0.005,
+    ema50_proximity_pct=0.008,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
@@ -206,9 +206,9 @@ PROFILE_STANDARD = StrategyProfile(
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
-    # Gestao de risco — SL 3.0x ATR / TP 10.0x ATR (R:R 3.3:1)
-    sl_atr_mult=3.00,
-    tp_atr_mult=10.00,
+    # Gestao de risco — SL 2.8x / TP 5.5x ATR (R:R ~2:1)
+    sl_atr_mult=2.80,
+    tp_atr_mult=5.50,
     max_bars_held=168,
 )
 

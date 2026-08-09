@@ -1,32 +1,23 @@
 """
 position_tracker.py
 -------------------
-Rastreamento de posicoes abertas com trailing stop e break-even.
+Rastreamento de posicoes abertas com trailing stop.
+
+v8.0: Break-even DESATIVADO (causava 54% de trades com lucro ~0% em backtest).
+Trailing ativa em 1.5x ATR com distancia de 3.0x ATR.
 
 Este modulo gerencia o ciclo de vida completo de cada trade:
     1. Abertura: quando um sinal CTEV e gerado, cria uma posicao
     2. Monitoramento: a cada candle fechado, verifica se:
        - Preco atingiu o TP (take profit)
        - Preco atingiu o SL (stop loss, que pode ser o original ou o trailing)
-       - Preco moveu suficiente para mover SL para breakeven
-       - Preco moveu suficiente para ativar trailing stop
+       - Preco moveu suficiente para ativar trailing stop (1.5x ATR)
     3. Fechamento: quando TP ou SL e atingido, fecha a posicao e registra o resultado
 
-Funcionalidades:
-    - Break-even: move SL para o preco de entrada (+ fees) quando preco
-      move 1.0 * ATR a favor (trade fica "livre de risco")
-    - Trailing Stop: apos break-even, move SL acompanhando o preco a
-      cada candle (distancia = 1.5 * ATR do high mais recente para LONG,
-      ou low para SHORT)
-    - Partial TP: vende 50% no TP1 (2.0 * ATR), deixa 50% correr com trailing
-
-Referencias:
-    - 3Commas (2025): "Advanced stop loss and take profit strategies can
-      significantly enhance trading performance"
-    - PipMaster (2026): "Trailing stop lets trends run while break-even
-      turns a trade into a free bet"
-    - LuxAlgo: "Partial profit-taking, dynamic trailing stops, and
-      break-even functionality using ATR"
+Funcionalidades v8.0:
+    - Trailing Stop: ativa em 1.5x ATR, distancia = 3.0 * ATR
+    - Partial TP: vende 50% no TP1 (4.5x ATR), SL vai para TP - 1.0x ATR
+    - Break-even: DESATIVADO (destruia R:R ao criar massa de trades com lucro zero)
 """
 
 from __future__ import annotations
@@ -68,17 +59,18 @@ class Position:
     # Trailing stop
     trailing_activated: bool = False
     trailing_stop: float = 0.0          # SL atual (pode ser diferente do original)
-    trailing_atr_mult: float = 3.0      # v15: 3.0x ATR
+    trailing_atr_mult: float = 3.0      # v8.0: 3.0x ATR (era 1.5x — muito justo)
+    trailing_activate_atr_mult: float = 1.5  # v8.0: ativa em 1.5x ATR
     highest_favorable: float = 0.0       # Maior preco favoravel visto (high para LONG, low para SHORT)
 
-    # Break-even
-    be_triggered: bool = False
-    be_trigger_atr_mult: float = 1.0    # Multiplo de ATR para trigger BE
+    # v8.0: Break-even DESATIVADO
+    # be_triggered: bool = False
+    # be_trigger_atr_mult: float = 0.0
 
     # Partial TP
     partial_tp_filled: bool = False
     partial_tp_pct: float = 0.50        # Percentual do TP para partial (50%)
-    post_tp1_sl_buffer: float = 0.1    # v15: 0.1 ATR buffer (otimizado de 0.2)
+    post_tp1_sl_buffer: float = 1.0    # v8.0: 1.0 ATR buffer (garante lucro significativo)
 
     # Sizing (opcional)
     position_size: float = 0.0
@@ -105,7 +97,6 @@ class Position:
             "trailing_activated": self.trailing_activated,
             "trailing_stop": self.trailing_stop,
             "highest_favorable": self.highest_favorable,
-            "be_triggered": self.be_triggered,
             "partial_tp_filled": self.partial_tp_filled,
             "position_size": self.position_size,
             "position_usd": self.position_usd,
@@ -142,10 +133,11 @@ class PositionTracker:
         entry_ts: str,
         position_size: float = 0.0,
         position_usd: float = 0.0,
-        be_trigger_atr_mult: float = 1.0,
-        trailing_atr_mult: float = 3.0,
+        be_trigger_atr_mult: float = 0.0,  # v8.0: DESATIVADO
+        trailing_atr_mult: float = 3.0,    # v8.0: 3.0x ATR
+        trailing_activate_atr_mult: float = 1.5,  # v8.0: ativa em 1.5x ATR
         partial_tp_pct: float = 0.50,
-        post_tp1_sl_buffer: float = 0.1,
+        post_tp1_sl_buffer: float = 1.0,  # v8.0: 1.0 ATR buffer
     ) -> Position:
         """
         Abre uma nova posicao.
@@ -163,8 +155,8 @@ class PositionTracker:
                 entry_ts=entry_ts,
                 position_size=position_size,
                 position_usd=position_usd,
-                be_trigger_atr_mult=be_trigger_atr_mult,
                 trailing_atr_mult=trailing_atr_mult,
+                trailing_activate_atr_mult=trailing_activate_atr_mult,
                 partial_tp_pct=partial_tp_pct,
                 post_tp1_sl_buffer=post_tp1_sl_buffer,
             )
@@ -189,7 +181,7 @@ class PositionTracker:
         candle_high: float,
         candle_low: float,
         candle_ts: str,
-        trailing_atr_mult: float = 1.5,
+        trailing_atr_mult: float = 3.0,  # v8.0: 3.0x ATR (era 1.5x)
     ) -> List[Position]:
         """
         Atualiza todas as posicoes abertas com o novo candle fechado.
@@ -248,7 +240,6 @@ class PositionTracker:
                             pos.trailing_stop = pos.take_profit - buffer
                         else:
                             pos.trailing_stop = pos.take_profit + buffer
-                        pos.be_triggered = True
                         pos.trailing_activated = True
                         logger.info(
                             "Posicao #%d: Partial TP atingido em %.2f. SL movido para floor (%.2f, buffer=%.2f*ATR)",
@@ -271,29 +262,28 @@ class PositionTracker:
                     to_close_ids.append(pos.id)
 
                 else:
-                    # Nenhum atingido — atualiza trailing e BE
+                    # Nenhum atingido — atualiza trailing
                     # 2. Atualiza highest_favorable
                     if is_long:
                         pos.highest_favorable = max(pos.highest_favorable, candle_high)
                     else:
                         pos.highest_favorable = min(pos.highest_favorable, candle_low)
 
-                    # 3. Break-even trigger
-                    if not pos.be_triggered:
+                    # 3. v8.0: Trailing activation (1.5x ATR, sem BE)
+                    if not pos.trailing_activated:
                         favorable_distance = abs(pos.highest_favorable - pos.entry_price)
-                        be_distance = pos.atr * pos.be_trigger_atr_mult
+                        trail_activate_dist = pos.atr * pos.trailing_activate_atr_mult
 
-                        if favorable_distance >= be_distance:
-                            pos.be_triggered = True
-                            pos.trailing_stop = pos.entry_price
+                        if favorable_distance >= trail_activate_dist:
                             pos.trailing_activated = True
-                            pos.status = PositionStatus.BREAK_EVEN
+                            pos.trailing_stop = pos.stop_loss  # Inicializa com SL original
+                            pos.status = PositionStatus.TRAILING
                             logger.info(
-                                "Posicao #%d: Break-even ativado. SL movido para %.2f (entrada)",
-                                pos.id, pos.entry_price,
+                                "Posicao #%d: Trailing ativado em %.2f (fav_dist=%.2f >= %.2f)",
+                                pos.id, pos.entry_price, favorable_distance, trail_activate_dist,
                             )
 
-                    # 4. Trailing stop update (apos BE)
+                    # 4. Trailing stop update
                     if pos.trailing_activated:
                         trail_distance = pos.atr * pos.trailing_atr_mult
                         if is_long:

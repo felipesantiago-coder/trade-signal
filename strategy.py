@@ -1,38 +1,42 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v7.1 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v8.0 para LONG e SHORT.
 
-Estrategia CTEV v7.1 = Regime-Based Trend-Following com Pullback (MAX RETURN)
+Estrategia CTEV v8.0 = Regime-Based Trend-Following com Pullback (MAX RETURN)
 
-v7.1 — CORRECAO CRITICA: RSI alinhado com realidade do BTC 1h
-  Diagnostico do funil revelou combinacao fatal:
-    - RSI 35-50 em uptrend: 105 candles, MAS 100% tinham ema20_touched=True
-      porque ema20_touched é PRESENTE em quase todos os candles
-    - O problema REAL: pullback_type era "ema20_touch" mas close nunca
-      cruzou a EMA20 (flag era True por erro de logica ou touch distante)
-    - RSI medio durante pullbacks reais = 58.9 (median 58.3)
-    - Apenas 8.7% dos pullbacks reais tem RSI < 50
+v8.0 — GRID SEARCH OTIMIZADO (resultado: +9.53%, PF 1.05)
+  Evolucao: v7.1 (-118.33%, PF 0.45) -> grid search -> v8.0 final
 
-  Mudancas v7.1 (ENTRY - CORRECAO CRITICA):
-    1. RSI LONG: 45-62 (alinhado com mediana 58.9 dos pullbacks reais)
-    2. RSI SHORT: 38-55 (espelho)
-    3. EMA20 PROXIMITY: 1.0% — captura pullbacks que chegam perto sem tocar
-    4. DI DIRECTION FILTER: DESATIVADO — muito restritivo com ADX>=28
-    5. MACD HIST FILTER: DESATIVADO — elimina 71.5% dos candidatos
-    6. OBV TREND FILTER: DESATIVADO — extremamente restritivo (96% para 1 valor)
-    7. STOCH RSI FILTER: DESATIVADO — elimina 54% dos candidatos
-    8. ADX_MIN: 28 (era 35 — muito poucos candles)
-    9. EMA50_SLOPE_MIN: -0.5 (era -0.3)
-    10. BBWP SQUEEZE BONUS: mantido (relaxa RSI em 5 pts)
+  Diagnostico v7.1 (229 trades):
+    - WR 53.3% artificial (BE gerava lucros 0%, trailing capturava 0.10-0.15%)
+    - R:R efetivo 0.62 (avg win +0.79% vs avg loss -2.01%)
+    - BE: 54% dos trades com lucro ~0% — destruia R:R
+    - Trailing 1.5x ATR: stopava em pullback normal
+    - TP 10x ATR: 0 hits em 229 trades — inalcançavel
+    - Momentum exit: capturava lucros de 0.10-0.15%
 
-  Parametros de risco mantidos de v7.0:
-    - SL 3.0x ATR, TP 10.0x ATR, max_bars 168
+  Grid search (14 configs x 14 entries = 196 combinacoes):
+    - Melhor entrada: ADX>=32, RSI 45-65 LONG / 35-55 SHORT
+    - Melhor saida: SL 2.8x ATR, TP 5.5x ATR, no trailing, max_bars 168
+    - Resultado: 133 trades, WR 42.9%, PF 1.05, PnL +9.53%, MaxDD 17.1%
 
-  Referencias:
-    - Funil diag: 17520 candles, trending_up=2512, apos todos filtros v7.0 = 0
-    - Funil diag: RSI medio pullback real = 58.9, apenas 8.7% abaixo de 50
-    - v7.0: 0 trades (RSI+pullback desalinhados + filtros excessivos)
+  Mudancas v8.0 vs v7.1:
+    ENTRADA:
+      1. ADX_MIN: 32 (era 28 — apenas tendencias fortes)
+      2. RSI LONG: 45-65 (era 45-62 — alargado topo)
+      3. RSI SHORT: 35-55 (era 38-55 — alargado base)
+      4. EMA proximity: 0.5% EMA20, 0.8% EMA50
+      5. Filtros de confluencia: DESATIVADOS
+    SAIDA:
+      1. SL: 2.8x ATR (era 3.0x)
+      2. TP: 5.5x ATR (era 10.0x — agora realizavel)
+      3. Trailing: DESATIVADO (era 1.5x — destruia R:R)
+      4. Break-even: DESATIVADO (era 2.0x ATR — 54% de trades com lucro ~0%)
+      5. Momentum exit: REMOVIDO (capturava lucros irrelevantes)
+      6. Time-decay: REMOVIDO
+      7. RSI exhaustion: mantido (RSI > 80 / < 20 apos 24+ barras)
+      8. Max bars: 168
 """
 
 from __future__ import annotations
@@ -121,30 +125,28 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v7.1 ──
-# v7.1: RSI alinhado com realidade, filtros excessivos removidos
+# ── Parametros da estrategia CTEV v8.0 (GRID SEARCH OPTIMIZED) ──
+# Grid: 196 combinacoes testadas. Best: ADX32 + SL2.8 + TP5.5 + noTR
 
-# REGIME FILTER (v7.1: APENAS trending — sem transition)
-ADX_MIN = 28.0                # v7.1: ADX >= 28 (era 35 — muito restritivo)
-ALLOW_TRANSITION = False      # v7.1: DESATIVADO — transition tinha WR < 20%
+# REGIME FILTER
+ADX_MIN = 32.0                # v8.0: ADX >= 32 (grid: 32 > 30 > 28 > 25 para WR/PF)
+ALLOW_TRANSITION = False      # DESATIVADO — transition tinha WR < 20%
 
-# RSI como zona de pullback (v7.1: ALINHADO COM DADOS REAIS)
-# Dados: pullback real em uptrend tem RSI medio 58.9, mediana 58.3
-# Apenas 8.7% dos pullbacks tem RSI < 50
-RSI_LONG_MIN = 45.0           # v7.1: RSI 45-62 (era 35-50 — desalinhado)
-RSI_LONG_MAX = 62.0
-RSI_SHORT_MIN = 38.0          # v7.1: RSI 38-55 (espelho)
+# RSI como zona de pullback
+RSI_LONG_MIN = 45.0           # v8.0: RSI 45-65 (grid: wider better)
+RSI_LONG_MAX = 65.0
+RSI_SHORT_MIN = 35.0          # v8.0: RSI 35-55 (espelho)
 RSI_SHORT_MAX = 55.0
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
 RSI_DELTA_SHORT_MAX = 5.0    # effectively disabled
 
-# Volume (DESABILITADO — removido pelo grid search massivo)
+# Volume (DESABILITADO)
 VOLUME_CONFIRM = False
-VOLUME_SMA_RATIO = 0.30       # (mantido como referencia, nao usado quando VC=False)
+VOLUME_SMA_RATIO = 0.30
 
-# Fibonacci tolerancia (v4.4: 2.5% — confirmado otimo)
+# Fibonacci tolerancia
 FIB_TOLERANCE_PCT = 0.025     # 2.5%
 
 # ATR Percentile filter
@@ -155,23 +157,23 @@ ATR_PCT_MAX = 0.90
 BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
-# v7.1: EMA proximity ATIVADO — captura pullbacks que chegam perto sem tocar
-EMA20_PROXIMITY_PCT = 0.003  # v7.1: 0.3% da EMA20 conta como pullback (era 0)
-EMA50_PROXIMITY_PCT = 0.005  # v7.1: 0.5% da EMA50 conta como pullback (era 0)
+# EMA proximity
+EMA20_PROXIMITY_PCT = 0.005  # 0.5% da EMA20
+EMA50_PROXIMITY_PCT = 0.008  # 0.8% da EMA50
 
-# EMA Slope (v7.1: relaxado)
-EMA50_SLOPE_MIN = -0.5    # v7.1: -0.5 (era -0.3 muito restritivo)
+# EMA Slope
+EMA50_SLOPE_MIN = -0.5
 
-# Gestao de risco — R:R 3.3:1 (v7.0: SL mais largo, TP mais alto)
-SL_ATR_MULT = 3.00          # 3.0x ATR — espaco generoso para ruido BTC 1h
-TP_ATR_MULT = 10.00         # 10.0x ATR — teto alto, trailing gerencia a saida
+# Gestao de risco — R:R ~2:1 (GRID OPTIMIZED)
+SL_ATR_MULT = 2.80          # v8.0: 2.8x ATR (grid: 2.8 > 3.0 > 2.5 para PnL)
+TP_ATR_MULT = 5.50          # v8.0: 5.5x ATR (grid: 5.5 > 6.0 > 5.0 para PnL)
 
-# v7.1: FILTROS DE CONFLUENCIA — DESATIVADOS (diag mostrou que matam todos sinais)
-DI_DIRECTION_FILTER = False    # v7.1: OFF (era True — 100% dos candidatos ja tinham +DI>-DI, mas combina com outros filtros matava tudo)
-MACD_HIST_FILTER = False       # v7.1: OFF (eliminava 71.5% dos candidatos apos pullback)
-OBV_TREND_FILTER = False       # v7.1: OFF (eliminava 96% — obv_trend quase sempre 0, apenas 7 com valor -1)
-STOCH_RSI_FILTER = False      # v7.1: OFF (eliminava 54% dos candidatos)
-BBWP_SQUEEZE_BONUS = True     # v7.1: ON — se BBWP < 20, relaxa RSI em 5 pts
+# FILTROS DE CONFLUENCIA — DESATIVADOS
+DI_DIRECTION_FILTER = False
+MACD_HIST_FILTER = False
+OBV_TREND_FILTER = False
+STOCH_RSI_FILTER = False
+BBWP_SQUEEZE_BONUS = True
 
 
 def _price_near_fib(
