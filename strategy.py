@@ -1,36 +1,38 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v7.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v7.1 para LONG e SHORT.
 
-Estrategia CTEV v7.0 = Regime-Based Trend-Following com Pullback (MAX RETURN)
+Estrategia CTEV v7.1 = Regime-Based Trend-Following com Pullback (MAX RETURN)
 
-v7.0 — PROFUNDIZACAO TOTAL PARA MAXIMIZAR RETORNO DOS TRADES
-  Diagnostico do codigo revelou causas estruturais:
-    1. simulate_trades() (basico) sem trailing/BE/partial — usado nos reports
-    2. Timeout hardcoded em 72 barras — ignorava profile.max_bars_held
-    3. Filtros MACD e OBV calculados mas NAO usados na entrada
-    4. Sem saida por exaustao de momentum — trades morriam no timeout
-    5. SL 2.5x ATR justo demais — ruido do BTC 1h tocava antes do movimento
+v7.1 — CORRECAO CRITICA: RSI alinhado com realidade do BTC 1h
+  Diagnostico do funil revelou combinacao fatal:
+    - RSI 35-50 em uptrend: 105 candles, MAS 100% tinham ema20_touched=True
+      porque ema20_touched é PRESENTE em quase todos os candles
+    - O problema REAL: pullback_type era "ema20_touch" mas close nunca
+      cruzou a EMA20 (flag era True por erro de logica ou touch distante)
+    - RSI medio durante pullbacks reais = 58.9 (median 58.3)
+    - Apenas 8.7% dos pullbacks reais tem RSI < 50
 
-  Mudancas v7.0 (ENTRY):
-    - MACD HISTOGRAM FILTER: macd_hist > 0 para LONG, < 0 para SHORT
-    - OBV TREND FILTER: OBV > OBV_SMA20 para LONG, < OBV_SMA20 para SHORT
-    - STOCH RSI CONFIRMATION: Stoch RSI K > Stoch RSI D para LONG
-    - RSI LONG: 35-50 (mais justo — apenas pullbacks reais)
-    - RSI SHORT: 50-68 (mais justo — apenas rallys reais)
-    - ADX_MIN: 35 (exige tendencia forte)
-    - BBWP SQUEEZE BONUS: se BBWP < 20, relaxa RSI em 5 pontos
+  Mudancas v7.1 (ENTRY - CORRECAO CRITICA):
+    1. RSI LONG: 45-62 (alinhado com mediana 58.9 dos pullbacks reais)
+    2. RSI SHORT: 38-55 (espelho)
+    3. EMA20 PROXIMITY: 1.0% — captura pullbacks que chegam perto sem tocar
+    4. DI DIRECTION FILTER: DESATIVADO — muito restritivo com ADX>=28
+    5. MACD HIST FILTER: DESATIVADO — elimina 71.5% dos candidatos
+    6. OBV TREND FILTER: DESATIVADO — extremamente restritivo (96% para 1 valor)
+    7. STOCH RSI FILTER: DESATIVADO — elimina 54% dos candidatos
+    8. ADX_MIN: 28 (era 35 — muito poucos candles)
+    9. EMA50_SLOPE_MIN: -0.5 (era -0.3)
+    10. BBWP SQUEEZE BONUS: mantido (relaxa RSI em 5 pts)
 
-  Mudancas v7.0 (EXIT — no backtest.py):
-    - Momentum Exit: fecha se ADX < 20 apos 12+ barras com lucro
-    - RSI Exhaustion: fecha se RSI > 80 (LONG) ou < 20 (SHORT) apos 24+ barras
-    - Time-decay Trailing: trailing encolhe apos 70% de max_bars
-    - Post-TP1 SL buffer: entry + 0.2x ATR (evita saida por ruido)
+  Parametros de risco mantidos de v7.0:
+    - SL 3.0x ATR, TP 10.0x ATR, max_bars 168
 
   Referencias:
-    - Backtest 730d anterior: 323T, WR 30%, PF 0.27, PnL -238.72%
-    - v6.0 fix: bug timeout + trailing melhorado + momentum exit
+    - Funil diag: 17520 candles, trending_up=2512, apos todos filtros v7.0 = 0
+    - Funil diag: RSI medio pullback real = 58.9, apenas 8.7% abaixo de 50
+    - v7.0: 0 trades (RSI+pullback desalinhados + filtros excessivos)
 """
 
 from __future__ import annotations
@@ -119,24 +121,26 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v7.0 ──
-# v7.0: Maximizar retorno dos trades — filtros mais rigorosos + saidas inteligentes
+# ── Parametros da estrategia CTEV v7.1 ──
+# v7.1: RSI alinhado com realidade, filtros excessivos removidos
 
-# REGIME FILTER (v7.0: APENAS trending — sem transition)
-ADX_MIN = 35.0                # v7.0: ADX >= 35 — apenas tendencias fortes (era 32)
-ALLOW_TRANSITION = False      # v7.0: DESATIVADO — transition tinha WR < 20%
+# REGIME FILTER (v7.1: APENAS trending — sem transition)
+ADX_MIN = 28.0                # v7.1: ADX >= 28 (era 35 — muito restritivo)
+ALLOW_TRANSITION = False      # v7.1: DESATIVADO — transition tinha WR < 20%
 
-# RSI como zona de pullback (v7.0: mais justo — apenas pullbacks/gaps reais)
-RSI_LONG_MIN = 35.0           # v7.0: RSI 35-50 para LONG (era 30-52)
-RSI_LONG_MAX = 50.0
-RSI_SHORT_MIN = 50.0          # v7.0: RSI 50-68 para SHORT (era 48-73)
-RSI_SHORT_MAX = 68.0
+# RSI como zona de pullback (v7.1: ALINHADO COM DADOS REAIS)
+# Dados: pullback real em uptrend tem RSI medio 58.9, mediana 58.3
+# Apenas 8.7% dos pullbacks tem RSI < 50
+RSI_LONG_MIN = 45.0           # v7.1: RSI 45-62 (era 35-50 — desalinhado)
+RSI_LONG_MAX = 62.0
+RSI_SHORT_MIN = 38.0          # v7.1: RSI 38-55 (espelho)
+RSI_SHORT_MAX = 55.0
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
 RSI_DELTA_SHORT_MAX = 5.0    # effectively disabled
 
-# Volume (v7.0: DESABILITADO — removido pelo grid search massivo)
+# Volume (DESABILITADO — removido pelo grid search massivo)
 VOLUME_CONFIRM = False
 VOLUME_SMA_RATIO = 0.30       # (mantido como referencia, nao usado quando VC=False)
 
@@ -151,25 +155,23 @@ ATR_PCT_MAX = 0.90
 BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
-# EMA proximity — DESABILITADO
-EMA20_PROXIMITY_PCT = 0.0
-EMA50_PROXIMITY_PCT = 0.0
+# v7.1: EMA proximity ATIVADO — captura pullbacks que chegam perto sem tocar
+EMA20_PROXIMITY_PCT = 0.003  # v7.1: 0.3% da EMA20 conta como pullback (era 0)
+EMA50_PROXIMITY_PCT = 0.005  # v7.1: 0.5% da EMA50 conta como pullback (era 0)
 
-# EMA Slope (v7.0: exige slope real)
-EMA50_SLOPE_MIN = -0.3    # v7.0: slope deve ser > -0.3 (era -0.5 — mais justo)
+# EMA Slope (v7.1: relaxado)
+EMA50_SLOPE_MIN = -0.5    # v7.1: -0.5 (era -0.3 muito restritivo)
 
 # Gestao de risco — R:R 3.3:1 (v7.0: SL mais largo, TP mais alto)
-SL_ATR_MULT = 3.00          # v7.0: 3.0x ATR — espaco generoso para ruido BTC 1h
-TP_ATR_MULT = 10.00         # v7.0: 10.0x ATR — teto alto, trailing gerencia a saida
+SL_ATR_MULT = 3.00          # 3.0x ATR — espaco generoso para ruido BTC 1h
+TP_ATR_MULT = 10.00         # 10.0x ATR — teto alto, trailing gerencia a saida
 
-# DI Direction Filter (v6.0: alinhamento de direcao)
-DI_DIRECTION_FILTER = True    # +DI > -DI para LONG, -DI > +DI para SHORT
-
-# v7.0: NOVOS FILTROS DE ENTRADA
-MACD_HIST_FILTER = True       # v7.0: MACD hist > 0 para LONG, < 0 para SHORT
-OBV_TREND_FILTER = True       # v7.0: OBV > OBV_SMA20 para LONG, < para SHORT
-STOCH_RSI_FILTER = True      # v7.0: Stoch RSI K > D para LONG, K < D para SHORT
-BBWP_SQUEEZE_BONUS = True     # v7.0: se BBWP < 20 (squeeze), relaxa RSI em 5 pts
+# v7.1: FILTROS DE CONFLUENCIA — DESATIVADOS (diag mostrou que matam todos sinais)
+DI_DIRECTION_FILTER = False    # v7.1: OFF (era True — 100% dos candidatos ja tinham +DI>-DI, mas combina com outros filtros matava tudo)
+MACD_HIST_FILTER = False       # v7.1: OFF (eliminava 71.5% dos candidatos apos pullback)
+OBV_TREND_FILTER = False       # v7.1: OFF (eliminava 96% — obv_trend quase sempre 0, apenas 7 com valor -1)
+STOCH_RSI_FILTER = False      # v7.1: OFF (eliminava 54% dos candidatos)
+BBWP_SQUEEZE_BONUS = True     # v7.1: ON — se BBWP < 20, relaxa RSI em 5 pts
 
 
 def _price_near_fib(
@@ -323,14 +325,10 @@ def evaluate_long(
         if _stoch_k <= _stoch_d:
             return None
 
-    # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4: sem EMA proximity)
-    # Nota: EMA proximity desabilitado (EMA20/50_PROXIMITY_PCT = 0)
-    # Fibonacci check e EMA touch mantidos como em v4.3
-
-    # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4)
+    # 4. PULLBACK: Fibonacci zone OU EMA touch OU EMA proximity (v7.1)
     pullback_type = None
 
-    # Fibonacci check (tolerancia adaptada ao profile)
+    # 4a. Fibonacci check (tolerancia adaptada ao profile)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == 1:
         pullback_type = "fibonacci"
@@ -341,15 +339,29 @@ def evaluate_long(
                     _price_near_fib(low, fib_0618, _fib_tol)):
                 pullback_type = "fibonacci"
 
-    # EMA(20) touch (low cruzou EMA20 e close recuperou)
+    # 4b. EMA(20) touch (low cruzou EMA20 e close recuperou)
     if pullback_type is None:
         if bool(row.get("ema20_touched", False)) and close > ema20:
             pullback_type = "ema20_touch"
 
-    # EMA(50) touch
+    # 4c. EMA(50) touch
     if pullback_type is None:
         if bool(row.get("ema50_touched", False)) and close > ema50:
             pullback_type = "ema50_touch"
+
+    # 4d. v7.1: EMA(20) PROXIMITY — close dentro de X% da EMA20
+    _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
+    if pullback_type is None and _ema20_prox > 0:
+        _dist_ema20 = abs(close - ema20) / ema20
+        if _dist_ema20 <= _ema20_prox and close >= ema20 * (1 - _ema20_prox):
+            pullback_type = "ema20_proximity"
+
+    # 4e. v7.1: EMA(50) PROXIMITY — close dentro de X% da EMA50
+    _ema50_prox = profile.ema50_proximity_pct if profile else EMA50_PROXIMITY_PCT
+    if pullback_type is None and _ema50_prox > 0:
+        _dist_ema50 = abs(close - ema50) / ema50
+        if _dist_ema50 <= _ema50_prox and close >= ema50 * (1 - _ema50_prox):
+            pullback_type = "ema50_proximity"
 
     if pullback_type is None:
         return None
@@ -532,10 +544,10 @@ def evaluate_short(
         if _stoch_k >= _stoch_d:
             return None
 
-    # 4. PULLBACK: Fibonacci OU EMA touch (v4.4)
+    # 4. PULLBACK: Fibonacci OU EMA touch OU EMA proximity (v7.1)
     pullback_type = None
 
-    # Fibonacci check (tolerancia adaptada ao profile)
+    # 4a. Fibonacci check (tolerancia adaptada ao profile)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == -1:
         pullback_type = "fibonacci"
@@ -546,17 +558,31 @@ def evaluate_short(
                     _price_near_fib(high, fib_0618, _fib_tol)):
                 pullback_type = "fibonacci"
 
-    # EMA(20) touch (high cruzou EMA20 e close rejeitou abaixo)
+    # 4b. EMA(20) touch (high cruzou EMA20 e close rejeitou abaixo)
     if pullback_type is None:
         if bool(row.get("ema20_touched", False)) and close < ema20:
             if high >= ema20:
                 pullback_type = "ema20_touch"
 
-    # EMA(50) touch
+    # 4c. EMA(50) touch
     if pullback_type is None:
         if bool(row.get("ema50_touched_up", False)) and close < ema50:
             if high >= ema50:
                 pullback_type = "ema50_touch"
+
+    # 4d. v7.1: EMA(20) PROXIMITY — close dentro de X% da EMA20
+    _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
+    if pullback_type is None and _ema20_prox > 0:
+        _dist_ema20 = abs(close - ema20) / ema20
+        if _dist_ema20 <= _ema20_prox and close <= ema20 * (1 + _ema20_prox):
+            pullback_type = "ema20_proximity"
+
+    # 4e. v7.1: EMA(50) PROXIMITY — close dentro de X% da EMA50
+    _ema50_prox = profile.ema50_proximity_pct if profile else EMA50_PROXIMITY_PCT
+    if pullback_type is None and _ema50_prox > 0:
+        _dist_ema50 = abs(close - ema50) / ema50
+        if _dist_ema50 <= _ema50_prox and close <= ema50 * (1 + _ema50_prox):
+            pullback_type = "ema50_proximity"
 
     if pullback_type is None:
         return None

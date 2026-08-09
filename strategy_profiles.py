@@ -76,6 +76,8 @@ class StrategyProfile:
     rsi_short_max: float = 75.0
     fib_tolerance_pct: float = 0.025
     ema50_slope_min: float = -1.0
+    ema20_proximity_pct: float = 0.0   # v7.1: EMA20 proximity para pullback
+    ema50_proximity_pct: float = 0.0   # v7.1: EMA50 proximity para pullback
     volume_confirm: bool = False
     volume_sma_ratio: float = 0.30
 
@@ -180,23 +182,23 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v7.0 MAX RETURN] CTEV Trend-Following para 1h. Diagnostico profundo do codigo "
-        "revelou causas estruturais: 1) simulate_trades() basico sem trailing — CORRIGIDO. "
-        "2) Timeout hardcoded em 72 barras — CORRIGIDO. 3) MACD/OBV/StochRSI calculados "
-        "mas nao usados — ADICIONADOS como filtros. 4) Sem saida por momentum/RSI — ADICIONADO. "
-        "5) SL 2.5x justo demais — aumentado para 3.0x. 6) TP 6x baixo — 10x (trailing gerencia). "
-        "7) max_bars 72 (3 dias) muito curto — 168 (7 dias). 8) ADX 32 -> 35. "
-        "Novos filtros v7.0: MACD hist, OBV trend, Stoch RSI K>D, BBWP squeeze bonus."
+        "[v7.1 FIX] CTEV Trend-Following para 1h. v7.0 gerou 0 trades por "
+        "combinacao fatal: RSI 35-50 captura apenas 8.7% dos pullbacks reais "
+        "(mediana RSI = 58.9). Filtros MACD/OBV/StochRSI eliminavam 54-96% "
+        "dos candidatos restantes. Correcao: RSI 45-62, EMA proximity 1.0%, "
+        "filtros de confluencia desativados, ADX 28."
     ),
-    # Filtros de entrada — v7.0: ultra-restritivos para max qualidade
-    adx_min=35.0,
+    # Filtros de entrada — v7.1: ALINHADO COM DADOS REAIS
+    adx_min=28.0,
     allow_transition=False,
-    rsi_long_min=35.0,
-    rsi_long_max=50.0,
-    rsi_short_min=50.0,
-    rsi_short_max=68.0,
+    rsi_long_min=45.0,
+    rsi_long_max=62.0,
+    rsi_short_min=38.0,
+    rsi_short_max=55.0,
     fib_tolerance_pct=0.025,
-    ema50_slope_min=-0.3,
+    ema50_slope_min=-0.5,
+    ema20_proximity_pct=0.003,  # v7.1: 0.3% da EMA20 como pullback
+    ema50_proximity_pct=0.005,  # v7.1: 0.5% da EMA50 como pullback
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
@@ -204,7 +206,7 @@ PROFILE_STANDARD = StrategyProfile(
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
-    # Gestao de risco — v7.0: SL 3.0x ATR / TP 10.0x ATR (R:R 3.3:1)
+    # Gestao de risco — SL 3.0x ATR / TP 10.0x ATR (R:R 3.3:1)
     sl_atr_mult=3.00,
     tp_atr_mult=10.00,
     max_bars_held=168,
