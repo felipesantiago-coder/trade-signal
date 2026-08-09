@@ -1,34 +1,36 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v5.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v7.0 para LONG e SHORT.
 
-Estrategia CTEV v5.0 = Regime-Based Trend-Following com Pullback (HIGH-FREQUENCY)
+Estrategia CTEV v7.0 = Regime-Based Trend-Following com Pullback (MAX RETURN)
 
-v5.0 — OTIMIZACAO PARA FREQUENCIA via grid search 6.000+ combinacoes:
-  Mantem a edge de qualidade do v4.4 enquanto adiciona regime transition.
-  Removido slope requirement para desbloquear sinais em transition.
-  SL/TP ajustado para 1.5x/3.5x ATR (R:R 2.3:1).
+v7.0 — PROFUNDIZACAO TOTAL PARA MAXIMIZAR RETORNO DOS TRADES
+  Diagnostico do codigo revelou causas estruturais:
+    1. simulate_trades() (basico) sem trailing/BE/partial — usado nos reports
+    2. Timeout hardcoded em 72 barras — ignorava profile.max_bars_held
+    3. Filtros MACD e OBV calculados mas NAO usados na entrada
+    4. Sem saida por exaustao de momentum — trades morriam no timeout
+    5. SL 2.5x ATR justo demais — ruido do BTC 1h tocava antes do movimento
 
-  Resultado esperado (simulacao basica):
-    ~65 trades, WR ~41%, PF ~1.29, PnL +13.24%, DD ~10.74%
-    (vs v4.4: 13 trades, WR 69.2%, PF 4.48, PnL +18.64%)
-    5x mais trades mantendo lucratividade!
+  Mudancas v7.0 (ENTRY):
+    - MACD HISTOGRAM FILTER: macd_hist > 0 para LONG, < 0 para SHORT
+    - OBV TREND FILTER: OBV > OBV_SMA20 para LONG, < OBV_SMA20 para SHORT
+    - STOCH RSI CONFIRMATION: Stoch RSI K > Stoch RSI D para LONG
+    - RSI LONG: 35-50 (mais justo — apenas pullbacks reais)
+    - RSI SHORT: 50-68 (mais justo — apenas rallys reais)
+    - ADX_MIN: 35 (exige tendencia forte)
+    - BBWP SQUEEZE BONUS: se BBWP < 20, relaxa RSI em 5 pontos
 
-  Parametros v5.0 vs v4.4:
-    - RSI LONG: 28-48 (mantido — qualidade)
-    - RSI SHORT: 55-75 (mantido — qualidade)
-    - ADX_MIN: 30 (mantido — qualidade)
-    - VOLUME_CONFIRM: False (mantido)
-    - FIB_TOLERANCE: 2.5% (mantido)
-    - ALLOW_TRANSITION: True (NOVO — desbloqueia 3.437 candles adicionais)
-    - EMA50_SLOPE_MIN: -1.0 (NOVO — permite slope fraco em transition)
-    - SL/TP: 1.50x / 3.50x ATR (NOVO — otimizado para v5)
+  Mudancas v7.0 (EXIT — no backtest.py):
+    - Momentum Exit: fecha se ADX < 20 apos 12+ barras com lucro
+    - RSI Exhaustion: fecha se RSI > 80 (LONG) ou < 20 (SHORT) apos 24+ barras
+    - Time-decay Trailing: trailing encolhe apos 70% de max_bars
+    - Post-TP1 SL buffer: entry + 0.2x ATR (evita saida por ruido)
 
-  Nota: Para 1 trade/dia em BTC/USDT 1H, considerar multi-simbolo.
-Referencias:
-    - Grid search com 17.398 candles BTC/USDT 1H (2 anos)
-    - Regimes: trending_up=2537, trending_down=2770, transition=3437, ranging=5691, volatile=2963
+  Referencias:
+    - Backtest 730d anterior: 323T, WR 30%, PF 0.27, PnL -238.72%
+    - v6.0 fix: bug timeout + trailing melhorado + momentum exit
 """
 
 from __future__ import annotations
@@ -117,25 +119,24 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v4.4 ──
-# v4.4: Otimizado via grid search massivo — 15.123 combinacoes em 22s
-# Melhor resultado (basico): 13 trades, WR 69.2%, PF 4.48, PnL +18.64%, DD 1.92%
+# ── Parametros da estrategia CTEV v7.0 ──
+# v7.0: Maximizar retorno dos trades — filtros mais rigorosos + saidas inteligentes
 
-# REGIME FILTER (v5.0: trending + transition)
-ADX_MIN = 30.0                # ADX minimo para trending
-ALLOW_TRANSITION = True       # v5.0: aceita regime 'transition' (5x mais sinais)
+# REGIME FILTER (v7.0: APENAS trending — sem transition)
+ADX_MIN = 35.0                # v7.0: ADX >= 35 — apenas tendencias fortes (era 32)
+ALLOW_TRANSITION = False      # v7.0: DESATIVADO — transition tinha WR < 20%
 
-# RSI como zona de pullback (v4.4: otimizado)
-RSI_LONG_MIN = 28.0           # RSI 28-48 para LONG
-RSI_LONG_MAX = 48.0
-RSI_SHORT_MIN = 55.0          # RSI 55-75 para SHORT
-RSI_SHORT_MAX = 75.0
+# RSI como zona de pullback (v7.0: mais justo — apenas pullbacks/gaps reais)
+RSI_LONG_MIN = 35.0           # v7.0: RSI 35-50 para LONG (era 30-52)
+RSI_LONG_MAX = 50.0
+RSI_SHORT_MIN = 50.0          # v7.0: RSI 50-68 para SHORT (era 48-73)
+RSI_SHORT_MAX = 68.0
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
 RSI_DELTA_SHORT_MAX = 5.0    # effectively disabled
 
-# Volume (v4.4: DESABILITADO — removido pelo grid search massivo)
+# Volume (v7.0: DESABILITADO — removido pelo grid search massivo)
 VOLUME_CONFIRM = False
 VOLUME_SMA_RATIO = 0.30       # (mantido como referencia, nao usado quando VC=False)
 
@@ -154,12 +155,21 @@ BB_WIDTH_MAX = 999.0
 EMA20_PROXIMITY_PCT = 0.0
 EMA50_PROXIMITY_PCT = 0.0
 
-# EMA Slope (v5.0: relaxado para permitir transition)
-EMA50_SLOPE_MIN = -1.0    # v5.0: permite slope fraco (era 0.0)
+# EMA Slope (v7.0: exige slope real)
+EMA50_SLOPE_MIN = -0.3    # v7.0: slope deve ser > -0.3 (era -0.5 — mais justo)
 
-# Gestao de risco — R:R 2.3:1 (otimizado v5.0)
-SL_ATR_MULT = 1.50
-TP_ATR_MULT = 3.50
+# Gestao de risco — R:R 3.3:1 (v7.0: SL mais largo, TP mais alto)
+SL_ATR_MULT = 3.00          # v7.0: 3.0x ATR — espaco generoso para ruido BTC 1h
+TP_ATR_MULT = 10.00         # v7.0: 10.0x ATR — teto alto, trailing gerencia a saida
+
+# DI Direction Filter (v6.0: alinhamento de direcao)
+DI_DIRECTION_FILTER = True    # +DI > -DI para LONG, -DI > +DI para SHORT
+
+# v7.0: NOVOS FILTROS DE ENTRADA
+MACD_HIST_FILTER = True       # v7.0: MACD hist > 0 para LONG, < 0 para SHORT
+OBV_TREND_FILTER = True       # v7.0: OBV > OBV_SMA20 para LONG, < para SHORT
+STOCH_RSI_FILTER = True      # v7.0: Stoch RSI K > D para LONG, K < D para SHORT
+BBWP_SQUEEZE_BONUS = True     # v7.0: se BBWP < 20 (squeeze), relaxa RSI em 5 pts
 
 
 def _price_near_fib(
@@ -246,7 +256,7 @@ def evaluate_long(
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # Resolve profile parameters (fallback para constantes v5.0)
+    # Resolve profile parameters (fallback para constantes v7.0)
     _adx_min = profile.adx_min if profile else ADX_MIN
     _allow_trans = profile.allow_transition if profile else ALLOW_TRANSITION
     _rsi_l_min = profile.rsi_long_min if profile else RSI_LONG_MIN
@@ -259,6 +269,12 @@ def evaluate_long(
     _atr_pct_max = profile.atr_pct_max if profile else ATR_PCT_MAX
     _sl_mult = profile.sl_atr_mult if profile else SL_ATR_MULT
     _tp_mult = profile.tp_atr_mult if profile else TP_ATR_MULT
+
+    # v7.0: BBWP squeeze bonus — relaxa RSI em 5 pontos durante squeeze
+    _bbwp = float(row.get("bbwp", 50.0))
+    if BBWP_SQUEEZE_BONUS and not pd.isna(_bbwp) and _bbwp < 20.0:
+        _rsi_l_min = max(0, _rsi_l_min - 5)
+        _rsi_l_max = _rsi_l_max + 5
 
     # 1. REGIME FILTER (v4.4: ALLOW_TRANSITION toggle)
     if regime == "trending_up":
@@ -277,6 +293,35 @@ def evaluate_long(
     # 3. SLOPE: EMA50 deve estar subindo
     if pd.isna(ema50_slope) or ema50_slope <= _slope_min:
         return None
+
+    # 3b. DI DIRECTION FILTER (v6.0): +DI deve estar acima de -DI para LONG
+    if DI_DIRECTION_FILTER:
+        if pd.isna(plus_di) or pd.isna(minus_di):
+            return None
+        if plus_di <= minus_di:
+            return None
+
+    # 3c. v7.0: MACD HISTOGRAM FILTER — momentum alinhado com direcao
+    if MACD_HIST_FILTER:
+        if pd.isna(macd_hist):
+            return None
+        if macd_hist <= 0:
+            return None
+
+    # 3d. v7.0: OBV TREND FILTER — fluxo de volume confirmando alta
+    if OBV_TREND_FILTER:
+        _obv_trend = int(row.get("obv_trend", 0))
+        if _obv_trend < 1:
+            return None
+
+    # 3e. v7.0: STOCH RSI FILTER — momentum de curto prazo alinhado
+    if STOCH_RSI_FILTER:
+        _stoch_k = float(row.get("stoch_rsi_k", 50.0))
+        _stoch_d = float(row.get("stoch_rsi_d", 50.0))
+        if pd.isna(_stoch_k) or pd.isna(_stoch_d):
+            return None
+        if _stoch_k <= _stoch_d:
+            return None
 
     # 4. PULLBACK: Fibonacci zone OU EMA touch (v4.4: sem EMA proximity)
     # Nota: EMA proximity desabilitado (EMA20/50_PROXIMITY_PCT = 0)
@@ -324,7 +369,6 @@ def evaluate_long(
 
     # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
     # (eram redundantes/restritivos demais — ver docstring do modulo)
-
     # ── Gestao de risco LONG — SL/TP adaptados ao profile ──
     entry = close
     stop_loss = entry - (_sl_mult * atr)
@@ -421,7 +465,7 @@ def evaluate_short(
     fib_prox = float(row.get("fib_proximity", float("nan")))
     ts = row.name
 
-    # Resolve profile parameters (fallback para constantes v5.0)
+    # Resolve profile parameters (fallback para constantes v7.0)
     _adx_min = profile.adx_min if profile else ADX_MIN
     _allow_trans = profile.allow_transition if profile else ALLOW_TRANSITION
     _rsi_s_min = profile.rsi_short_min if profile else RSI_SHORT_MIN
@@ -434,6 +478,12 @@ def evaluate_short(
     _atr_pct_max = profile.atr_pct_max if profile else ATR_PCT_MAX
     _sl_mult = profile.sl_atr_mult if profile else SL_ATR_MULT
     _tp_mult = profile.tp_atr_mult if profile else TP_ATR_MULT
+
+    # v7.0: BBWP squeeze bonus — relaxa RSI em 5 pontos durante squeeze
+    _bbwp = float(row.get("bbwp", 50.0))
+    if BBWP_SQUEEZE_BONUS and not pd.isna(_bbwp) and _bbwp < 20.0:
+        _rsi_s_min = max(0, _rsi_s_min - 5)
+        _rsi_s_max = _rsi_s_max + 5
 
     # 1. REGIME FILTER (v4.4: ALLOW_TRANSITION toggle)
     if regime == "trending_down":
@@ -452,6 +502,35 @@ def evaluate_short(
     # 3. SLOPE: EMA50 deve estar descendo
     if pd.isna(ema50_slope) or ema50_slope >= -_slope_min:
         return None
+
+    # 3b. DI DIRECTION FILTER (v6.0): -DI deve estar acima de +DI para SHORT
+    if DI_DIRECTION_FILTER:
+        if pd.isna(plus_di) or pd.isna(minus_di):
+            return None
+        if minus_di <= plus_di:
+            return None
+
+    # 3c. v7.0: MACD HISTOGRAM FILTER — momentum alinhado com direcao
+    if MACD_HIST_FILTER:
+        if pd.isna(macd_hist):
+            return None
+        if macd_hist >= 0:
+            return None
+
+    # 3d. v7.0: OBV TREND FILTER — fluxo de volume confirmando baixa
+    if OBV_TREND_FILTER:
+        _obv_trend = int(row.get("obv_trend", 0))
+        if _obv_trend > -1:
+            return None
+
+    # 3e. v7.0: STOCH RSI FILTER — momentum de curto prazo alinhado
+    if STOCH_RSI_FILTER:
+        _stoch_k = float(row.get("stoch_rsi_k", 50.0))
+        _stoch_d = float(row.get("stoch_rsi_d", 50.0))
+        if pd.isna(_stoch_k) or pd.isna(_stoch_d):
+            return None
+        if _stoch_k >= _stoch_d:
+            return None
 
     # 4. PULLBACK: Fibonacci OU EMA touch (v4.4)
     pullback_type = None
@@ -496,7 +575,6 @@ def evaluate_short(
         return None
 
     # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
-
     # ── Gestao de risco SHORT — SL/TP adaptados ao profile ──
     entry = close
     stop_loss = entry + (_sl_mult * atr)

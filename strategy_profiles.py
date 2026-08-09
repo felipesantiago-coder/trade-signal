@@ -180,24 +180,23 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[VALIDADO v7.1 RS] CTEV Regime-Switching para 1h. Otimizado via P2 grid search "
-        "ao redor de SL 2.5x/TP 12.0x + Walk-Forward 6 janelas. "
-        "Backtest 730d regime-switching: 22 trades, WR 50%, PF 2.49, "
-        "PnL +25.44%, DD 5.17%, Sharpe 6.07, R:R 4.0:1. "
-        "Supera Buy & Hold (+10.57%) em +14.87pp. "
-        "PDF 'Arquitetura Regime-Aware' testado: OBV/MACD/trailing/breakout/momentum "
-        "nao adicionam edge no regime-switching de 1h (sinais ja muito restritivos). "
-        "LONGs: 17T WR 41.2% PnL +5.03% | SHORTs: 5T WR 80% PnL +20.41%."
+        "[v7.0 MAX RETURN] CTEV Trend-Following para 1h. Diagnostico profundo do codigo "
+        "revelou causas estruturais: 1) simulate_trades() basico sem trailing — CORRIGIDO. "
+        "2) Timeout hardcoded em 72 barras — CORRIGIDO. 3) MACD/OBV/StochRSI calculados "
+        "mas nao usados — ADICIONADOS como filtros. 4) Sem saida por momentum/RSI — ADICIONADO. "
+        "5) SL 2.5x justo demais — aumentado para 3.0x. 6) TP 6x baixo — 10x (trailing gerencia). "
+        "7) max_bars 72 (3 dias) muito curto — 168 (7 dias). 8) ADX 32 -> 35. "
+        "Novos filtros v7.0: MACD hist, OBV trend, Stoch RSI K>D, BBWP squeeze bonus."
     ),
-    # Filtros de entrada — mantidos do P1 v5.0
-    adx_min=30.0,
-    allow_transition=True,
-    rsi_long_min=28.0,
-    rsi_long_max=48.0,
-    rsi_short_min=55.0,
-    rsi_short_max=75.0,
+    # Filtros de entrada — v7.0: ultra-restritivos para max qualidade
+    adx_min=35.0,
+    allow_transition=False,
+    rsi_long_min=35.0,
+    rsi_long_max=50.0,
+    rsi_short_min=50.0,
+    rsi_short_max=68.0,
     fib_tolerance_pct=0.025,
-    ema50_slope_min=-1.0,
+    ema50_slope_min=-0.3,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
@@ -205,10 +204,10 @@ PROFILE_STANDARD = StrategyProfile(
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
-    # Gestao de risco — Otimizado P2+WF: SL 2.12x ATR / TP 8.5x ATR (R:R 4.0:1)
-    sl_atr_mult=2.12,
-    tp_atr_mult=8.50,
-    max_bars_held=72,
+    # Gestao de risco — v7.0: SL 3.0x ATR / TP 10.0x ATR (R:R 3.3:1)
+    sl_atr_mult=3.00,
+    tp_atr_mult=10.00,
+    max_bars_held=168,
 )
 
 PROFILE_SWING = StrategyProfile(
@@ -245,7 +244,7 @@ PROFILE_SWING = StrategyProfile(
 
 PROFILE_BBWP_SQUEEZE = StrategyProfile(
     name="BBWP_SQUEEZE",
-    timeframes=("1h",),
+    timeframes=(),  # v6.0: removido '1h' — STANDARD agora e o perfil principal para 1h
     description=(
         "[Confluence v15 OPTIMIZED] Multi-signal scoring: EMA+ADX+RSI+StochRSI+MACD+OBV+Volume. "
         "v15-opt: Score>=5 de 9, TP1=8.0x ATR (50%), trailing=3.0x, SL=2.0x, "

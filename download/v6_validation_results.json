@@ -1,0 +1,20 @@
+{
+  "v6_basic": {
+    "total_trades": 52,
+    "win_rate": 38.5,
+    "profit_factor": 0.95,
+    "total_pnl_pct": -3.62,
+    "buy_hold_pct": 6.2,
+    "max_drawdown_pct": 20.39,
+    "sharpe_ratio": -0.46
+  },
+  "v6_advanced": {
+    "total_trades": 62,
+    "win_rate": 43.5,
+    "profit_factor": 0.54,
+    "total_pnl_pct": -28.16,
+    "buy_hold_pct": 6.21,
+    "max_drawdown_pct": 27.57,
+    "sharpe_ratio": -4.72
+  }
+}

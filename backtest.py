@@ -640,7 +640,7 @@ def simulate_trades(
                     break
 
         if exit_price is None:
-            last_j = min(i + 72, n) - 1
+            last_j = min(i + _max_bars, n) - 1
             exit_price = float(df_ind.iloc[last_j]["close"])
             exit_reason = "timeout"
             bars = last_j - i
@@ -696,8 +696,9 @@ def simulate_trades_advanced(
     atr_pct_max: float = 0.80,
     initial_balance: float = 10000.0,
     risk_per_trade_pct: float = 0.01,
-    be_trigger_atr_mult: float = 1.0,
-    trailing_atr_mult: float = 1.5,
+    be_trigger_atr_mult: float = 2.0,  # v7.0: BE apos 2x ATR de lucro
+    trailing_atr_mult: float = 1.5,  # v7.0: trailing distance 1.5x ATR
+    trailing_activate_atr_mult: float = 2.5,  # v7.0: trailing ativa apos 2.5x ATR (era 3.0)
     partial_tp_pct: float = 0.50,
     apply_costs_flag: bool = True,
     fee_pct: float = DEFAULT_FEE_PCT,
@@ -707,8 +708,19 @@ def simulate_trades_advanced(
     profile=None,
 ) -> Tuple[List[TradeResult], int, dict]:
     """
-    Simulacao avancada v4 com position sizing, trailing stop, break-even, partial TP,
-    cost modeling e regime filter.
+    Simulacao avancada v7.0 com position sizing, trailing stop, break-even, partial TP,
+    cost modeling, regime filter, momentum exit, time-decay trailing e RSI exhaustion.
+
+    v7.0 Melhorias sobre v6.0:
+      - Momentum Exit: fecha posicao se ADX cai abaixo de 20 (tendencia morrendo)
+        apos 12+ barras no trade e lucro > 0.5x ATR.
+      - Time-decay Trailing: apos 70% de max_bars, trailing distancia diminui
+        linearmente (de 1.5x ATR ate 0.8x ATR) para proteger lucros acumulados.
+      - RSI Exhaustion: para LONG, sai se RSI > 80 apos 24+ barras;
+        para SHORT, sai se RSI < 20 apos 24+ barras.
+      - Post-TP1 SL buffer: apos partial TP, SL vai para entry + 0.2x ATR
+        (em vez de entry exato) para evitar saida por ruido.
+      - Trailing activation: reduzido de 3.0x para 2.5x ATR (ativa mais cedo).
     """
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -836,6 +848,7 @@ def simulate_trades_advanced(
         exit_reason = None
         bars = 0
         sl_updates = 0
+        entry_adx = float(row.get("adx", 25.0))  # v7.0: ADX na entrada para momentum exit
 
         _max_bars = max_bars if profile is None else profile.max_bars_held
         for j in range(i + 1, min(i + _max_bars, n)):
@@ -843,6 +856,8 @@ def simulate_trades_advanced(
             f_close = float(future["close"])
             f_low = float(future["low"])
             f_high = float(future["high"])
+            f_rsi = float(future.get("rsi", 50.0))  # v7.0: RSI para exhaustion
+            f_adx = float(future.get("adx", 25.0))  # v7.0: ADX para momentum
             bars = j - i
 
             if is_long:
@@ -850,16 +865,30 @@ def simulate_trades_advanced(
             else:
                 highest_favorable = min(highest_favorable, f_low)
 
-            if not be_triggered:
-                fav_dist = abs(highest_favorable - entry_price)
-                if fav_dist >= atr * be_trigger_atr_mult:
-                    be_triggered = True
-                    trailing_activated = True
-                    current_sl = entry_price
-                    sl_updates += 1
+            fav_dist = abs(highest_favorable - entry_price)
+
+            # v7.0: Time-decay trailing — apos 70% de max_bars, encolhe distancia
+            _decay_factor = 1.0
+            if bars > _max_bars * 0.70:
+                _decay_progress = (bars - _max_bars * 0.70) / (_max_bars * 0.30)
+                _decay_factor = max(0.5, 1.0 - _decay_progress * 0.5)  # 1.0 -> 0.5
+
+            # v6.0: BE trigger — move SL para entrada + buffer apos be_trigger_atr_mult * ATR
+            if not be_triggered and fav_dist >= atr * be_trigger_atr_mult:
+                be_triggered = True
+                # v7.0: SL vai para entry + 0.2x ATR buffer (em vez de entry exato)
+                if is_long:
+                    current_sl = entry_price + atr * 0.2
+                else:
+                    current_sl = entry_price - atr * 0.2
+                sl_updates += 1
+
+            # v6.0/v7.0: Trailing — ativa apos trailing_activate_atr_mult * ATR
+            if fav_dist >= atr * trailing_activate_atr_mult:
+                trailing_activated = True
 
             if trailing_activated:
-                trail_dist = atr * trailing_atr_mult
+                trail_dist = atr * trailing_atr_mult * _decay_factor
                 if is_long:
                     new_trail = highest_favorable - trail_dist
                     if new_trail > current_sl:
@@ -870,6 +899,31 @@ def simulate_trades_advanced(
                     if new_trail < current_sl:
                         current_sl = new_trail
                         sl_updates += 1
+
+            # v7.0: Momentum Exit — tendencia morrendo (ADX caiu abaixo de 20)
+            # Apenas apos 12+ barras e com lucro > 0.5x ATR
+            if bars >= 12 and f_adx < 20.0 and entry_adx >= 25.0:
+                _current_profit = (f_close - entry_price) if is_long else (entry_price - f_close)
+                if _current_profit > atr * 0.5:
+                    exit_price = f_close
+                    exit_reason = "momentum_exit"
+                    break
+
+            # v7.0: RSI Exhaustion — saida por extrema sobrecompra/sobrevenda
+            # Apenas apos 24+ barras no trade (evita saida prematura no inicio)
+            if bars >= 24:
+                if is_long and f_rsi > 80.0:
+                    _current_profit = (f_close - entry_price) if is_long else (entry_price - f_close)
+                    if _current_profit > 0:
+                        exit_price = f_close
+                        exit_reason = "rsi_exhaustion"
+                        break
+                elif not is_long and f_rsi < 20.0:
+                    _current_profit = (f_close - entry_price) if is_long else (entry_price - f_close)
+                    if _current_profit > 0:
+                        exit_price = f_close
+                        exit_reason = "rsi_exhaustion"
+                        break
 
             if is_long:
                 tp_hit = f_high >= tp
@@ -886,7 +940,11 @@ def simulate_trades_advanced(
                 if not partial_tp_filled:
                     partial_tp_filled = True
                     be_triggered = True
-                    current_sl = entry_price
+                    # v7.0: Pos-TP1 SL com buffer 0.2x ATR
+                    if is_long:
+                        current_sl = entry_price + atr * 0.2
+                    else:
+                        current_sl = entry_price - atr * 0.2
                     trailing_activated = True
                     sl_updates += 1
                 else:
@@ -2630,7 +2688,7 @@ def run_backtest(
         trades, atr_filtered, _diag = _simulate_atf_v2(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
-    elif advanced or profile.name == 'ADAPTIVE_MOM':
+    elif profile.name == 'ADAPTIVE_MOM':
         from strategy_adaptive_momentum import evaluate_adaptive_momentum, reset_cooldown
         ADAPTIVE_MOM_PARAMS = {
             'adx_trend_threshold': 22,
@@ -2666,11 +2724,6 @@ def run_backtest(
         trades, atr_filtered, _diag = _simulate_confluence_v15(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
-    elif _strategy_key == "BBWP_SQUEEZE":
-        # BBWP Squeeze v4 para 1h (partial TP + trailing)
-        trades, atr_filtered, _diag = _simulate_bbwp_squeeze(
-            df_clean, _atr_min, _atr_max, profile=profile,
-        )
     elif regime_switching:
         # v7: Regime-switching mode
         from regime_engine import classify_regimes_v2, get_regime_params
@@ -2683,6 +2736,11 @@ def run_backtest(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
     elif advanced:
+        trades, atr_filtered, _diag = simulate_trades_advanced(
+            df_clean, _atr_min, _atr_max, profile=profile,
+        )
+    elif profile.name == "STANDARD":
+        # v7.0: STANDARD sempre usa advanced (trailing/BE/partial/momentum exit)
         trades, atr_filtered, _diag = simulate_trades_advanced(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
