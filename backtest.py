@@ -24,6 +24,13 @@ v10.0: Cooldown apos 2 SL consecutivos na mesma direcao (24 bars pause).
 v11.0: Cooldown relaxado: 3 SL / 12 bars (DESEMPENHO PIOROU em todos os periodos).
 v12.0: Cooldown revertido para 2 SL / 24 bars. Estrategia professional seletiva:
        ADX 36, DI direction filter ON, EMA proximity REMOVIDO (so fib + touch).
+v13.0: Active Trader Multi-Strategy — 3 entry types (CTEV Pullback + Momentum
+       Continuation + Mean-Reversion BB Bounce) to achieve 4+ trades/week.
+       Regime skip removed; each strategy handles regime internally.
+v14.0: CTEV Trend-Flow — pullback opcional (maior gargalo removido).
+       ADX 25, transition ON, EMA proximity 2%/2.5%.
+v14.3: CTEV ADX-32 — unico cambio vs v12.0: ADX 36->32.
+       EMA proximity/BB touch testados e rejeitados (adicionavam trades ruins).
 
 Referencias:
     - PDF: "O Framework Multi-Timeframe e de Regimes" — cost modeling, WFA
@@ -808,6 +815,7 @@ def simulate_trades_advanced(
                 _diag_regime_ranging += 1
             else:
                 _diag_regime_volatile += 1
+            # v13.2: CTEV-only — skip ranging/volatile (CTEV only trades trending)
             regime_filtered += 1
             i += 1
             continue
@@ -819,10 +827,12 @@ def simulate_trades_advanced(
             i += 1
             continue
 
+        # v13.2: CTEV-only entry
         signal = evaluate_long(row, profile=profile)
         if signal is None:
             signal = evaluate_short(row, profile=profile)
 
+        # v13.2: CTEV-only — sem fallback (momentum tinha WR 20%, sem edge)
         if signal is None:
             _diag_no_signal += 1
             i += 1
@@ -874,6 +884,7 @@ def simulate_trades_advanced(
         sl_updates = 0
         # v8.0: entry_adx removido (momentum exit desativado)
 
+        # v13.2: CTEV-only — max_bars from profile (168 bars)
         _max_bars = max_bars if profile is None else profile.max_bars_held
         for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]

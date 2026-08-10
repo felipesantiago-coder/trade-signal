@@ -182,15 +182,11 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v12.0] CTEV Professional Selective para 1h. "
-        "Filosofia: qualidade > quantidade, como trader profissional. "
-        "Entrada: ADX 36 (tendencias fortes), DI direction ON, "
-        "EMA proximity REMOVIDO (so Fibonacci + EMA touch real). "
-        "RSI 45-65/35-55, SL 2.8x, TP 5.5x (grid-optimized). "
-        "Cooldown: 2 SL / 24 bars (conservador). "
-        "Custos: maker 0.016%% + spread 2bps + slip 5bps."
+        "[v14.3] CTEV ADX-32 — unico cambio vs v12.0: ADX 36->32."
+        "ADX 32, DI ON, transition OFF, RSI 45-65/35-55 (grid)."
+        "SL 2.8x, TP 5.5x ATR."
     ),
-    adx_min=36.0,
+    adx_min=32.0,
     allow_transition=False,
     rsi_long_min=45.0,
     rsi_long_max=65.0,
@@ -198,8 +194,8 @@ PROFILE_STANDARD = StrategyProfile(
     rsi_short_max=55.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-0.5,
-    ema20_proximity_pct=0.0,    # v12.0: removido
-    ema50_proximity_pct=0.0,    # v12.0: removido
+    ema20_proximity_pct=0.000,
+    ema50_proximity_pct=0.000,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
@@ -207,7 +203,7 @@ PROFILE_STANDARD = StrategyProfile(
     atr_pct_min=0.10,
     atr_pct_max=0.90,
 
-    # Gestao de risco — SL 2.8x / TP 5.5x ATR (R:R ~2:1)
+    # Gestao de risco
     sl_atr_mult=2.80,
     tp_atr_mult=5.50,
     max_bars_held=168,

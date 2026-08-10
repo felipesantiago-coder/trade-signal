@@ -1,24 +1,26 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v14.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v13.0 para LONG e SHORT.
 
-v14.3 FINAL — CTEV ADX-32 (compromisso otimo frequencia/qualidade)
-  Evolucao: v12.0 -> v14.3 (unica mudanca: ADX 36 -> 32)
+v13.2 — CTEV OTIMIZADO FREQUENCIA MULTI-STRATEGY (4+ trades/semana)
+  Evolucao: v12.0 -> v13.0 (multi-estrategia para frequencia)
 
-  v12.0 base (grid-optimized, provado):
-    ADX 36, DI ON, transition OFF, RSI 45-65/35-55, EMA stack,
-    slope, Fib 2.5% tolerance, SL 2.8x/TP 5.5x ATR.
+  Filosofia: 3 tipos de entrada para atingir 4+ trades/semana em BTC/USD 1h.
+  Prioridade: CTEV Pullback > Momentum Continuation > Mean-Reversion BB Bounce.
+  Cada bar tenta todas as estrategias; a primeira que dispara e usada.
 
-  v14.3 mudanca: ADX 36 -> 32 (2o melhor do grid search)
-  Resultado vs v12.0:
-    730d: 125 trades (+32%), WR 44%, PnL +34% (era +46%)
-    365d: 62 trades (+27%), WR 48%, PnL +33% (era +36%)
-    180d: 29 trades (+38%), WR 38%, PnL +1.5% (era +3.6%)
-    90d: 15 trades (+36%), WR 40%, PnL +4.1% (era +1.2%) *** MELHOROU ***
-    30d: 3 trades, 0% WR — amostra insuficiente (variancia estatistica)
+  Estrategia 1 — CTEV Pullback (relaxado):
+    ADX 28, DI ON, EMA proximity 0.5%/0.8% reativados.
+    RSI 42-68 LONG / 32-58 SHORT. SL 2.8x, TP 5.5x ATR.
 
-  Trade frequency: ~1.2-1.5 trades/semana (vs 0.9 em v12.0)
+  Estrategia 2 — Momentum Continuation (sem pullback):
+    ADX 22, trend + DI direction, close > EMA20, RSI 50-72/28-50,
+    MACD hist > 0. SL 2.0x, TP 3.5x ATR, max 96 bars.
+
+  Estrategia 3 — Mean-Reversion BB Bounce (ranging/low ADX):
+    ADX < 30, BB touch, RSI < 42/> 58, ancora EMA200.
+    SL 1.5x, TP 2.5x ATR, max 72 bars.
 """
 
 from __future__ import annotations
@@ -111,14 +113,14 @@ class Signal:
 # v13.0: CTEV relaxado + Momentum + Mean-Reversion = 4+ trades/semana.
 
 # REGIME FILTER — v13.2: COMPROMISSO CTEV for more signals
-ADX_MIN = 32.0                # v14.3 FINAL: 32 (de 36) — melhor compromisso frequencia/qualidade
-ALLOW_TRANSITION = False      # v14.3: OFF (v12.0 — transition sem edge)
+ADX_MIN = 30.0                # v13.2: 30 (de 36) — mais oportunidades
+ALLOW_TRANSITION = False      # DESATIVADO — transition tinha WR < 20%
 
 # RSI como zona de pullback (v13.0: alargado para mais sinais)
-RSI_LONG_MIN = 45.0           # v14.2: REVERTIDO para v12.0 (grid-optimized)
-RSI_LONG_MAX = 65.0           # v14.2: REVERTIDO para v12.0
-RSI_SHORT_MIN = 35.0          # v14.2: REVERTIDO para v12.0
-RSI_SHORT_MAX = 55.0          # v14.2: REVERTIDO para v12.0
+RSI_LONG_MIN = 42.0           # v13.0: 42 (de 45) — zona mais larga
+RSI_LONG_MAX = 67.0           # v13.0: 68 (de 65)
+RSI_SHORT_MIN = 33.0          # v13.0: 32 (de 35)
+RSI_SHORT_MAX = 58.0          # v13.0: 58 (de 55)
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
@@ -129,7 +131,7 @@ VOLUME_CONFIRM = False
 VOLUME_SMA_RATIO = 0.30
 
 # Fibonacci tolerancia
-FIB_TOLERANCE_PCT = 0.025     # v14.3: REVERTIDO para v12.0 (grid-optimized)
+FIB_TOLERANCE_PCT = 0.025     # 2.5%
 
 # ATR Percentile filter
 ATR_PCT_MIN = 0.10
@@ -139,9 +141,9 @@ ATR_PCT_MAX = 0.90
 BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
-# EMA proximity — v14.3: DESATIVADO (v14.2 provou que adiciona trades ruins)
-EMA20_PROXIMITY_PCT = 0.000  # v14.3: OFF
-EMA50_PROXIMITY_PCT = 0.000  # v14.3: OFF
+# EMA proximity — v13.0: REATIVADO para mais sinais de pullback
+EMA20_PROXIMITY_PCT = 0.010  # v13.0: back (de 0.0) — 0.5%
+EMA50_PROXIMITY_PCT = 0.015  # v13.0: back (de 0.0) — 0.8%
 
 # EMA Slope
 EMA50_SLOPE_MIN = -0.5
@@ -160,16 +162,13 @@ OBV_TREND_FILTER = False
 STOCH_RSI_FILTER = False
 BBWP_SQUEEZE_BONUS = True
 
-# v14.3: BB TOUCH desabilitado (v14.2 provou que adiciona trades ruins)
-BB_TOUCH_PCT = 0.000         # v14.3: OFF
+# v13.1: MOMENTUM CONTINUATION PARAMETERS (usando CTEV SL/TP para consistencia)
+MOMENTUM_ADX_MIN = 30.0  # v13.1: 28 (de 22) — mais seletivo
+MOMENTUM_SL_ATR_MULT = 2.80  # v13.1: mesmo que CTEV
+MOMENTUM_TP_ATR_MULT = 5.50  # v13.1: mesmo que CTEV
+MOMENTUM_MAX_BARS = 168  # v13.1: mesmo que CTEV
 
-# v14.1: Momentum/MR DESATIVADOS (WR < 25% — sem edge comprovado)
-MOMENTUM_ADX_MIN = 25.0
-MOMENTUM_SL_ATR_MULT = 2.80
-MOMENTUM_TP_ATR_MULT = 5.50
-MOMENTUM_MAX_BARS = 168
-
-# v14.1: MEAN-REVERSION DESATIVADO (WR < 25% — sem edge)
+# v13.1: MEAN-REVERSION DESATIVADO (WR < 25% — sem edge)
 # Mantido apenas para referencia futura se necessario.
 
 
@@ -324,11 +323,10 @@ def evaluate_long(
         if _stoch_k <= _stoch_d:
             return None
 
-    # 4. PULLBACK: Fibonacci zone OU EMA touch OU EMA proximity OU BB touch (v14.1)
-    # v14.1: Pullback OBRIGATORIO mas deteccao muito ampliada
+    # 4. PULLBACK: Fibonacci zone OU EMA touch OU EMA proximity (v7.1)
     pullback_type = None
 
-    # 4a. Fibonacci check (tolerancia 4.0% — mais niveis detectados)
+    # 4a. Fibonacci check (tolerancia adaptada ao profile)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == 1:
         pullback_type = "fibonacci"
@@ -349,25 +347,20 @@ def evaluate_long(
         if bool(row.get("ema50_touched", False)) and close > ema50:
             pullback_type = "ema50_touch"
 
-    # 4d. EMA(20) PROXIMITY — 1.2% (v14.2: corrigido — so abaixo da EMA para LONG)
+    # 4d. v7.1: EMA(20) PROXIMITY — close dentro de X% da EMA20
     _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
     if pullback_type is None and _ema20_prox > 0:
-        # v14.2: pullback = preco puxou de volta PARA a EMA (close <= ema20)
-        if close <= ema20 and close >= ema20 * (1 - _ema20_prox):
+        _dist_ema20 = abs(close - ema20) / ema20
+        if _dist_ema20 <= _ema20_prox and close >= ema20 * (1 - _ema20_prox):
             pullback_type = "ema20_proximity"
 
-    # 4e. EMA(50) PROXIMITY — 1.5% (v14.2: corrigido — so abaixo da EMA para LONG)
+    # 4e. v7.1: EMA(50) PROXIMITY — close dentro de X% da EMA50
     _ema50_prox = profile.ema50_proximity_pct if profile else EMA50_PROXIMITY_PCT
     if pullback_type is None and _ema50_prox > 0:
-        if close <= ema50 and close >= ema50 * (1 - _ema50_prox):
+        _dist_ema50 = abs(close - ema50) / ema50
+        if _dist_ema50 <= _ema50_prox and close >= ema50 * (1 - _ema50_prox):
             pullback_type = "ema50_proximity"
 
-    # 4f. v14.2: BB LOWER TOUCH — preco perto da Banda Inferior (pullback profundo)
-    if pullback_type is None:
-        if close <= bb_lower * (1 + BB_TOUCH_PCT):
-            pullback_type = "bb_lower_touch"
-
-    # v14.1: Pullback OBRIGATORIO — sem pullback = sem entrada
     if pullback_type is None:
         return None
 
@@ -549,11 +542,10 @@ def evaluate_short(
         if _stoch_k >= _stoch_d:
             return None
 
-    # 4. PULLBACK: Fibonacci OU EMA touch OU EMA proximity OU BB touch (v14.1)
-    # v14.1: Pullback OBRIGATORIO mas deteccao muito ampliada
+    # 4. PULLBACK: Fibonacci OU EMA touch OU EMA proximity (v7.1)
     pullback_type = None
 
-    # 4a. Fibonacci check (tolerancia 4.0% — mais niveis detectados)
+    # 4a. Fibonacci check (tolerancia adaptada ao profile)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == -1:
         pullback_type = "fibonacci"
@@ -576,25 +568,20 @@ def evaluate_short(
             if high >= ema50:
                 pullback_type = "ema50_touch"
 
-    # 4d. EMA(20) PROXIMITY — 1.2% (v14.2: corrigido — so acima da EMA para SHORT)
+    # 4d. v7.1: EMA(20) PROXIMITY — close dentro de X% da EMA20
     _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
     if pullback_type is None and _ema20_prox > 0:
-        # v14.2: pullback = preco puxou de volta PARA a EMA (close >= ema20)
-        if close >= ema20 and close <= ema20 * (1 + _ema20_prox):
+        _dist_ema20 = abs(close - ema20) / ema20
+        if _dist_ema20 <= _ema20_prox and close <= ema20 * (1 + _ema20_prox):
             pullback_type = "ema20_proximity"
 
-    # 4e. EMA(50) PROXIMITY — 1.5% (v14.2: corrigido — so acima da EMA para SHORT)
+    # 4e. v7.1: EMA(50) PROXIMITY — close dentro de X% da EMA50
     _ema50_prox = profile.ema50_proximity_pct if profile else EMA50_PROXIMITY_PCT
     if pullback_type is None and _ema50_prox > 0:
-        if close >= ema50 and close <= ema50 * (1 + _ema50_prox):
+        _dist_ema50 = abs(close - ema50) / ema50
+        if _dist_ema50 <= _ema50_prox and close <= ema50 * (1 + _ema50_prox):
             pullback_type = "ema50_proximity"
 
-    # 4f. v14.2: BB UPPER TOUCH — preco perto da Banda Superior (pullback profundo)
-    if pullback_type is None:
-        if close >= bb_upper * (1 - BB_TOUCH_PCT):
-            pullback_type = "bb_upper_touch"
-
-    # v14.1: Pullback OBRIGATORIO — sem pullback = sem entrada
     if pullback_type is None:
         return None
 
@@ -663,11 +650,9 @@ def evaluate_signal(
     df_ind: pd.DataFrame, profile: Optional[StrategyProfile] = None
 ) -> Optional[Signal]:
     """
-    Ponto de entrada principal da estrategia v14.0.
+    Ponto de entrada principal da estrategia v13.0.
     Recebe o DataFrame com indicadores e avalia apenas a ultima linha.
     Tenta CTEV > Momentum > Mean-Reversion. Retorna o primeiro sinal.
-
-    v14.0: CTEV trend-flow (pullback opcional) + Momentum + MR (disabled).
 
     Parameters:
         df_ind: DataFrame com indicadores calculados
