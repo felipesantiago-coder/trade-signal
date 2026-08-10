@@ -19,8 +19,10 @@ v4: Cost modeling (fees/spread/slippage), regime-aware indicators,
     ADX + DI integration, volume SMA(50) filter.
 v9.0: Custos realistas para BTC/USD (maker fee 0.016%, spread 2bps, slippage 5bps).
        Partial TP com trailing fixo apos TP1 otimizado. Sem BE/momentum/time-decay.
-v10.0: Cooldown apos 3 SL consecutivos na mesma direcao (24 bars pause).
-       Pos-TP1 SL buffer 1.5x ATR (de 1.0x). Filtros relaxados (ADX 25, RSI mais amplo).
+v10.0: Cooldown apos 2 SL consecutivos na mesma direcao (24 bars pause).
+       Pos-TP1 SL buffer 1.5x ATR (de 1.0x).
+v11.0: Cooldown relaxado: 3 SL / 12 bars (de 2 SL / 24 bars).
+       Menos supressao de sinais em periodos curtos.
 
 Referencias:
     - PDF: "O Framework Multi-Timeframe e de Regimes" — cost modeling, WFA
@@ -747,14 +749,15 @@ def simulate_trades_advanced(
     _diag_no_signal = 0
     _diag_cooldown_skip = 0
 
-    # ── v10.0: Consecutive loss cooldown ──
-    # Pausa entradas na mesma direcao apos 3 SL consecutivos
+    # ── v11.0: Consecutive loss cooldown (relaxed) ──
+    # Pausa entradas na mesma direcao apos SL consecutivos
+    # v11.0: 3 SL / 12 bars (de 2 SL / 24 bars — menos supressao em periodos curtos)
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None   # "LONG" or "SHORT" when in cooldown
     _cooldown_until_bar = 0     # bar index when cooldown ends
-    _COOLDOWN_TRIGGER = 2       # consecutive SL to trigger cooldown
-    _COOLDOWN_BARS = 24         # 24 bars (1 day in 1h) pause
+    _COOLDOWN_TRIGGER = 3       # v11.0: 3 (de 2) consecutive SL to trigger cooldown
+    _COOLDOWN_BARS = 12         # v11.0: 12 bars (half day in 1h, de 24)
 
     while i < n:
         row = df_ind.iloc[i]

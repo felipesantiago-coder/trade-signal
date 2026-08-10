@@ -182,23 +182,24 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v10.0 EXIT OPTIMIZATION] CTEV Trend-Following para 1h. "
-        "Mantido: ADX 32, RSI 45-65/35-55, SL 2.8x, TP 5.5x (grid-optimized). "
-        "Novo: Cooldown 3 SL consecutivos (24 bars pause). "
-        "Novo: Pos-TP1 SL buffer 1.5x ATR (de 1.0x). "
-        "Fix: Bug evaluate_short EMA20 touch. "
+        "[v11.0 FREQUENCY BOOST] CTEV Trend-Following para 1h. "
+        "v11.0: ADX 25 (de 32), RSI 40-68/30-58 (de 45-65/35-55), "
+        "EMA20 prox 1.2% (de 0.5%), EMA50 prox 1.5% (de 0.8%). "
+        "Mantido: SL 2.8x, TP 5.5x, Cooldown 3 SL / 12 bars. "
+        "Objetivo: Aumentar frequencia de sinais em periodos curtos "
+        "sem degradar performance em periodos longos. "
         "Custos: maker 0.016%% + spread 2bps + slip 5bps."
     ),
-    adx_min=32.0,
+    adx_min=25.0,
     allow_transition=False,
-    rsi_long_min=45.0,
-    rsi_long_max=65.0,
-    rsi_short_min=35.0,
-    rsi_short_max=55.0,
+    rsi_long_min=40.0,
+    rsi_long_max=68.0,
+    rsi_short_min=30.0,
+    rsi_short_max=58.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-0.5,
-    ema20_proximity_pct=0.005,
-    ema50_proximity_pct=0.008,
+    ema20_proximity_pct=0.012,
+    ema50_proximity_pct=0.015,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
