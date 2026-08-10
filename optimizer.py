@@ -280,10 +280,17 @@ class Optimizer:
         else:
             sharpe = 0.0
 
-        cum_pnl = np.cumsum(pnls)
-        peak = np.maximum.accumulate(cum_pnl)
-        dd = cum_pnl - peak
-        max_dd = abs(min(dd)) if len(dd) > 0 else 0.0
+        # v15.0: Balance-based (composto, sem position sizing — assume 100% por trade)
+        _bal = 1.0  # fator de crescimento normalizado
+        _bals = [_bal]
+        for p in pnls:
+            _bal *= (1 + p / 100)
+            _bals.append(_bal)
+        _barr = np.array(_bals)
+        _bpeak = np.maximum.accumulate(_barr)
+        _dd_pct = (_bpeak - _barr) / _bpeak * 100
+        max_dd = float(np.max(_dd_pct)) if len(_dd_pct) > 0 else 0.0
+        total_pnl_compound = float((_barr[-1] - 1) * 100)
 
         # Score composto: WR * PF * (1 - MaxDD) + Sharpe bonus
         dd_factor = max(0, 1 - max_dd / 100)
@@ -306,7 +313,7 @@ class Optimizer:
             profit_factor=pf,
             sharpe_ratio=sharpe,
             max_drawdown_pct=max_dd,
-            total_pnl_pct=sum(pnls),
+            total_pnl_pct=total_pnl_compound,
             score=score,
         )
 

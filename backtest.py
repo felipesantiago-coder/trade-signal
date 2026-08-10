@@ -768,10 +768,9 @@ def simulate_trades_advanced(
     _COOLDOWN_TRIGGER = 2       # v12.0: 2 consecutive SL to trigger cooldown
     _COOLDOWN_BARS = 16         # v15.0: 16 bars (~2/3 dia, de 24)
 
-    # ── v15.0: Anti-martingale position sizing (requires balance-based PnL metric) ──
-    # NOTA: O metrica total_pnl_pct atual e price-based (nao afetada por sizing).
-    # Anti-martingale sera efetivo quando a metrica mudar para balance-based.
-    # Por agora, mantido como infraestrutura para futuras implementacoes.
+    # ── v15.0: Anti-martingale position sizing (balance-based PnL metric) ──
+    # Reduz risco apos losses consecutivos, reseta ao base apos win.
+    # Efeito visivel agora que total_pnl_pct e balance-based (composto).
     _base_risk = risk_per_trade_pct
     _current_risk = _base_risk
     _consecutive_losses = 0  # qualquer direcao
@@ -873,8 +872,8 @@ def simulate_trades_advanced(
             effective_entry = entry_price
 
         sl_distance_pct = abs(effective_entry - sl) / effective_entry if effective_entry > 0 else 0
-        # v15.1: Position sizing (anti-martingale OFF — isolar efeito do trailing)
-        risk_usd = balance * risk_per_trade_pct
+        # v15.0: Position sizing com anti-martingale (usa _current_risk adaptativo)
+        risk_usd = balance * _current_risk
         if sl_distance_pct > 0:
             position_size = risk_usd / (sl_distance_pct * effective_entry)
         else:
@@ -1135,17 +1134,25 @@ def calculate_metrics(
     longs = [t for t in trades if t.type == "LONG"]
     shorts = [t for t in trades if t.type == "SHORT"]
 
-    # PnL acumulado
+    # PnL por trade (price-based, para Sharpe / PF / avg win-loss / best-worst)
     pnls = [t.pnl_pct for t in trades]
-    cum_pnl = np.cumsum(pnls)
 
-    # Equity curve
-    equity_curve = [(i, float(cum_pnl[i])) for i in range(len(pnls))]
+    # v15.0: Balance-based equity curve (composto — reflete anti-martingale sizing)
+    _INITIAL_BALANCE = 10000.0
+    _eq_balances = [_INITIAL_BALANCE]
+    for t in trades:
+        _prev = _eq_balances[-1]
+        _pnl_usd = t.position_usd * (t.pnl_pct / 100) if t.position_usd > 0 else 0
+        _eq_balances.append(_prev + _pnl_usd)
+    _eq_arr = np.array(_eq_balances)
+    _eq_peak = np.maximum.accumulate(_eq_arr)
 
-    # Max Drawdown (percentual do pico)
-    peak = np.maximum.accumulate(cum_pnl)
-    drawdown = cum_pnl - peak
-    max_dd = abs(min(drawdown)) if len(drawdown) > 0 else 0.0
+    # Equity curve (return % from start)
+    equity_curve = [(i, float((_eq_arr[i + 1] / _INITIAL_BALANCE - 1) * 100)) for i in range(len(trades))]
+
+    # Max Drawdown % (balance-based: % drop from peak balance)
+    _dd_pct = (_eq_peak - _eq_arr) / _eq_peak * 100
+    max_dd = float(np.max(_dd_pct)) if len(_dd_pct) > 0 else 0.0
 
     # Profit Factor
     gross_profit = sum(t.pnl_pct for t in wins) if wins else 0.0
@@ -1178,22 +1185,10 @@ def calculate_metrics(
             rrs.append(rr)
     avg_rr = np.mean(rrs) if rrs else 0.0
 
-    # USD PnL
-    total_pnl_usd = sum(
-        t.position_usd * (t.pnl_pct / 100) if t.position_usd > 0 else 0
-        for t in trades
-    )
-
-    # Max Drawdown USD (from equity curve)
-    equity_usd = [10000.0]  # starting balance
-    for t in trades:
-        prev = equity_usd[-1]
-        pnl = t.position_usd * (t.pnl_pct / 100) if t.position_usd > 0 else 0
-        equity_usd.append(prev + pnl)
-    eq_arr = np.array(equity_usd)
-    eq_peak = np.maximum.accumulate(eq_arr)
-    dd_usd = eq_peak - eq_arr
-    max_dd_usd = float(np.max(dd_usd)) if len(dd_usd) > 0 else 0.0
+    # v15.0: Total PnL (balance-based, composto — reflete anti-martingale)
+    total_pnl_pct = float((_eq_arr[-1] / _INITIAL_BALANCE - 1) * 100)
+    total_pnl_usd = float(_eq_arr[-1] - _INITIAL_BALANCE)
+    max_dd_usd = float(np.max(_eq_peak - _eq_arr)) if len(_eq_arr) > 0 else 0.0
 
     return BacktestMetrics(
         total_trades=len(trades),
@@ -1205,7 +1200,7 @@ def calculate_metrics(
         avg_win_pct=np.mean([t.pnl_pct for t in wins]) if wins else 0.0,
         avg_loss_pct=np.mean([t.pnl_pct for t in losses]) if losses else 0.0,
         profit_factor=pf,
-        total_pnl_pct=sum(pnls),
+        total_pnl_pct=total_pnl_pct,
         total_pnl_usd=total_pnl_usd,
         max_drawdown_pct=max_dd,
         max_drawdown_usd=max_dd_usd,
