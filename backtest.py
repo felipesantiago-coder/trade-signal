@@ -112,6 +112,10 @@ from strategy import (
     SignalType,
     evaluate_long,
     evaluate_short,
+    evaluate_momentum_long,
+    evaluate_momentum_short,
+    evaluate_mean_reversion_long,
+    evaluate_mean_reversion_short,
     ATR_PCT_MIN as _ATR_PCT_MIN_STRATEGY,
     ATR_PCT_MAX as _ATR_PCT_MAX_STRATEGY,
     ADX_MIN as _ADX_MIN_STRATEGY,
@@ -768,14 +772,12 @@ def simulate_trades_advanced(
     _COOLDOWN_TRIGGER = 2       # v12.0: 2 consecutive SL to trigger cooldown
     _COOLDOWN_BARS = 16         # v15.0: 16 bars (~2/3 dia, de 24)
 
-    # ── v15.0: Anti-martingale position sizing (balance-based PnL metric) ──
-    # Reduz risco apos losses consecutivos, reseta ao base apos win.
-    # Efeito visivel agora que total_pnl_pct e balance-based (composto).
+    # ── v16.2: Anti-martingale DESATIVADO — balance-based ja protege
     _base_risk = risk_per_trade_pct
     _current_risk = _base_risk
-    _consecutive_losses = 0  # qualquer direcao
-    _RISK_REDUCTION = 0.25   # reduz 25% apos cada loss
-    _MIN_RISK_FRACTION = 0.50  # minimo 50% do base risk
+    _consecutive_losses = 0
+    _RISK_REDUCTION = 0.00
+    _MIN_RISK_FRACTION = 1.00
 
     while i < n:
         row = df_ind.iloc[i]
@@ -820,12 +822,14 @@ def simulate_trades_advanced(
             _diag_trending_up += 1
         if regime == "trending_down":
             _diag_trending_down += 1
-        if regime in ("ranging", "volatile"):
-            if regime == "ranging":
-                _diag_regime_ranging += 1
-            else:
-                _diag_regime_volatile += 1
-            # v13.2: CTEV-only — skip ranging/volatile (CTEV only trades trending)
+        if regime == "volatile":
+            _diag_regime_volatile += 1
+            regime_filtered += 1
+            i += 1
+            continue
+        if regime == "ranging":
+            _diag_regime_ranging += 1
+            # v16.1: ranging skipped (MR removed — WR < 25%)
             regime_filtered += 1
             i += 1
             continue
@@ -837,12 +841,11 @@ def simulate_trades_advanced(
             i += 1
             continue
 
-        # v13.2: CTEV-only entry
+        # v16.1: CTEV-only (pullback + momentum), MR removed (WR < 25%)
         signal = evaluate_long(row, profile=profile)
         if signal is None:
             signal = evaluate_short(row, profile=profile)
 
-        # v13.2: CTEV-only — sem fallback (momentum tinha WR 20%, sem edge)
         if signal is None:
             _diag_no_signal += 1
             i += 1
@@ -880,7 +883,7 @@ def simulate_trades_advanced(
             position_size = 0.0
         position_usd = position_size * effective_entry
 
-        if position_usd < 10.0:
+        if position_usd < 1.0:
             i += 1
             continue
 
@@ -895,8 +898,8 @@ def simulate_trades_advanced(
         sl_updates = 0
         # v8.0: entry_adx removido (momentum exit desativado)
 
-        # v15.0: max_bars from profile (168 bars = 7 dias, grid-otimizado)
-        _max_bars = max_bars if profile is None else profile.max_bars_held
+        # v16.0: max_bars from signal (entry-type specific)
+        _max_bars = getattr(signal, "max_bars", 72)
         for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]
             f_close = float(future["close"])

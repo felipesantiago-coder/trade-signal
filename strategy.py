@@ -69,9 +69,11 @@ class Signal:
     fib_0618: float
     fib_direction: int
     fib_proximity: float
-    pullback_type: str  # "fibonacci", "ema20_touch", "ema50_touch", "fib_ema_combo"
+    pullback_type: str  # "fibonacci", "ema20_touch", "ema50_touch", "none"
     ema50_slope: float
     timestamp: pd.Timestamp
+    entry_type: str = "ctev_pullback"
+    max_bars: int = 168
 
     def to_dict(self) -> dict:
         return {
@@ -99,6 +101,8 @@ class Signal:
             "fib_direction": self.fib_direction,
             "fib_proximity": round(self.fib_proximity, 3) if not pd.isna(self.fib_proximity) else None,
             "pullback_type": self.pullback_type,
+            "entry_type": self.entry_type,
+            "max_bars": self.max_bars,
             "ema50_slope": round(self.ema50_slope, 6),
             "timestamp": str(self.timestamp),
         }
@@ -108,14 +112,14 @@ class Signal:
 # v13.0: CTEV relaxado + Momentum + Mean-Reversion = 4+ trades/semana.
 
 # REGIME FILTER — v13.2: COMPROMISSO CTEV for more signals
-ADX_MIN = 32.0                # v14.3 FINAL: 32 (de 36) — melhor compromisso frequencia/qualidade
-ALLOW_TRANSITION = False      # v14.3: OFF (v12.0 — transition sem edge)
+ADX_MIN = 32.0                # v16.2: RESTAURADO 32 — grid-optimized
+ALLOW_TRANSITION = False      # v16.2: OFF — igual v14.3 (transition nao adiciona com filtros strict)
 
 # RSI como zona de pullback (v13.0: alargado para mais sinais)
-RSI_LONG_MIN = 45.0           # v14.2: REVERTIDO para v12.0 (grid-optimized)
-RSI_LONG_MAX = 65.0           # v14.2: REVERTIDO para v12.0
-RSI_SHORT_MIN = 35.0          # v14.2: REVERTIDO para v12.0
-RSI_SHORT_MAX = 55.0          # v14.2: REVERTIDO para v12.0
+RSI_LONG_MIN = 45.0           # v16.2: RESTAURADO 45 (grid-optimized)
+RSI_LONG_MAX = 65.0           # v16.2: RESTAURADO 65
+RSI_SHORT_MIN = 35.0          # v16.2: RESTAURADO 35
+RSI_SHORT_MAX = 55.0          # v16.2: RESTAURADO 55
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
@@ -126,7 +130,7 @@ VOLUME_CONFIRM = False
 VOLUME_SMA_RATIO = 0.30
 
 # Fibonacci tolerancia
-FIB_TOLERANCE_PCT = 0.025     # v14.3: REVERTIDO para v12.0 (grid-optimized)
+FIB_TOLERANCE_PCT = 0.025     # v16.2: RESTAURADO 2.5% (grid-optimized)
 
 # ATR Percentile filter
 ATR_PCT_MIN = 0.10
@@ -137,8 +141,8 @@ BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
 # EMA proximity — v14.3: DESATIVADO (v14.2 provou que adiciona trades ruins)
-EMA20_PROXIMITY_PCT = 0.000  # v14.3: OFF
-EMA50_PROXIMITY_PCT = 0.000  # v14.3: OFF
+EMA20_PROXIMITY_PCT = 0.000  # v16.2: RESTAURADO OFF
+EMA50_PROXIMITY_PCT = 0.000  # v16.2: RESTAURADO OFF
 
 # EMA Slope
 EMA50_SLOPE_MIN = -0.5
@@ -151,7 +155,7 @@ TP_ATR_MULT = 5.50          # v8.0: 5.5x ATR (grid: 5.5 > 6.0 > 5.0 para PnL)
 # v13.2: DI Direction ON — garante alinhamento direcional
 # Demais filtros permanecem desativados (grid search mostrou que adicionam
 # restricao sem ganho proporcional)
-DI_DIRECTION_FILTER = True   # v13.0: ON — +DI > -DI para LONG, -DI > +DI para SHORT
+DI_DIRECTION_FILTER = True   # v16.2: RESTAURADO ON — +DI > -DI para LONG
 MACD_HIST_FILTER = False
 OBV_TREND_FILTER = False
 STOCH_RSI_FILTER = False
@@ -364,9 +368,17 @@ def evaluate_long(
         if close <= bb_lower * (1 + BB_TOUCH_PCT):
             pullback_type = "bb_lower_touch"
 
-    # v14.1: Pullback OBRIGATORIO — sem pullback = sem entrada
-    if pullback_type is None:
-        return None
+    # v16.2: Pullback OPCIONAL — unico ganho de frequencia (filtros strict v14.3)
+    if pullback_type is not None:
+        _entry_type = "ctev_pullback"
+        _max_bars_use = 168  # igual v14.3
+    else:
+        pullback_type = "none"
+        _entry_type = "ctev_momentum"
+        _max_bars_use = 72   # fecha mais rapido sem pullback
+
+    _sl_use = _sl_mult  # SL/TP identicos (2.8x/5.5x)
+    _tp_use = _tp_mult
 
     # 5. RSI: Zona de pullback (adaptada ao profile)
     if not (_rsi_l_min <= rsi <= _rsi_l_max):
@@ -382,11 +394,10 @@ def evaluate_long(
         return None
 
     # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
-    # (eram redundantes/restritivos demais — ver docstring do modulo)
-    # ── Gestao de risco LONG — SL/TP adaptados ao profile ──
+    # ── Gestao de risco LONG — SL/TP por entry type ──
     entry = close
-    stop_loss = entry - (_sl_mult * atr)
-    take_profit = entry + (_tp_mult * atr)
+    stop_loss = entry - (_sl_use * atr)
+    take_profit = entry + (_tp_use * atr)
 
     if stop_loss <= 0:
         return None
@@ -428,6 +439,8 @@ def evaluate_long(
         fib_direction=fib_dir,
         fib_proximity=fib_prox,
         pullback_type=pullback_type,
+        entry_type=_entry_type,
+        max_bars=_max_bars_use,
         ema50_slope=ema50_slope,
         timestamp=ts,
     )
@@ -591,9 +604,17 @@ def evaluate_short(
         if close >= bb_upper * (1 - BB_TOUCH_PCT):
             pullback_type = "bb_upper_touch"
 
-    # v14.1: Pullback OBRIGATORIO — sem pullback = sem entrada
-    if pullback_type is None:
-        return None
+    # v16.2: Pullback OPCIONAL — unico ganho de frequencia
+    if pullback_type is not None:
+        _entry_type_s = "ctev_pullback"
+        _max_bars_use_s = 168  # igual v14.3
+    else:
+        pullback_type = "none"
+        _entry_type_s = "ctev_momentum"
+        _max_bars_use_s = 72
+
+    _sl_use_s = _sl_mult
+    _tp_use_s = _tp_mult
 
     # 5. RSI: Zona de rally (adaptada ao profile)
     if not (_rsi_s_min <= rsi <= _rsi_s_max):
@@ -609,10 +630,10 @@ def evaluate_short(
         return None
 
     # NOTA v4.2: Filtros MACD, RSI Delta e BB Width REMOVIDOS
-    # ── Gestao de risco SHORT — SL/TP adaptados ao profile ──
+    # ── Gestao de risco SHORT — SL/TP por entry type ──
     entry = close
-    stop_loss = entry + (_sl_mult * atr)
-    take_profit = entry - (_tp_mult * atr)
+    stop_loss = entry + (_sl_use_s * atr)
+    take_profit = entry - (_tp_use_s * atr)
 
     _profile_name = profile.name if profile else "v5.0-default"
     logger.info(
@@ -651,6 +672,8 @@ def evaluate_short(
         fib_direction=fib_dir,
         fib_proximity=fib_prox,
         pullback_type=pullback_type,
+        entry_type=_entry_type_s,
+        max_bars=_max_bars_use_s,
         ema50_slope=ema50_slope,
         timestamp=ts,
     )
@@ -777,6 +800,7 @@ def evaluate_momentum_long(row: pd.Series) -> Optional[Signal]:
         volume_sma50=volume_sma50, atr_percentile=atr_pct,
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0, fib_direction=0,
         fib_proximity=0.0, pullback_type="momentum", ema50_slope=ema50_slope,
+        entry_type="momentum", max_bars=72,
         timestamp=ts,
     )
 
@@ -863,6 +887,7 @@ def evaluate_momentum_short(row: pd.Series) -> Optional[Signal]:
         volume_sma50=volume_sma50, atr_percentile=atr_pct,
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0, fib_direction=0,
         fib_proximity=0.0, pullback_type="momentum", ema50_slope=ema50_slope,
+        entry_type="momentum", max_bars=72,
         timestamp=ts,
     )
 
@@ -927,8 +952,8 @@ def evaluate_mean_reversion_long(row: pd.Series) -> Optional[Signal]:
         return None
 
     entry = close
-    sl = entry - (MR_SL_ATR_MULT * atr)
-    tp = entry + (MR_TP_ATR_MULT * atr)
+    sl = entry - (1.5 * atr)
+    tp = entry + (2.5 * atr)
     if sl <= 0:
         return None
 
@@ -942,6 +967,7 @@ def evaluate_mean_reversion_long(row: pd.Series) -> Optional[Signal]:
         volume_sma50=volume_sma50, atr_percentile=atr_pct,
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0, fib_direction=0,
         fib_proximity=0.0, pullback_type="mean_reversion", ema50_slope=ema50_slope,
+        entry_type="ranging_mr", max_bars=48,
         timestamp=ts,
     )
 
@@ -1006,8 +1032,8 @@ def evaluate_mean_reversion_short(row: pd.Series) -> Optional[Signal]:
         return None
 
     entry = close
-    sl = entry + (MR_SL_ATR_MULT * atr)
-    tp = entry - (MR_TP_ATR_MULT * atr)
+    sl = entry + (1.5 * atr)
+    tp = entry - (2.5 * atr)
 
     return Signal(
         type=SignalType.SHORT, entry_price=entry, stop_loss=sl,
@@ -1019,5 +1045,6 @@ def evaluate_mean_reversion_short(row: pd.Series) -> Optional[Signal]:
         volume_sma50=volume_sma50, atr_percentile=atr_pct,
         fib_0382=0.0, fib_0500=0.0, fib_0618=0.0, fib_direction=0,
         fib_proximity=0.0, pullback_type="mean_reversion", ema50_slope=ema50_slope,
+        entry_type="ranging_mr", max_bars=48,
         timestamp=ts,
     )
