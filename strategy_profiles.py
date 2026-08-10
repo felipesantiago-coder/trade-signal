@@ -182,14 +182,15 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v10.1] CTEV Trend-Following para 1h. "
-        "Entrada: ADX 32, RSI 45-65/35-55, SL 2.8x, TP 5.5x (grid-optimized). "
-        "v10.1: Cooldown 3 SL / 12 bars (de 2 SL / 24 bars). "
-        "NOTA: v11.0 testou relaxar filtros de entrada — piorou TODOS os periodos. "
-        "Filtros do grid search sao otimos e nao devem ser alterados. "
+        "[v12.0] CTEV Professional Selective para 1h. "
+        "Filosofia: qualidade > quantidade, como trader profissional. "
+        "Entrada: ADX 36 (tendencias fortes), DI direction ON, "
+        "EMA proximity REMOVIDO (so Fibonacci + EMA touch real). "
+        "RSI 45-65/35-55, SL 2.8x, TP 5.5x (grid-optimized). "
+        "Cooldown: 2 SL / 24 bars (conservador). "
         "Custos: maker 0.016%% + spread 2bps + slip 5bps."
     ),
-    adx_min=32.0,
+    adx_min=36.0,
     allow_transition=False,
     rsi_long_min=45.0,
     rsi_long_max=65.0,
@@ -197,8 +198,8 @@ PROFILE_STANDARD = StrategyProfile(
     rsi_short_max=55.0,
     fib_tolerance_pct=0.025,
     ema50_slope_min=-0.5,
-    ema20_proximity_pct=0.005,
-    ema50_proximity_pct=0.008,
+    ema20_proximity_pct=0.0,    # v12.0: removido
+    ema50_proximity_pct=0.0,    # v12.0: removido
     volume_confirm=False,
     volume_sma_ratio=0.30,
 

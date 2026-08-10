@@ -1,25 +1,29 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v10.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v12.0 para LONG e SHORT.
 
-Estrategia CTEV v10.0 = v9.0 Entry + Exit Optimization
+Estrategia CTEV v12.0 = Professional Selective
 
-v10.0 — OTIMIZACAO DE SAIDA (entrada mantida do grid search)
-  Evolucao: v9.0 -> v10.0 (cooldown + pos-TP1 SL + bug fix)
+v12.0 — PROFESSIONAL SELECTIVE (qualidade > quantidade)
+  Evolucao: v10.0 -> v12.0 (filtros de entrada mais seletivos)
 
-  Mudancas v10.0 vs v9.0:
-    ENTRADA: SEM MUDANCAS (ADX 32, RSI 45-65/35-55 ja otimizados via grid)
+  Filosofia: Trader profissional faz poucas operacoes por semana com alta
+  assertividade. Filtros apertados para entrar apenas em setups de alta
+  probabilidade. Aceita-se ter 0-1 trades em periodos curtos — o que
+  importa e a qualidade, nao a quantidade.
+
+  Mudancas v12.0 vs v10.0:
+    ENTRADA:
+      1. ADX_MIN: 32 -> 36 (apenas tendencias fortes e claras)
+      2. DI_DIRECTION_FILTER: ON (+DI > -DI para LONG, -DI > +DI para SHORT)
+      3. EMA20_PROXIMITY: REMOVIDO (0%) — apenas fib e touch real
+      4. EMA50_PROXIMITY: REMOVIDO (0%) — apenas fib e touch real
+      5. RSI, fib tolerance, slope: SEM MUDANCAS (grid-optimized)
     SAIDA (backtest.py):
-      1. Cooldown: 2 SL consecutivos -> 24 bars pause na mesma direcao
-      2. Pos-TP1 SL buffer: 1.5x ATR (de 1.0x) — menos saidas prematuras
-    FIX:
-      3. Corrigido bug de sintaxe em evaluate_short (EMA20 touch sem protecao)
-
-  NOTA v10.1: Cooldown ajustado para 3 SL / 12 bars (de 2 SL / 24 bars).
-  Testado v11.0 (ADX 25, RSI alargado, EMA prox largo) — DESEMPENHO PIOROU
-  em TODOS os periodos. Filtros de entrada do grid search sao otimos.
-  Unica mudanca segura: cooldown menos agressivo.
+      1. Cooldown: 2 SL / 24 bars (v10.0 conservative — revertido de v11.0)
+      2. Pos-TP1 SL buffer: 1.5x ATR (mantido)
+    NAO MUDADO: SL 2.8x / TP 5.5x ATR (grid-optimized, R:R ~2:1)
 """
 
 from __future__ import annotations
@@ -108,19 +112,20 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v10.0 (GRID SEARCH OPTIMIZED) ──
-# Grid: 8856 combinacoes testadas. Best: ADX32 + SL2.8 + TP5.5 + partial TP 50% buf 1.0
-# NOTA: v11.0 testou relaxar estes filtros (ADX25, RSI mais largo) — piorou
-# TODOS os periodos. Os filtros do grid search sao otimos. NAO relaxar.
+# ── Parametros da estrategia CTEV v12.0 (PROFESSIONAL SELECTIVE) ──
+# Base: Grid search 8856 combinacoes (ADX32, SL2.8, TP5.5 otimizados).
+# v12.0: ADX elevado para 36 + DI filter + EMA proximity removido.
+# Objetivo: trades de alta qualidade, como trader profissional.
+# v11.0 PROVA: relaxar filtros piora TODOS os periodos.
 
 # REGIME FILTER
-ADX_MIN = 32.0                # v10.0: grid search otimizado — NAO mudar
+ADX_MIN = 36.0                # v12.0: 36 (de 32) — apenas tendencias fortes
 ALLOW_TRANSITION = False      # DESATIVADO — transition tinha WR < 20%
 
-# RSI como zona de pullback
-RSI_LONG_MIN = 45.0           # v10.0: grid search otimizado
+# RSI como zona de pullback (grid-optimized — NAO mudar)
+RSI_LONG_MIN = 45.0
 RSI_LONG_MAX = 65.0
-RSI_SHORT_MIN = 35.0          # v10.0: grid search otimizado
+RSI_SHORT_MIN = 35.0
 RSI_SHORT_MAX = 55.0
 
 # RSI Delta — desabilitado
@@ -142,9 +147,10 @@ ATR_PCT_MAX = 0.90
 BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
-# EMA proximity
-EMA20_PROXIMITY_PCT = 0.005  # v10.0: grid search otimizado
-EMA50_PROXIMITY_PCT = 0.008  # v10.0: grid search otimizado
+# EMA proximity — v12.0: DESATIVADO (apenas fib + touch real)
+# Profissional: esperar o preco TOUCH na EMA, nao apenas ficar "perto"
+EMA20_PROXIMITY_PCT = 0.0    # v12.0: removido (de 0.005)
+EMA50_PROXIMITY_PCT = 0.0    # v12.0: removido (de 0.008)
 
 # EMA Slope
 EMA50_SLOPE_MIN = -0.5
@@ -153,8 +159,11 @@ EMA50_SLOPE_MIN = -0.5
 SL_ATR_MULT = 2.80          # v8.0: 2.8x ATR (grid: 2.8 > 3.0 > 2.5 para PnL)
 TP_ATR_MULT = 5.50          # v8.0: 5.5x ATR (grid: 5.5 > 6.0 > 5.0 para PnL)
 
-# FILTROS DE CONFLUENCIA — DESATIVADOS
-DI_DIRECTION_FILTER = False
+# FILTROS DE CONFLUENCIA
+# v12.0: DI Direction ON — garante alinhamento direcional (profissional)
+# Demais filtros permanecem desativados (grid search mostrou que adicionam
+# restricao sem ganho proporcional)
+DI_DIRECTION_FILTER = True   # v12.0: ON — +DI > -DI para LONG, -DI > +DI para SHORT
 MACD_HIST_FILTER = False
 OBV_TREND_FILTER = False
 STOCH_RSI_FILTER = False
