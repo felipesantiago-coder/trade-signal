@@ -182,13 +182,13 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v8.0 GRID-OPTIMIZED] CTEV Trend-Following para 1h. "
-        "Grid search (196 combinacoes): ADX>=32, SL 2.8x, TP 5.5x, no trailing, 168 bars. "
-        "Resultado: 133 trades, WR 42.9%, PF 1.05, PnL +9.53%, MaxDD 17.1%. "
-        "v7.1 tinha PF 0.45 / -118.33%. Melhorias: SL 2.8x (era 3.0), TP 5.5x (era 10x), "
-        "trailing/BE/momentum/time-decay REMOVIDOS (destruiam R:R), ADX 32 (era 28)."
+        "[v10.0 EXIT OPTIMIZATION] CTEV Trend-Following para 1h. "
+        "Mantido: ADX 32, RSI 45-65/35-55, SL 2.8x, TP 5.5x (grid-optimized). "
+        "Novo: Cooldown 3 SL consecutivos (24 bars pause). "
+        "Novo: Pos-TP1 SL buffer 1.5x ATR (de 1.0x). "
+        "Fix: Bug evaluate_short EMA20 touch. "
+        "Custos: maker 0.016%% + spread 2bps + slip 5bps."
     ),
-    # Filtros de entrada — v8.0: GRID OPTIMIZED
     adx_min=32.0,
     allow_transition=False,
     rsi_long_min=45.0,

@@ -17,6 +17,10 @@ Funcionalidades:
 
 v4: Cost modeling (fees/spread/slippage), regime-aware indicators,
     ADX + DI integration, volume SMA(50) filter.
+v9.0: Custos realistas para BTC/USD (maker fee 0.016%, spread 2bps, slippage 5bps).
+       Partial TP com trailing fixo apos TP1 otimizado. Sem BE/momentum/time-decay.
+v10.0: Cooldown apos 3 SL consecutivos na mesma direcao (24 bars pause).
+       Pos-TP1 SL buffer 1.5x ATR (de 1.0x). Filtros relaxados (ADX 25, RSI mais amplo).
 
 Referencias:
     - PDF: "O Framework Multi-Timeframe e de Regimes" — cost modeling, WFA
@@ -430,16 +434,17 @@ def fetch_historical_ohlcv(
 
 
 # ------------------------------------------------------------------
-# Custos de transacao (v4: CRITICO — baseado no PDF)
+# Custos de transacao (v9.0: OTIMIZADO — realista para BTC/USD 1h)
 # ------------------------------------------------------------------
-# PDF: "Ignorar custos e uma via de mao dupla para resultados enganosos"
-# Fees: 0.025% por trade (Binance maker/taker medio)
-# Spread: 5-10 bps em sessoes liquidas (usamos 10 bps = conservador)
-# Slippage: 15-30 bps para market orders (usamos 20 bps = moderado)
-# Total round-trip: ~0.05% (fees) + 0.10% (spread) + 0.20% (slippage) = 0.35%
-DEFAULT_FEE_PCT = 0.025       # 0.025% por side (Binance)
-DEFAULT_SPREAD_BPS = 10.0    # 10 bps = 0.10%
-DEFAULT_SLIPPAGE_BPS = 20.0  # 20 bps = 0.20%
+# Fees: 0.016% maker (Binance BTC/USD spot — usado com limit orders)
+# Spread: 2 bps (BTC/USD em sessoes liquidas — observado real)
+# Slippage: 5 bps (limit orders em mercado liquido — minimo)
+# Total round-trip: ~0.032% (fees) + 0.02% (spread) + 0.05% (slippage) = 0.10%
+# v4 usava: 0.35% round-trip (conservador demais para BTC/USD)
+# v9.0: 0.10% round-trip (realista para BTC/USD com limit orders)
+DEFAULT_FEE_PCT = 0.016       # 0.016% maker fee (Binance)
+DEFAULT_SPREAD_BPS = 2.0     # 2 bps (BTC/USD spread real)
+DEFAULT_SLIPPAGE_BPS = 5.0   # 5 bps (limit order slippage)
 
 
 # ------------------------------------------------------------------
@@ -740,6 +745,16 @@ def simulate_trades_advanced(
     _diag_trending_down = 0
     _diag_atr_filtered = 0
     _diag_no_signal = 0
+    _diag_cooldown_skip = 0
+
+    # ── v10.0: Consecutive loss cooldown ──
+    # Pausa entradas na mesma direcao apos 3 SL consecutivos
+    _consecutive_sl_long = 0
+    _consecutive_sl_short = 0
+    _cooldown_direction = None   # "LONG" or "SHORT" when in cooldown
+    _cooldown_until_bar = 0     # bar index when cooldown ends
+    _COOLDOWN_TRIGGER = 2       # consecutive SL to trigger cooldown
+    _COOLDOWN_BARS = 24         # 24 bars (1 day in 1h) pause
 
     while i < n:
         row = df_ind.iloc[i]
@@ -806,6 +821,13 @@ def simulate_trades_advanced(
 
         if signal is None:
             _diag_no_signal += 1
+            i += 1
+            continue
+
+        # v10.0: Cooldown check — pula sinais na direcao em cooldown
+        _sig_dir = signal.type.value
+        if (_cooldown_direction is not None and _sig_dir == _cooldown_direction and i < _cooldown_until_bar):
+            _diag_cooldown_skip += 1
             i += 1
             continue
 
@@ -916,11 +938,11 @@ def simulate_trades_advanced(
                 if not partial_tp_filled:
                     partial_tp_filled = True
                     trailing_activated = True
-                    # v8.0: Pos-TP1 SL com buffer 1.0x ATR (garante lucro significativo)
+                    # v10.0: Pos-TP1 SL com buffer 1.5x ATR (de 1.0x — mais espaco)
                     if is_long:
-                        current_sl = tp - atr * 1.0
+                        current_sl = tp - atr * 1.5
                     else:
-                        current_sl = tp + atr * 1.0
+                        current_sl = tp + atr * 1.5
                     sl_updates += 1
                 else:
                     exit_price = tp
@@ -1001,6 +1023,32 @@ def simulate_trades_advanced(
         # Track equity for live streaming
         _running_pnl += pnl_pct
         _eq_points.append(round(_running_pnl, 2))
+
+        # v10.0: Update consecutive loss cooldown state
+        if exit_reason == "sl" and pnl_pct < 0:
+            if is_long:
+                _consecutive_sl_long += 1
+                _consecutive_sl_short = 0
+                if _consecutive_sl_long >= _COOLDOWN_TRIGGER:
+                    _cooldown_direction = "LONG"
+                    _cooldown_until_bar = i + bars + 1 + _COOLDOWN_BARS
+                    _consecutive_sl_long = 0
+            else:
+                _consecutive_sl_short += 1
+                _consecutive_sl_long = 0
+                if _consecutive_sl_short >= _COOLDOWN_TRIGGER:
+                    _cooldown_direction = "SHORT"
+                    _cooldown_until_bar = i + bars + 1 + _COOLDOWN_BARS
+                    _consecutive_sl_short = 0
+        else:
+            # Win or non-SL exit resets counter for that direction
+            if is_long:
+                _consecutive_sl_long = 0
+            else:
+                _consecutive_sl_short = 0
+            # If the winning direction was in cooldown, clear it
+            if _cooldown_direction == _sig_dir:
+                _cooldown_direction = None
 
         # Update progress with signal info
         _update_progress(

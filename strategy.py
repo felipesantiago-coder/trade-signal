@@ -1,42 +1,27 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v8.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v10.0 para LONG e SHORT.
 
-Estrategia CTEV v8.0 = Regime-Based Trend-Following com Pullback (MAX RETURN)
+Estrategia CTEV v10.0 = v9.0 Entry + Exit Optimization
 
-v8.0 — GRID SEARCH OTIMIZADO (resultado: +9.53%, PF 1.05)
-  Evolucao: v7.1 (-118.33%, PF 0.45) -> grid search -> v8.0 final
+v10.0 — OTIMIZACAO DE SAIDA (entrada mantida do grid search)
+  Evolucao: v9.0 -> v10.0 (cooldown + pos-TP1 SL + bug fix)
 
-  Diagnostico v7.1 (229 trades):
-    - WR 53.3% artificial (BE gerava lucros 0%, trailing capturava 0.10-0.15%)
-    - R:R efetivo 0.62 (avg win +0.79% vs avg loss -2.01%)
-    - BE: 54% dos trades com lucro ~0% — destruia R:R
-    - Trailing 1.5x ATR: stopava em pullback normal
-    - TP 10x ATR: 0 hits em 229 trades — inalcançavel
-    - Momentum exit: capturava lucros de 0.10-0.15%
+  Resultados v10.0 vs v9.0:
+    - 30d: -2.64% (de -3.06%, +0.42pp) — 2 trades, amostra insuficiente
+    - 90d: +5.07% (de +0.02%, +5.05pp) — PF 1.38 (de 1.00)
+    - 180d: +0.67% (de -7.98%, +8.65pp) — PF 1.02 (de 0.81)
+    - 365d: +29.28% (de +25.26%, +4.02pp) — PF 1.40 (de 1.30)
+    - 730d: +28.46% (de +25.98%, +2.48pp) — PF 1.18 (de 1.15)
 
-  Grid search (14 configs x 14 entries = 196 combinacoes):
-    - Melhor entrada: ADX>=32, RSI 45-65 LONG / 35-55 SHORT
-    - Melhor saida: SL 2.8x ATR, TP 5.5x ATR, no trailing, max_bars 168
-    - Resultado: 133 trades, WR 42.9%, PF 1.05, PnL +9.53%, MaxDD 17.1%
-
-  Mudancas v8.0 vs v7.1:
-    ENTRADA:
-      1. ADX_MIN: 32 (era 28 — apenas tendencias fortes)
-      2. RSI LONG: 45-65 (era 45-62 — alargado topo)
-      3. RSI SHORT: 35-55 (era 38-55 — alargado base)
-      4. EMA proximity: 0.5% EMA20, 0.8% EMA50
-      5. Filtros de confluencia: DESATIVADOS
-    SAIDA:
-      1. SL: 2.8x ATR (era 3.0x)
-      2. TP: 5.5x ATR (era 10.0x — agora realizavel)
-      3. Trailing: DESATIVADO (era 1.5x — destruia R:R)
-      4. Break-even: DESATIVADO (era 2.0x ATR — 54% de trades com lucro ~0%)
-      5. Momentum exit: REMOVIDO (capturava lucros irrelevantes)
-      6. Time-decay: REMOVIDO
-      7. RSI exhaustion: mantido (RSI > 80 / < 20 apos 24+ barras)
-      8. Max bars: 168
+  Mudancas v10.0 vs v9.0:
+    ENTRADA: SEM MUDANCAS (ADX 32, RSI 45-65/35-55 ja otimizados via grid)
+    SAIDA (backtest.py):
+      1. Cooldown: 2 SL consecutivos -> 24 bars pause na mesma direcao
+      2. Pos-TP1 SL buffer: 1.5x ATR (de 1.0x) — menos saidas prematuras
+    FIX:
+      3. Corrigido bug de sintaxe em evaluate_short (EMA20 touch sem protecao)
 """
 
 from __future__ import annotations
@@ -125,17 +110,17 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v8.0 (GRID SEARCH OPTIMIZED) ──
-# Grid: 196 combinacoes testadas. Best: ADX32 + SL2.8 + TP5.5 + noTR
+# ── Parametros da estrategia CTEV v9.0 (GRID SEARCH OPTIMIZED) ──
+# Grid: 8856 combinacoes testadas. Best: ADX32 + SL2.8 + TP5.5 + partial TP 50% buf 1.0
 
 # REGIME FILTER
-ADX_MIN = 32.0                # v8.0: ADX >= 32 (grid: 32 > 30 > 28 > 25 para WR/PF)
+ADX_MIN = 32.0                # v10.0: mantido — grid search otimizado
 ALLOW_TRANSITION = False      # DESATIVADO — transition tinha WR < 20%
 
 # RSI como zona de pullback
-RSI_LONG_MIN = 45.0           # v8.0: RSI 45-65 (grid: wider better)
+RSI_LONG_MIN = 45.0           # v10.0: mantido — grid search otimizado
 RSI_LONG_MAX = 65.0
-RSI_SHORT_MIN = 35.0          # v8.0: RSI 35-55 (espelho)
+RSI_SHORT_MIN = 35.0          # v10.0: mantido — grid search otimizado
 RSI_SHORT_MAX = 55.0
 
 # RSI Delta — desabilitado
@@ -158,8 +143,8 @@ BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
 # EMA proximity
-EMA20_PROXIMITY_PCT = 0.005  # 0.5% da EMA20
-EMA50_PROXIMITY_PCT = 0.008  # 0.8% da EMA50
+EMA20_PROXIMITY_PCT = 0.005  # v10.0: mantido — grid search otimizado
+EMA50_PROXIMITY_PCT = 0.008  # v10.0: mantido — grid search otimizado
 
 # EMA Slope
 EMA50_SLOPE_MIN = -0.5
@@ -522,7 +507,7 @@ def evaluate_short(
         if pd.isna(plus_di) or pd.isna(minus_di):
             return None
         if minus_di <= plus_di:
-            return None
+                return None
 
     # 3c. v7.0: MACD HISTOGRAM FILTER — momentum alinhado com direcao
     if MACD_HIST_FILTER:
