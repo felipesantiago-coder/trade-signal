@@ -1,7 +1,7 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v14.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v14.3 para LONG e SHORT.
 
 v14.3 FINAL — CTEV ADX-32 (compromisso otimo frequencia/qualidade)
   Evolucao: v12.0 -> v14.3 (unica mudanca: ADX 36 -> 32)
@@ -11,14 +11,11 @@ v14.3 FINAL — CTEV ADX-32 (compromisso otimo frequencia/qualidade)
     slope, Fib 2.5% tolerance, SL 2.8x/TP 5.5x ATR.
 
   v14.3 mudanca: ADX 36 -> 32 (2o melhor do grid search)
-  Resultado vs v12.0:
-    730d: 125 trades (+32%), WR 44%, PnL +34% (era +46%)
-    365d: 62 trades (+27%), WR 48%, PnL +33% (era +36%)
-    180d: 29 trades (+38%), WR 38%, PnL +1.5% (era +3.6%)
-    90d: 15 trades (+36%), WR 40%, PnL +4.1% (era +1.2%) *** MELHOROU ***
-    30d: 3 trades, 0% WR — amostra insuficiente (variancia estatistica)
 
-  Trade frequency: ~1.2-1.5 trades/semana (vs 0.9 em v12.0)
+  v15.0 backtest: Trailing pos-TP1 1.0x ATR + Cooldown 16 bars
+    730d: +58.23% (era +49.03%) | 365d: +45.25% (era +33.55%)
+    180d: +5.45% (era -0.21%)  |  90d: +4.86% (era +2.48%)
+    Sinais CTEV nao alterados — mudancas apenas na camada de gestao de risco.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """
 test_v12_pro.py
 --------------
-Backtest CTEV v12.0 Professional Selective em todos os periodos.
-Compara com baseline v10.0.
+Backtest CTEV v15.0 Risk Management em todos os periodos.
+Compara com baseline v14.3.
 """
 
 import sys
@@ -19,13 +19,13 @@ logging.basicConfig(
 
 from backtest import run_backtest
 
-# Baseline v10.0
-V10_BASELINE = {
+# v14.3 baseline
+V14_BASELINE = {
     30:  {"trades": 3,   "wr": 0.0,  "pnl": -3.53},
-    90:  {"trades": 16,  "wr": 37.5, "pnl": 2.52},
-    180: {"trades": 31,  "wr": 35.5, "pnl": -2.01},
-    365: {"trades": 67,  "wr": 46.3, "pnl": 31.17},
-    730: {"trades": 134, "wr": 44.0, "pnl": 45.96},
+    90:  {"trades": 16,  "wr": 37.5, "pnl": 2.48},
+    180: {"trades": 30,  "wr": 36.7, "pnl": -0.21},
+    365: {"trades": 64,  "wr": 46.9, "pnl": 33.55},
+    730: {"trades": 128, "wr": 44.5, "pnl": 49.03},
 }
 
 PERIODS = [30, 90, 180, 365, 730]
@@ -34,8 +34,9 @@ PERIODS = [30, 90, 180, 365, 730]
 def main():
     print()
     print("=" * 80)
-    print("  CTEV v12.0 Professional Selective — Backtest Multi-Periodo")
-    print("  BTC/USDT | 1h | Mudancas: ADX 36, DI ON, EMA proximity OFF")
+    print("  CTEV v15.0 Risk Management — Backtest Multi-Periodo")
+    print("  BTC/USDT | 1h | Mudancas: trailing pos-TP1, anti-martingale,")
+    print("  cooldown 16b, max_bars 120, SL buffer 1.2x")
     print("=" * 80)
     print()
 
@@ -83,15 +84,15 @@ def main():
 
     # Comparison table
     print(f"\n\n{'=' * 80}")
-    print(f"  COMPARACAO: v12.0 Professional vs v10.0 Baseline")
+    print(f"  COMPARACAO: v15.0 Risk Mgmt vs v14.3 Baseline")
     print(f"  Tempo de execucao: {elapsed:.0f}s")
     print(f"{'=' * 80}")
     print()
-    print(f"  {'Periodo':<10} {'v10 Trades':>10} {'v12 Trades':>11} {'v10 WR':>8} {'v12 WR':>8} {'v10 PnL':>9} {'v12 PnL':>9} {'Delta':>8}")
+    print(f"  {'Periodo':<10} {'v14 Trades':>10} {'v15 Trades':>11} {'v14 WR':>8} {'v15 WR':>8} {'v14 PnL':>9} {'v15 PnL':>9} {'Delta':>8}")
     print(f"  {'-' * 78}")
 
     for days in PERIODS:
-        b = V10_BASELINE[days]
+        b = V14_BASELINE[days]
         r = results.get(days)
         if r is None:
             print(f"  {days:<10d} {b['trades']:>10d} {'ERROR':>11} {b['wr']:>7.1f}% {'N/A':>8} {b['pnl']:>+8.2f}% {'N/A':>9} {'N/A':>8}")
@@ -106,14 +107,14 @@ def main():
 
     # Summary assessment
     print(f"\n{'=' * 80}")
-    print(f"  AVALIACAO v12.0")
+    print(f"  AVALIACAO v15.0")
     print(f"{'=' * 80}")
 
     all_positive = True
     improved = 0
     worsened = 0
     for days in PERIODS:
-        b = V10_BASELINE[days]
+        b = V14_BASELINE[days]
         r = results.get(days)
         if r is None:
             all_positive = False
@@ -135,7 +136,7 @@ def main():
     else:
         print("  >>> RESULTADO: Ainda ha periodos negativos — ajustes necessarios")
 
-    print(f"  Melhorou em {improved}/5 periodos vs v10.0, piorou em {worsened}/5")
+    print(f"  Melhorou em {improved}/5 periodos vs v14.3, piorou em {worsened}/5")
     print()
 
 

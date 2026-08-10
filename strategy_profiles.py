@@ -182,9 +182,9 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v14.3] CTEV ADX-32 — unico cambio vs v12.0: ADX 36->32."
-        "ADX 32, DI ON, transition OFF, RSI 45-65/35-55 (grid)."
-        "SL 2.8x, TP 5.5x ATR."
+        "[v15.0] CTEV v14.3 signals + v15.0 risk management. "
+        "ADX 32, DI ON, transition OFF, RSI 45-65/35-55 (grid). "
+        "SL 2.8x, TP 5.5x ATR. Trailing pos-TP1 1.0x, cooldown 16b."
     ),
     adx_min=32.0,
     allow_transition=False,

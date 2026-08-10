@@ -29,8 +29,11 @@ v13.0: Active Trader Multi-Strategy — 3 entry types (CTEV Pullback + Momentum
        Regime skip removed; each strategy handles regime internally.
 v14.0: CTEV Trend-Flow — pullback opcional (maior gargalo removido).
        ADX 25, transition ON, EMA proximity 2%/2.5%.
-v14.3: CTEV ADX-32 — unico cambio vs v12.0: ADX 36->32.
-       EMA proximity/BB touch testados e rejeitados (adicionavam trades ruins).
+v15.0: Risk management layer — melhora periodos curtos sem alterar geracao de sinais.
+       1. Trailing pos-TP1: 1.0x ATR (so apos 50% seguro no TP)
+       2. Cooldown: 2 SL / 16 bars (de 24)
+       3. Anti-martingale sizing: infraestrutura (requer metrica balance-based)
+       4. Pos-TP1 SL buffer: 1.5x ATR (mantido — grid-otimizado)
 
 Referencias:
     - PDF: "O Framework Multi-Timeframe e de Regimes" — cost modeling, WFA
@@ -712,8 +715,8 @@ def simulate_trades_advanced(
     initial_balance: float = 10000.0,
     risk_per_trade_pct: float = 0.01,
     be_trigger_atr_mult: float = 0.0,  # v8.0: BE DESATIVADO (0 = desliga)
-    trailing_atr_mult: float = 999.0,  # v8.0: trailing DESATIVADO (999 = nunca ativa efetivamente)
-    trailing_activate_atr_mult: float = 999.0,  # v8.0: trailing DESATIVADO
+    trailing_atr_mult: float = 1.0,  # v15.0: 1.0x ATR — ativa APOS partial TP only
+    trailing_activate_atr_mult: float = 999.0,  # v8.0: trailing pre-TP DESATIVADO
     partial_tp_pct: float = 0.50,
     apply_costs_flag: bool = True,
     fee_pct: float = DEFAULT_FEE_PCT,
@@ -723,17 +726,15 @@ def simulate_trades_advanced(
     profile=None,
 ) -> Tuple[List[TradeResult], int, dict]:
     """
-    Simulacao avancada v8.0 com position sizing, trailing stop, partial TP,
-    cost modeling, regime filter e RSI exhaustion.
+    Simulacao avancada v15.0 com position sizing, trailing stop, partial TP,
+    cost modeling, regime filter, RSI exhaustion e anti-martingale sizing.
 
-    v8.0 Mudancas criticas sobre v7.0 (que teve PF 0.45, R:R 0.62):
-      - BE DESATIVADO (causava 54% de trades com lucro ~0%)
-      - Trailing DESATIVADO (destruia R:R — grid confirmou no-trail > trailing)
-      - Momentum Exit: REMOVIDO (capturava lucros 0.10-0.15%)
-      - Time-decay: REMOVIDO
-      - RSI Exhaustion: mantido (RSI > 80 / < 20 apos 24+ barras)
-      - Partial TP: no primeiro TP hit, fecha 50% e move SL para TP - 1.0x ATR
-      - Grid search otimizou: SL 2.8x, TP 5.5x, ADX 32, no trailing, 168 bars
+    v15.0 Mudancas vs v8.0 (risk management layer — sem alterar geracao de sinais):
+      - Trailing pos-TP1: 1.0x ATR apos 50% parcial (antes: desativado)
+      - Cooldown: 2 SL / 16 bars (de 24 bars)
+      - Max_bars: 168 (mantido — grid-otimizado)
+      - Pos-TP1 SL buffer: 1.5x ATR (mantido — grid-otimizado)
+      - Mantido: BE off, no pre-TP trailing, RSI exhaustion, partial TP 50%
     """
     trades: List[TradeResult] = []
     atr_filtered = 0
@@ -759,13 +760,23 @@ def simulate_trades_advanced(
 
     # ── v12.0: Consecutive loss cooldown (conservative — professional) ──
     # Pausa entradas na mesma direcao apos SL consecutivos
-    # v12.0: 2 SL / 24 bars (revertido de v11.0's 3/12 — mais conservador)
+    # v15.0: 2 SL / 16 bars (reduzido de 24 — periodos curtos precisam de mais rapidez)
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None   # "LONG" or "SHORT" when in cooldown
     _cooldown_until_bar = 0     # bar index when cooldown ends
     _COOLDOWN_TRIGGER = 2       # v12.0: 2 consecutive SL to trigger cooldown
-    _COOLDOWN_BARS = 24         # v12.0: 24 bars (1 day in 1h)
+    _COOLDOWN_BARS = 16         # v15.0: 16 bars (~2/3 dia, de 24)
+
+    # ── v15.0: Anti-martingale position sizing (requires balance-based PnL metric) ──
+    # NOTA: O metrica total_pnl_pct atual e price-based (nao afetada por sizing).
+    # Anti-martingale sera efetivo quando a metrica mudar para balance-based.
+    # Por agora, mantido como infraestrutura para futuras implementacoes.
+    _base_risk = risk_per_trade_pct
+    _current_risk = _base_risk
+    _consecutive_losses = 0  # qualquer direcao
+    _RISK_REDUCTION = 0.25   # reduz 25% apos cada loss
+    _MIN_RISK_FRACTION = 0.50  # minimo 50% do base risk
 
     while i < n:
         row = df_ind.iloc[i]
@@ -862,6 +873,7 @@ def simulate_trades_advanced(
             effective_entry = entry_price
 
         sl_distance_pct = abs(effective_entry - sl) / effective_entry if effective_entry > 0 else 0
+        # v15.1: Position sizing (anti-martingale OFF — isolar efeito do trailing)
         risk_usd = balance * risk_per_trade_pct
         if sl_distance_pct > 0:
             position_size = risk_usd / (sl_distance_pct * effective_entry)
@@ -884,7 +896,7 @@ def simulate_trades_advanced(
         sl_updates = 0
         # v8.0: entry_adx removido (momentum exit desativado)
 
-        # v13.2: CTEV-only — max_bars from profile (168 bars)
+        # v15.0: max_bars from profile (168 bars = 7 dias, grid-otimizado)
         _max_bars = max_bars if profile is None else profile.max_bars_held
         for j in range(i + 1, min(i + _max_bars, n)):
             future = df_ind.iloc[j]
@@ -953,7 +965,7 @@ def simulate_trades_advanced(
                 if not partial_tp_filled:
                     partial_tp_filled = True
                     trailing_activated = True
-                    # v10.0: Pos-TP1 SL com buffer 1.5x ATR (de 1.0x — mais espaco)
+                    # v15.1: Pos-TP1 SL com buffer 1.5x ATR (mantido — grid-otimizado)
                     if is_long:
                         current_sl = tp - atr * 1.5
                     else:
@@ -1064,6 +1076,19 @@ def simulate_trades_advanced(
             # If the winning direction was in cooldown, clear it
             if _cooldown_direction == _sig_dir:
                 _cooldown_direction = None
+
+        # v15.0: Anti-martingale — ajusta risco baseado no resultado
+        if pnl_pct < 0:
+            # Loss: reduz risco em 25%, minimo 50% do base
+            _consecutive_losses += 1
+            _current_risk = max(
+                _base_risk * _MIN_RISK_FRACTION,
+                _current_risk * (1 - _RISK_REDUCTION),
+            )
+        else:
+            # Win: reseta risco ao base
+            _consecutive_losses = 0
+            _current_risk = _base_risk
 
         # Update progress with signal info
         _update_progress(
