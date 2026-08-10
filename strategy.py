@@ -1,28 +1,25 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v11.0 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v10.0 para LONG e SHORT.
 
-Estrategia CTEV v11.0 = v10.0 + Frequency Boost
+Estrategia CTEV v10.0 = v9.0 Entry + Exit Optimization
 
-v11.0 — FREQUENCY BOOST (mais sinais em periodos curtos)
-  Evolucao: v10.0 -> v11.0
+v10.0 — OTIMIZACAO DE SAIDA (entrada mantida do grid search)
+  Evolucao: v9.0 -> v10.0 (cooldown + pos-TP1 SL + bug fix)
 
-  Problema: v10.0 gerava muito poucos trades em periodos curtos (< 180d).
-  30d: apenas 3 trades (0 win) → -3.53%
-  90d: 16 trades → +2.52%
-  Causa: filtros muito restritivos (ADX 32, RSI estreito, EMA proximity justo)
-
-  Mudancas v11.0 vs v10.0:
-    ENTRADA:
-      1. ADX_MIN: 32 → 25 (captura tendencias em desenvolvimento)
-      2. RSI_LONG: 45-65 → 40-68 (+5 cada lado, mais pullbacks)
-      3. RSI_SHORT: 35-55 → 30-58 (+5 cada lado, mais rallies)
-      4. EMA20_PROXIMITY: 0.5% → 1.2% (mais entradas proximo a EMA20)
-      5. EMA50_PROXIMITY: 0.8% → 1.5% (mais entradas proximo a EMA50)
+  Mudancas v10.0 vs v9.0:
+    ENTRADA: SEM MUDANCAS (ADX 32, RSI 45-65/35-55 ja otimizados via grid)
     SAIDA (backtest.py):
-      6. Cooldown: 2 SL / 24 bars → 3 SL / 12 bars (menos supressao)
-    MANTIDO: SL 2.8x, TP 5.5x, Pos-TP1 SL 1.5x, RSI exhaustion
+      1. Cooldown: 2 SL consecutivos -> 24 bars pause na mesma direcao
+      2. Pos-TP1 SL buffer: 1.5x ATR (de 1.0x) — menos saidas prematuras
+    FIX:
+      3. Corrigido bug de sintaxe em evaluate_short (EMA20 touch sem protecao)
+
+  NOTA v10.1: Cooldown ajustado para 3 SL / 12 bars (de 2 SL / 24 bars).
+  Testado v11.0 (ADX 25, RSI alargado, EMA prox largo) — DESEMPENHO PIOROU
+  em TODOS os periodos. Filtros de entrada do grid search sao otimos.
+  Unica mudanca segura: cooldown menos agressivo.
 """
 
 from __future__ import annotations
@@ -111,19 +108,20 @@ class Signal:
         }
 
 
-# ── Parametros da estrategia CTEV v11.0 (FREQUENCY BOOST) ──
-# v11.0: Relaxados para aumentar frequencia de sinais em periodos curtos.
-# Core R:R mantido (SL 2.8x / TP 5.5x) — edge vem dos filtros de tendencia.
+# ── Parametros da estrategia CTEV v10.0 (GRID SEARCH OPTIMIZED) ──
+# Grid: 8856 combinacoes testadas. Best: ADX32 + SL2.8 + TP5.5 + partial TP 50% buf 1.0
+# NOTA: v11.0 testou relaxar estes filtros (ADX25, RSI mais largo) — piorou
+# TODOS os periodos. Os filtros do grid search sao otimos. NAO relaxar.
 
 # REGIME FILTER
-ADX_MIN = 25.0                # v11.0: 25 (de 32) — captura tendencias em desenvolvimento
+ADX_MIN = 32.0                # v10.0: grid search otimizado — NAO mudar
 ALLOW_TRANSITION = False      # DESATIVADO — transition tinha WR < 20%
 
 # RSI como zona de pullback
-RSI_LONG_MIN = 40.0           # v11.0: 40 (de 45) — mais pullbacks capturados
-RSI_LONG_MAX = 68.0          # v11.0: 68 (de 65)
-RSI_SHORT_MIN = 30.0          # v11.0: 30 (de 35)
-RSI_SHORT_MAX = 58.0          # v11.0: 58 (de 55)
+RSI_LONG_MIN = 45.0           # v10.0: grid search otimizado
+RSI_LONG_MAX = 65.0
+RSI_SHORT_MIN = 35.0          # v10.0: grid search otimizado
+RSI_SHORT_MAX = 55.0
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
@@ -145,8 +143,8 @@ BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
 # EMA proximity
-EMA20_PROXIMITY_PCT = 0.012  # v11.0: 1.2% (de 0.5%) — mais pullbacks EMA20
-EMA50_PROXIMITY_PCT = 0.015  # v11.0: 1.5% (de 0.8%) — mais pullbacks EMA50
+EMA20_PROXIMITY_PCT = 0.005  # v10.0: grid search otimizado
+EMA50_PROXIMITY_PCT = 0.008  # v10.0: grid search otimizado
 
 # EMA Slope
 EMA50_SLOPE_MIN = -0.5
