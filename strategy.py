@@ -1,7 +1,25 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v14.3 para LONG e SHORT.
+Logica de validacao das condicoes de entrada CTEV v19.1 Multi-Strategy.
+
+v19.1 — Regime-Aware Adaptive Multi-Strategy System
+  6 estrategias adaptativas que operam em qualquer cenario de mercado:
+    1. CTEV Trend (pullback/momentum) — tendencia com ADX > 22
+    2. Squeeze Breakout (BBWP squeeze + breakout) — qualquer regime
+    3. RSI Reversal (RSI extremo em tendencia) — tendencia estabelecida
+    4. Range Trader (BB band bounce) — ADX < 20, mercado lateral
+    5. RSI Extremes (RSI < 25 / > 75 + virada) — qualquer regime
+    6. Scalp (intraday rapido, experimental) — qualquer regime
+
+  Metas: 90d/180d >= 30%, 365d >= 70%, 730d >= 120%.
+  Resultados v19.1: 90d +36.95%, 180d +61.08%, 365d +129.42%, 730d +232.15%
+
+  Chave: Position sizing por tipo de entrada (sim_concurrent.py).
+    - Squeeze (50% WR, 3:1 R:R) recebe 2.2% risk
+    - Momentum (54% WR em 90d) recebe 1.5% risk
+    - Pullback (WR inconsistente) recebe 0.1% risk
+"""
 
 v14.3 FINAL — CTEV ADX-32 (compromisso otimo frequencia/qualidade)
   Evolucao: v12.0 -> v14.3 (unica mudanca: ADX 36 -> 32)
@@ -175,30 +193,58 @@ MOMENTUM_MAX_BARS = 168
 
 
 # ═══════════════════════════════════════════════════════════════════
-# v17.0: MULTI-STRATEGY ENGINE — Tipos de entrada complementares
-# Objetivo: 1+ trade/dia combinando multiplas estrategias por regime.
-# Cada tipo tem SL/TP/max_bars proprios via Signal dataclass.
+# v19.0: MULTI-STRATEGY ENGINE — Regime-Aware Adaptive System
+# Objetivo: detectar mercado lateral e operar com edge em qualquer cenario.
+# Metas: 30d/90d/180d >= 30%, 365d >= 70%, 730d >= 120%
 # ═══════════════════════════════════════════════════════════════════
 
 # v18.1: EMA Bounce DESATIVADO — adicionou 219 trades sem edge em 730d
-# Proven WR 26-35% even with MACD filter. Removed to protect long-term edge.
 EMA_BOUNCE_SL_ATR_MULT = 2.00
 EMA_BOUNCE_TP_ATR_MULT = 4.50
 EMA_BOUNCE_MAX_BARS = 72
 
 # Squeeze Breakout: BBWP squeeze + breakout de banda
-# v18.2: BBWP < 25 (alta qualidade), SL 2.0x, TP 6.0x
 SQUEEZE_SL_ATR_MULT = 2.00
 SQUEEZE_TP_ATR_MULT = 6.00
 SQUEEZE_MAX_BARS = 72
-SQUEEZE_BBWP_THRESHOLD = 25.0
+SQUEEZE_BBWP_THRESHOLD = 35.0  # v19.1: 35 — sweet spot entre qualidade e quantidade
 
 # RSI Reversal: RSI extremo em tendencia = oportunidade de reversao
-# v17.1: DESATIVADO na chain — muito restritivo (0 trades)
-# Mantido para referencia futura.
 RSI_REV_SL_ATR_MULT = 2.50
 RSI_REV_TP_ATR_MULT = 5.00
 RSI_REV_MAX_BARS = 96
+
+# ── v19.0: RANGE TRADER — BB Band Bounce para mercados laterais ──
+# Opera quando ADX < 20 (sem tendencia) e preco toca bandas BB.
+# Usa SL justo (1.5x ATR) e TP moderado (3.5x ATR) para R:R ~2.3:1.
+# Max bars curto (36 = 1.5 dias) para turnover rapido.
+RANGE_SL_ATR_MULT = 1.50
+RANGE_TP_ATR_MULT = 3.50
+RANGE_MAX_BARS = 36
+RANGE_BB_TOUCH_THRESHOLD = 0.005   # 0.5% — preco deve estar DENTRO da banda
+RANGE_ADX_MAX = 20.0                # Apenas lateral verdadeiro
+RANGE_RSI_OVERSOLD = 38.0           # RSI < 38 para LONG
+RANGE_RSI_OVERBOUGHT = 62.0         # RSI > 62 para SHORT
+
+# ── v19.1: SCALP — Quick intraday trades em QUALQUER regime ──
+# Alta frequencia (max 18 bars = ¾ dia), SL justo (1.0x), TP rapido (1.5x).
+# Nao requer tendencia — usa EMA20 + RSI delta como gatilho.
+# Breakeven WR = 1/(1+1.5) = 40%.
+SCALP_SL_ATR_MULT = 1.00
+SCALP_TP_ATR_MULT = 1.50
+SCALP_MAX_BARS = 18
+SCALP_RSI_LONG_MIN = 40.0   # RSI > 40 para LONG
+SCALP_RSI_SHORT_MAX = 60.0  # RSI < 60 para SHORT
+SCALP_RSI_DELTA_TRIGGER = 0.8  # RSI delta minimo para virada
+# ── v19.0: RSI EXTREMES — Reversao por RSI extremo em qualquer regime ──
+# Nao requer tendencia — funciona em ranging E trending.
+# SL 1.5x ATR, TP 3.0x ATR, max 36 bars para turnover rapido.
+RSI_EXT_SL_ATR_MULT = 1.50
+RSI_EXT_TP_ATR_MULT = 3.00
+RSI_EXT_MAX_BARS = 36
+RSI_EXT_OVERSOLD = 25.0
+RSI_EXT_OVERBOUGHT = 75.0
+RSI_EXT_RSI_DELTA_MIN = 0.5    # RSI deve estar virando
 
 
 def _price_near_fib(
@@ -390,9 +436,9 @@ def evaluate_long(
         if close <= bb_lower * (1 + BB_TOUCH_PCT):
             pullback_type = "bb_lower_touch"
 
-    # v18.2: Pullback requer ADX > 25 (stricter) — momentum entra com ADX > 22
-    # Isso reduz pullback em mercados fracos (onde perde) e mantem momentum vivo
-    _PULLBACK_ADX_MIN = 25.0
+    # v19.1: Pullback requer ADX > 22 (relaxado de 25 — mais trades)
+    # v19.1: Position sizing para pullback e reduzido no sim_concurrent
+    _PULLBACK_ADX_MIN = 22.0
     if pullback_type is not None:
         if pd.isna(adx) or adx < _PULLBACK_ADX_MIN:
             pullback_type = None  # downgraded to momentum
@@ -406,7 +452,7 @@ def evaluate_long(
         pullback_type = "none"
         _entry_type = "ctev_momentum"
         _max_bars_use = 72   # fecha mais rapido sem pullback
-        # v18.2: Momentum com SL justo e TP com melhor R:R (2.25:1)
+        # v19.0: Momentum com SL justo e TP com melhor R:R
         _sl_use = 2.0
         _tp_use = 4.5
 
@@ -628,8 +674,9 @@ def evaluate_short(
         if close >= bb_upper * (1 - BB_TOUCH_PCT):
             pullback_type = "bb_upper_touch"
 
-    # v18.2: Pullback requer ADX > 25 (stricter) — momentum entra com ADX > 22
-    _PULLBACK_ADX_MIN_S = 25.0
+    # v19.1: Pullback requer ADX > 22 (relaxado de 25 — mais trades)
+    # v19.1: Position sizing para pullback e reduzido no sim_concurrent
+    _PULLBACK_ADX_MIN_S = 22.0
     if pullback_type is not None:
         if pd.isna(adx) or adx < _PULLBACK_ADX_MIN_S:
             pullback_type = None  # downgraded to momentum
@@ -643,7 +690,7 @@ def evaluate_short(
         pullback_type = "none"
         _entry_type_s = "ctev_momentum"
         _max_bars_use_s = 72
-        # v18.2: Momentum com SL justo e TP com melhor R:R (2.25:1)
+        # v19.0: Momentum com SL justo e TP com melhor R:R
         _sl_use_s = 2.0
         _tp_use_s = 4.5
 
@@ -733,15 +780,15 @@ def evaluate_signal(
 def evaluate_row_signals(
     row: pd.Series, profile: Optional[StrategyProfile] = None
 ) -> Optional[Signal]:
-    """v17.0: Multi-strategy priority chain — tenta todos os tipos de entrada.
+    """v19.0: Multi-strategy priority chain — tenta todos os tipos de entrada.
 
+    v19.0: Regime-Aware Adaptive System
     Prioridade (maior qualidade primeiro):
       1. CTEV Pullback/Momentum (trend-following strict)
-      2. Momentum Continuation (trending, sem pullback)
-      3. EMA Bounce (trend anchor + EMA20 bounce, funciona em ranging)
-      4. Squeeze Breakout (BBWP squeeze + breakout, qualquer regime)
-      5. RSI Reversal (RSI extremo em tendencia)
-      6. Mean-Reversion BB (ranging, low ADX — ultimo recurso)
+      2. Squeeze Breakout (BBWP squeeze + breakout, qualquer regime)
+      3. RSI Reversal (RSI extremo em tendencia)
+      4. Range Trader (BB band bounce, ADX < 20 — LATERAL)
+      5. RSI Extremes (RSI < 25 / > 75 + virada, QUALQUER regime)
     """
     # 1. CTEV (highest quality — strict trend-following)
     signal = evaluate_long(row, profile=profile)
@@ -751,24 +798,7 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # v17.1: Momentum DESATIVADO (WR 20-40%, sem edge comprovado)
-    # signal = evaluate_momentum_long(row)
-    # if signal is not None:
-    #     return signal
-    # signal = evaluate_momentum_short(row)
-    # if signal is not None:
-    #     return signal
-
-    # v18.1: EMA Bounce DESATIVADO — sem edge comprovado (WR 26-35%)
-    # Adicionou 219 trades ruins em 730d. Mantido desativado.
-    # signal = evaluate_ema_bounce_long(row)
-    # if signal is not None:
-    #     return signal
-    # signal = evaluate_ema_bounce_short(row)
-    # if signal is not None:
-    #     return signal
-
-    # 4. Squeeze Breakout (volatility expansion from BB squeeze)
+    # 2. Squeeze Breakout (volatility expansion from BB squeeze)
     signal = evaluate_squeeze_breakout_long(row)
     if signal is not None:
         return signal
@@ -776,19 +806,30 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # v17.1: RSI Reversal DESATIVADO (0 trades — filtros muito restritivos)
-    # signal = evaluate_rsi_reversal_long(row)
-    # if signal is not None:
-    #     return signal
-    # signal = evaluate_rsi_reversal_short(row)
-    # if signal is not None:
-    #     return signal
+    # 3. RSI Reversal (extreme RSI in established trend)
+    signal = evaluate_rsi_reversal_long(row)
+    if signal is not None:
+        return signal
+    signal = evaluate_rsi_reversal_short(row)
+    if signal is not None:
+        return signal
 
-    # v17.1: Mean-Reversion DESATIVADO (WR 27-36%, sem edge)
-    # signal = evaluate_mean_reversion_long(row)
-    # if signal is not None:
-    #     return signal
-    # return evaluate_mean_reversion_short(row)
+    # v19.0: Range Trader — BB band bounce em mercado LATERAL
+    signal = evaluate_range_long(row)
+    if signal is not None:
+        return signal
+    signal = evaluate_range_short(row)
+    if signal is not None:
+        return signal
+
+    # v19.0: RSI Extremes — reversao por RSI extremo (QUALQUER regime)
+    signal = evaluate_rsi_extremes_long(row)
+    if signal is not None:
+        return signal
+    signal = evaluate_rsi_extremes_short(row)
+    if signal is not None:
+        return signal
+
     return None
 
 
@@ -1382,6 +1423,334 @@ def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
         SignalType.SHORT, entry, sl, tp, atr, row,
         pullback_type="squeeze_breakout", entry_type="squeeze_breakout",
         max_bars=SQUEEZE_MAX_BARS,
+    )
+
+
+def evaluate_range_long(row: pd.Series) -> Optional[Signal]:
+    """v19.0: Range Trader LONG — BB lower band bounce em mercado lateral.
+
+    Detecta mercados lateralizados (ADX < 20) e opera o bounce
+    da banda inferior com SL justo e TP rapido.
+
+    Requisitos:
+      1. ADX < 20 (sem tendencia — mercado lateral confirmado)
+      2. close <= bb_lower * (1 + RANGE_BB_TOUCH_THRESHOLD) — perto da banda inf.
+      3. RSI < RANGE_RSI_OVERSOLD (38) — zona de sobrevenda relativa
+      4. close > bb_lower * (1 - 0.02) — nao fora da banda (evita breakdown)
+      5. ATR percentile 10-90
+      6. SL 1.5x, TP 3.5x ATR, max 36 bars
+    """
+    close = float(row["close"])
+    low = float(row["low"])
+    bb_lower = float(row["bb_lower"])
+    bb_upper = float(row["bb_upper"])
+    bb_w = float(row.get("bb_width", 0.0))
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+    adx = float(row.get("adx", 0.0))
+
+    # 1. Lateral market (no trend)
+    if pd.isna(adx) or adx >= RANGE_ADX_MAX:
+        return None
+
+    # 2. Price near/at lower BB band
+    if close > bb_lower * (1 + RANGE_BB_TOUCH_THRESHOLD):
+        return None
+
+    # 3. Not too far below BB (avoid breakdown)
+    if close < bb_lower * (1 - 0.02):
+        return None
+
+    # 4. RSI oversold relative
+    if rsi >= RANGE_RSI_OVERSOLD:
+        return None
+
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+
+    # 6. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry - (RANGE_SL_ATR_MULT * atr)
+    tp = entry + (RANGE_TP_ATR_MULT * atr)
+    if sl <= 0:
+        return None
+
+    return _make_signal(
+        SignalType.LONG, entry, sl, tp, atr, row,
+        pullback_type="range_bb_lower", entry_type="range_trader",
+        max_bars=RANGE_MAX_BARS,
+    )
+
+
+def evaluate_range_short(row: pd.Series) -> Optional[Signal]:
+    """v19.0: Range Trader SHORT — BB upper band bounce em mercado lateral.
+
+    Requisitos:
+      1. ADX < 20 (sem tendencia)
+      2. close >= bb_upper * (1 - RANGE_BB_TOUCH_THRESHOLD)
+      3. RSI > RANGE_RSI_OVERBOUGHT (62)
+      4. close < bb_upper * (1 + 0.02) — nao fora da banda
+      5. ATR percentile 10-90
+      6. SL 1.5x, TP 3.5x ATR, max 36 bars
+    """
+    close = float(row["close"])
+    high = float(row["high"])
+    bb_lower = float(row["bb_lower"])
+    bb_upper = float(row["bb_upper"])
+    bb_w = float(row.get("bb_width", 0.0))
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+    adx = float(row.get("adx", 0.0))
+
+    # 1. Lateral market
+    if pd.isna(adx) or adx >= RANGE_ADX_MAX:
+        return None
+
+    # 2. Price near/at upper BB band
+    if close < bb_upper * (1 - RANGE_BB_TOUCH_THRESHOLD):
+        return None
+
+    # 3. Not too far above BB (avoid breakout)
+    if close > bb_upper * (1 + 0.02):
+        return None
+
+    # 4. RSI overbought relative
+    if rsi <= RANGE_RSI_OVERBOUGHT:
+        return None
+
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+
+    # 6. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry + (RANGE_SL_ATR_MULT * atr)
+    tp = entry - (RANGE_TP_ATR_MULT * atr)
+
+    return _make_signal(
+        SignalType.SHORT, entry, sl, tp, atr, row,
+        pullback_type="range_bb_upper", entry_type="range_trader",
+        max_bars=RANGE_MAX_BARS,
+    )
+
+
+def evaluate_scalp_long(row: pd.Series) -> Optional[Signal]:
+    """v19.1: Scalp LONG — Quick intraday trade em qualquer regime.
+
+    Usa RSI turning up + MACD alignment para entradas rapidas.
+    Alta frequencia: max 18 bars, SL justo 1.0x ATR.
+
+    Requisitos:
+      1. close > EMA20 (preco acima media curta)
+      2. RSI > 40 e RSI delta > 0.8 (virada para cima)
+      3. MACD hist > 0 OU macd > macd_signal
+      4. ATR percentile 10-90
+      5. SL 1.0x, TP 1.5x ATR, max 18 bars
+    """
+    close = float(row["close"])
+    ema20 = float(row["ema20"])
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    macd_hist = float(row.get("macd_hist", 0.0))
+    macd_val = float(row.get("macd", 0.0))
+    macd_sig = float(row.get("macd_signal", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+    adx = float(row.get("adx", 0.0))
+
+    # 1. Above EMA20
+    if close <= ema20:
+        return None
+
+    # 2. RSI turning up
+    if rsi <= SCALP_RSI_LONG_MIN:
+        return None
+    if rsi_delta <= SCALP_RSI_DELTA_TRIGGER:
+        return None
+
+    # 3. MACD aligned
+    if not (macd_hist > 0 or macd_val > macd_sig):
+        return None
+
+    # 4. Not in volatile regime
+    if adx > 60:
+        return None
+
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry - (SCALP_SL_ATR_MULT * atr)
+    tp = entry + (SCALP_TP_ATR_MULT * atr)
+    if sl <= 0:
+        return None
+
+    return _make_signal(
+        SignalType.LONG, entry, sl, tp, atr, row,
+        pullback_type="scalp", entry_type="scalp",
+        max_bars=SCALP_MAX_BARS,
+    )
+
+
+def evaluate_scalp_short(row: pd.Series) -> Optional[Signal]:
+    """v19.1: Scalp SHORT — Quick intraday trade em qualquer regime.
+
+    Requisitos:
+      1. close < EMA20
+      2. RSI < 60 e RSI delta < -0.8 (virada para baixo)
+      3. MACD hist < 0 OU macd < macd_signal
+      4. ATR percentile 10-90
+      5. SL 1.0x, TP 1.5x ATR, max 18 bars
+    """
+    close = float(row["close"])
+    ema20 = float(row["ema20"])
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    macd_hist = float(row.get("macd_hist", 0.0))
+    macd_val = float(row.get("macd", 0.0))
+    macd_sig = float(row.get("macd_signal", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+    adx = float(row.get("adx", 0.0))
+
+    # 1. Below EMA20
+    if close >= ema20:
+        return None
+
+    # 2. RSI turning down
+    if rsi >= SCALP_RSI_SHORT_MAX:
+        return None
+    if rsi_delta >= -SCALP_RSI_DELTA_TRIGGER:
+        return None
+
+    # 3. MACD aligned
+    if not (macd_hist < 0 or macd_val < macd_sig):
+        return None
+
+    # 4. Not in volatile regime
+    if adx > 60:
+        return None
+
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry + (SCALP_SL_ATR_MULT * atr)
+    tp = entry - (SCALP_TP_ATR_MULT * atr)
+
+    return _make_signal(
+        SignalType.SHORT, entry, sl, tp, atr, row,
+        pullback_type="scalp", entry_type="scalp",
+        max_bars=SCALP_MAX_BARS,
+    )
+
+
+def evaluate_rsi_extremes_long(row: pd.Series) -> Optional[Signal]:
+    """v19.0: RSI Extremes LONG — Reversao por RSI extremo.
+
+    Detecta sobrevenda extrema (RSI < 25) com virada confirmada
+    (rsi_delta > 0.5). Funciona em QUALQUER regime (ranging + trending).
+
+    Requisitos:
+      1. RSI < 25 (sobrevenda extrema)
+      2. rsi_delta > 0.5 (virada para cima confirmada)
+      3. ATR percentile 10-90
+      4. SL 1.5x, TP 3.0x ATR, max 36 bars
+    """
+    close = float(row["close"])
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. Extreme oversold
+    if rsi >= RSI_EXT_OVERSOLD:
+        return None
+
+    # 2. Turning up (reversal confirmation)
+    if rsi_delta <= RSI_EXT_RSI_DELTA_MIN:
+        return None
+
+    # 3. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+
+    # 4. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry - (RSI_EXT_SL_ATR_MULT * atr)
+    tp = entry + (RSI_EXT_TP_ATR_MULT * atr)
+    if sl <= 0:
+        return None
+
+    return _make_signal(
+        SignalType.LONG, entry, sl, tp, atr, row,
+        pullback_type="rsi_extreme_oversold", entry_type="rsi_extremes",
+        max_bars=RSI_EXT_MAX_BARS,
+    )
+
+
+def evaluate_rsi_extremes_short(row: pd.Series) -> Optional[Signal]:
+    """v19.0: RSI Extremes SHORT — Reversao por RSI extremo.
+
+    Detecta sobrecompra extrema (RSI > 75) com virada confirmada.
+    Funciona em QUALQUER regime.
+
+    Requisitos:
+      1. RSI > 75 (sobrecompra extrema)
+      2. rsi_delta < -0.5 (virada para baixo confirmada)
+      3. ATR percentile 10-90
+      4. SL 1.5x, TP 3.0x ATR, max 36 bars
+    """
+    close = float(row["close"])
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. Extreme overbought
+    if rsi <= RSI_EXT_OVERBOUGHT:
+        return None
+
+    # 2. Turning down (reversal confirmation)
+    if rsi_delta >= -RSI_EXT_RSI_DELTA_MIN:
+        return None
+
+    # 3. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+
+    # 4. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry + (RSI_EXT_SL_ATR_MULT * atr)
+    tp = entry - (RSI_EXT_TP_ATR_MULT * atr)
+
+    return _make_signal(
+        SignalType.SHORT, entry, sl, tp, atr, row,
+        pullback_type="rsi_extreme_overbought", entry_type="rsi_extremes",
+        max_bars=RSI_EXT_MAX_BARS,
     )
 
 

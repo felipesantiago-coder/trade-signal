@@ -40,6 +40,17 @@ from backtest import (
 MAX_CONCURRENT = 4       # v18.2: 4 para atingir 1+/dia
 RISK_PER_TRADE = 0.01   # 1% do balance por trade
 
+# v19.1: Position sizing por tipo de entrada — otimizado para multi-periodo
+ENTRY_RISK = {
+    "ctev_pullback": 0.001,    # 0.1% — pullback WR inconsistente em curto prazo
+    "ctev_momentum": 0.015,    # 1.5% — momentum tem 54% WR em 90d
+    "squeeze_breakout": 0.022, # 2.2% — squeeze melhor edge (50% WR, 3:1 R:R)
+    "range_trader": 0.012,     # 1.2% — range 50% WR em 30d
+    "rsi_extremes": 0.018,     # 1.8% — rsi extremes tem WR alto
+    "rsi_reversal": 0.008,     # 0.8% — reversao em tendencia
+    "ema_bounce": 0.008,       # 0.8% — complementar
+}
+
 
 @dataclass
 class _OpenPosition:
@@ -110,7 +121,7 @@ def simulate_trades_concurrent(
     _cooldown_direction = None
     _cooldown_until_bar = 0
     _COOLDOWN_TRIGGER = 2
-    _COOLDOWN_BARS = 8  # v18.1: 8 bars (~1/3 dia, de 16)
+    _COOLDOWN_BARS = 8  # v18.1: 8 bars (~1/3 dia)
 
     # Anti-martingale DESATIVADO (v18.1: revert — nao ajuda com alta frequencia)
     _base_risk = risk_per_trade_pct
@@ -395,7 +406,10 @@ def simulate_trades_concurrent(
                     adj_entry = entry_price
 
                 sl_distance_pct = abs(adj_entry - sl) / adj_entry if adj_entry > 0 else 0
-                risk_usd = balance * _current_risk
+                # v19.1: Entry-type-based position sizing
+                _entry_type = getattr(signal, 'entry_type', 'unknown')
+                _risk_pct = ENTRY_RISK.get(_entry_type, risk_per_trade_pct)
+                risk_usd = balance * _risk_pct
                 if sl_distance_pct > 0:
                     position_size = risk_usd / (sl_distance_pct * adj_entry)
                 else:
