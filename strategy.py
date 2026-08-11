@@ -3,24 +3,27 @@ strategy.py
 -----------
 Logica de validacao das condicoes de entrada CTEV v19.1 Multi-Strategy.
 
-v19.1 — Regime-Aware Adaptive Multi-Strategy System
-  6 estrategias adaptativas que operam em qualquer cenario de mercado:
-    1. CTEV Trend (pullback/momentum) — tendencia com ADX > 22
-    2. Squeeze Breakout (BBWP squeeze + breakout) — qualquer regime
-    3. RSI Reversal (RSI extremo em tendencia) — tendencia estabelecida
-    4. Range Trader (BB band bounce) — ADX < 25, mercado lateral
-    5. RSI Extremes (RSI < 30 / > 70 + virada) — qualquer regime
-    6. Scalp (intraday rapido, experimental) — qualquer regime
+v21.0 — Ultra-Selective Quality Overhaul
 
-  v20.0 — Correlation Guard + Strategy Relaxation
-  - Correlation Guard: minimo 6 bars entre entradas mesmas direcao
-  - Range Trader: ADX < 25 (de 20), BB touch 1.5% (de 0.5%)
-  - RSI Extremes: RSI < 30 /> 70 (de 25 /> 75), delta > 0.3 (de 0.5)
-  - Squeeze: BBWP < 45 (de 35)
-  - RSI Reversal: RSI < 40 /> 60 (de 35 /> 65)
-  - Position sizing balanceado (pullback 0.8%, todos >= 0.8%)
-  - Cooldown 4 bars (de 8)
-  - Metas: 30d/90d/180d >= 30%, 365d >= 70%, 730d >= 120%.
+  3 estrategias ativas (down from 6 — toxicas removidas):
+    1. CTEV Trend (pullback + momentum) — tendencia com ADX > 25
+    2. Squeeze Breakout (BBWP squeeze + breakout) — BBWP < 35
+    3. RSI Reversal (RSI extremo em tendencia) — RSI < 38 /> 62
+
+  DESATIVADAS (v21.0 — SL muito justo para 1h, geravam ruído):
+    4. Range Trader (SL 1.5x ATR = ruído em 1h)
+    5. RSI Extremes (SL 1.5x ATR = ruído em 1h)
+    6. Scalp (SL 1.0x ATR = ruído puro)
+
+  v21.0 Changes vs v20.0:
+  - SL 3.5x ATR (de 2.8x) — sobrevive ao ruido de 1h
+  - TP 7.5x ATR (de 5.5x) — R:R real ~2.1:1
+  - MACD Histogram Filter ON — confirma momentum
+  - ADX min 25 (mantido, mas com +filtros de qualidade)
+  - RSI zones: LONG 46-64, SHORT 36-54 (mais estreitas)
+  - Squeeze: BBWP < 35, SL 3.0x, TP 7.0x
+  - RSI Reversal: SL 3.0x, TP 6.5x, mais strict
+  - CTEV Momentum: SL 3.0x, TP 6.0x (de 2.0/4.5)
 """
 
 from __future__ import annotations
@@ -116,15 +119,15 @@ class Signal:
 # ── Parametros da estrategia CTEV v13.0 (ACTIVE TRADER MULTI-STRATEGY) ──
 # v13.0: CTEV relaxado + Momentum + Mean-Reversion = 4+ trades/semana.
 
-# REGIME FILTER — v18.1: ADX 22 (leve relaxacao para mais sinais)
-ADX_MIN = 22.0                # v18.1: 22 (de 25) — leve relaxacao, concurrent positions protegem
+# REGIME FILTER — v21.0: ADX 25 (seletivo — so tendencias reais)
+ADX_MIN = 25.0                # v21.0: 25 (de 22) — mais seletivo
 ALLOW_TRANSITION = False      # OFF — transition nao adiciona com filtros strict
 
-# RSI como zona de pullback (v18.1: grid-optimized mantido — 45-65/35-55)
-RSI_LONG_MIN = 45.0           # v18.1: RESTAURADO 45 (grid-optimized)
-RSI_LONG_MAX = 65.0           # v18.1: RESTAURADO 65
-RSI_SHORT_MIN = 35.0          # v18.1: RESTAURADO 35
-RSI_SHORT_MAX = 55.0          # v18.1: RESTAURADO 55
+# RSI como zona de pullback (v21.0: mais estreito — 46-64/36-54)
+RSI_LONG_MIN = 46.0           # v21.0: 46 (de 45)
+RSI_LONG_MAX = 64.0           # v21.0: 64 (de 65)
+RSI_SHORT_MIN = 36.0          # v21.0: 36 (de 35)
+RSI_SHORT_MAX = 54.0          # v21.0: 54 (de 55)
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
@@ -152,16 +155,14 @@ EMA50_PROXIMITY_PCT = 0.000  # v16.2: RESTAURADO OFF
 # EMA Slope
 EMA50_SLOPE_MIN = -0.5
 
-# Gestao de risco — R:R ~2:1 (GRID OPTIMIZED)
-SL_ATR_MULT = 2.80          # v8.0: 2.8x ATR (grid: 2.8 > 3.0 > 2.5 para PnL)
-TP_ATR_MULT = 5.50          # v8.0: 5.5x ATR (grid: 5.5 > 6.0 > 5.0 para PnL)
+# Gestao de risco — R:R ~2.1:1 (v21.0: SL mais largo)
+SL_ATR_MULT = 3.50          # v21.0: 3.5x ATR (de 2.8x — sobrevive ruido 1h)
+TP_ATR_MULT = 7.50          # v21.0: 7.5x ATR (de 5.5x — maiores ganhadores)
 
 # FILTROS DE CONFLUENCIA
-# v13.2: DI Direction ON — garante alinhamento direcional
-# Demais filtros permanecem desativados (grid search mostrou que adicionam
-# restricao sem ganho proporcional)
-DI_DIRECTION_FILTER = True   # v16.2: RESTAURADO ON — +DI > -DI para LONG
-MACD_HIST_FILTER = False
+# v21.0: MACD Histogram Filter ON — confirma direcao do momentum
+DI_DIRECTION_FILTER = True   # +DI > -DI para LONG
+MACD_HIST_FILTER = True    # v21.0: ON (de False) — exclui entradas sem momentum
 OBV_TREND_FILTER = False
 STOCH_RSI_FILTER = False
 BBWP_SQUEEZE_BONUS = True
@@ -169,11 +170,11 @@ BBWP_SQUEEZE_BONUS = True
 # v14.3: BB TOUCH desabilitado (v14.2 provou que adiciona trades ruins)
 BB_TOUCH_PCT = 0.000         # v14.3: OFF
 
-# v14.1: Momentum/MR DESATIVADOS (WR < 25% — sem edge comprovado)
+# v21.0: Momentum com SL/TP mais largos
 MOMENTUM_ADX_MIN = 25.0
-MOMENTUM_SL_ATR_MULT = 2.80
-MOMENTUM_TP_ATR_MULT = 5.50
-MOMENTUM_MAX_BARS = 168
+MOMENTUM_SL_ATR_MULT = 3.00   # v21.0: 3.0x (de 2.8x)
+MOMENTUM_TP_ATR_MULT = 6.00   # v21.0: 6.0x (de 5.5x)
+MOMENTUM_MAX_BARS = 96        # v21.0: 96 (de 168)
 
 # v14.1: MEAN-REVERSION DESATIVADO (WR < 25% — sem edge)
 # Mantido apenas para referencia futura se necessario.
@@ -191,47 +192,40 @@ EMA_BOUNCE_TP_ATR_MULT = 4.50
 EMA_BOUNCE_MAX_BARS = 72
 
 # Squeeze Breakout: BBWP squeeze + breakout de banda
-SQUEEZE_SL_ATR_MULT = 2.00
-SQUEEZE_TP_ATR_MULT = 6.00
-SQUEEZE_MAX_BARS = 72
-SQUEEZE_BBWP_THRESHOLD = 45.0  # v20.0: 45 (de 35) — mais sinais, edge mantida
+SQUEEZE_SL_ATR_MULT = 3.00     # v21.0: 3.0x (de 2.0x)
+SQUEEZE_TP_ATR_MULT = 7.00     # v21.0: 7.0x (de 6.0x)
+SQUEEZE_MAX_BARS = 96           # v21.0: 96 (de 72)
+SQUEEZE_BBWP_THRESHOLD = 35.0  # v21.0: 35 (de 45) -- mais seletivo
 
 # RSI Reversal: RSI extremo em tendencia = oportunidade de reversao
-RSI_REV_SL_ATR_MULT = 2.50
-RSI_REV_TP_ATR_MULT = 5.00
+RSI_REV_SL_ATR_MULT = 3.00    # v21.0: 3.0x (de 2.5x)
+RSI_REV_TP_ATR_MULT = 6.50    # v21.0: 6.5x (de 5.0x)
 RSI_REV_MAX_BARS = 96
 
-# ── v20.0: RANGE TRADER — BB Band Bounce para mercados laterais ──
-# Opera quando ADX < 25 (lateral/fraca tendencia) e preco toca bandas BB.
-# v20.0: ADX < 25 (de 20), BB touch 1.5% (de 0.5%), RSI 42/58 (de 38/62)
-# Max bars 48 (de 36) para dar mais tempo ao trade.
+# ── v21.0: RANGE TRADER -- DESATIVADO (SL 1.5x ATR = ruido em 1h) ──
 RANGE_SL_ATR_MULT = 1.50
 RANGE_TP_ATR_MULT = 3.50
 RANGE_MAX_BARS = 48
-RANGE_BB_TOUCH_THRESHOLD = 0.015   # 1.5% — preco perto da banda (de 0.5%)
-RANGE_ADX_MAX = 25.0                # v20.0: 25 (de 20) — captura mais cenarios
-RANGE_RSI_OVERSOLD = 42.0           # v20.0: 42 (de 38) — mais triggers
-RANGE_RSI_OVERBOUGHT = 58.0         # v20.0: 58 (de 62) — mais triggers
+RANGE_BB_TOUCH_THRESHOLD = 0.015
+RANGE_ADX_MAX = 25.0
+RANGE_RSI_OVERSOLD = 42.0
+RANGE_RSI_OVERBOUGHT = 58.0
 
-# ── v19.1: SCALP — Quick intraday trades em QUALQUER regime ──
-# Alta frequencia (max 18 bars = ¾ dia), SL justo (1.0x), TP rapido (1.5x).
-# Nao requer tendencia — usa EMA20 + RSI delta como gatilho.
-# Breakeven WR = 1/(1+1.5) = 40%.
+# ── v21.0: SCALP -- DESATIVADO (SL 1.0x ATR = ruido puro) ──
 SCALP_SL_ATR_MULT = 1.00
 SCALP_TP_ATR_MULT = 1.50
 SCALP_MAX_BARS = 18
-SCALP_RSI_LONG_MIN = 40.0   # RSI > 40 para LONG
-SCALP_RSI_SHORT_MAX = 60.0  # RSI < 60 para SHORT
-SCALP_RSI_DELTA_TRIGGER = 0.8  # RSI delta minimo para virada
-# ── v19.0: RSI EXTREMES — Reversao por RSI extremo em qualquer regime ──
-# Nao requer tendencia — funciona em ranging E trending.
-# SL 1.5x ATR, TP 3.0x ATR, max 36 bars para turnover rapido.
+SCALP_RSI_LONG_MIN = 40.0
+SCALP_RSI_SHORT_MAX = 60.0
+SCALP_RSI_DELTA_TRIGGER = 0.8
+
+# ── v21.0: RSI EXTREMES -- DESATIVADO (SL 1.5x ATR = ruido em 1h) ──
 RSI_EXT_SL_ATR_MULT = 1.50
 RSI_EXT_TP_ATR_MULT = 3.00
 RSI_EXT_MAX_BARS = 36
-RSI_EXT_OVERSOLD = 30.0          # v20.0: 30 (de 25) — mais triggers
-RSI_EXT_OVERBOUGHT = 70.0        # v20.0: 70 (de 75) — mais triggers
-RSI_EXT_RSI_DELTA_MIN = 0.3    # v20.0: 0.3 (de 0.5) — mais sensivel
+RSI_EXT_OVERSOLD = 30.0
+RSI_EXT_OVERBOUGHT = 70.0
+RSI_EXT_RSI_DELTA_MIN = 0.3
 
 
 def _price_near_fib(
@@ -423,25 +417,24 @@ def evaluate_long(
         if close <= bb_lower * (1 + BB_TOUCH_PCT):
             pullback_type = "bb_lower_touch"
 
-    # v19.1: Pullback requer ADX > 22 (relaxado de 25 — mais trades)
-    # v19.1: Position sizing para pullback e reduzido no sim_concurrent
-    _PULLBACK_ADX_MIN = 22.0
+    # v21.0: Pullback requer ADX > 25
+    _PULLBACK_ADX_MIN = 25.0
     if pullback_type is not None:
         if pd.isna(adx) or adx < _PULLBACK_ADX_MIN:
             pullback_type = None  # downgraded to momentum
     
     if pullback_type is not None:
         _entry_type = "ctev_pullback"
-        _max_bars_use = 168  # grid-optimized
-        _sl_use = _sl_mult  # 2.8x/5.5x — grid-optimized
+        _max_bars_use = 120  # v21.0: 120 (de 168)
+        _sl_use = _sl_mult  # 3.5x/7.5x
         _tp_use = _tp_mult
     else:
         pullback_type = "none"
         _entry_type = "ctev_momentum"
-        _max_bars_use = 72   # fecha mais rapido sem pullback
-        # v19.0: Momentum com SL justo e TP com melhor R:R
-        _sl_use = 2.0
-        _tp_use = 4.5
+        _max_bars_use = 96   # v21.0: 96 (de 72)
+        # v21.0: Momentum com SL/TP mais largos
+        _sl_use = MOMENTUM_SL_ATR_MULT  # 3.0x
+        _tp_use = MOMENTUM_TP_ATR_MULT  # 6.0x
 
     # 5. RSI: Zona de pullback (adaptada ao profile)
     if not (_rsi_l_min <= rsi <= _rsi_l_max):
@@ -661,25 +654,24 @@ def evaluate_short(
         if close >= bb_upper * (1 - BB_TOUCH_PCT):
             pullback_type = "bb_upper_touch"
 
-    # v19.1: Pullback requer ADX > 22 (relaxado de 25 — mais trades)
-    # v19.1: Position sizing para pullback e reduzido no sim_concurrent
-    _PULLBACK_ADX_MIN_S = 22.0
+    # v21.0: Pullback requer ADX > 25
+    _PULLBACK_ADX_MIN_S = 25.0
     if pullback_type is not None:
         if pd.isna(adx) or adx < _PULLBACK_ADX_MIN_S:
             pullback_type = None  # downgraded to momentum
 
     if pullback_type is not None:
         _entry_type_s = "ctev_pullback"
-        _max_bars_use_s = 168
-        _sl_use_s = _sl_mult  # 2.8x/5.5x — grid-optimized
+        _max_bars_use_s = 120  # v21.0: 120 (de 168)
+        _sl_use_s = _sl_mult  # 3.5x/7.5x
         _tp_use_s = _tp_mult
     else:
         pullback_type = "none"
         _entry_type_s = "ctev_momentum"
-        _max_bars_use_s = 72
-        # v19.0: Momentum com SL justo e TP com melhor R:R
-        _sl_use_s = 2.0
-        _tp_use_s = 4.5
+        _max_bars_use_s = 96   # v21.0: 96 (de 72)
+        # v21.0: Momentum com SL/TP mais largos
+        _sl_use_s = MOMENTUM_SL_ATR_MULT  # 3.0x
+        _tp_use_s = MOMENTUM_TP_ATR_MULT  # 6.0x
 
     # 5. RSI: Zona de rally (adaptada ao profile)
     if not (_rsi_s_min <= rsi <= _rsi_s_max):
@@ -769,15 +761,18 @@ def evaluate_row_signals(
 ) -> Optional[Signal]:
     """v19.0: Multi-strategy priority chain — tenta todos os tipos de entrada.
 
-    v19.0: Regime-Aware Adaptive System
+    v21.0: Ultra-Selective Quality -- apenas 3 estrategias ativas
     Prioridade (maior qualidade primeiro):
-      1. CTEV Pullback/Momentum (trend-following strict)
-      2. Squeeze Breakout (BBWP squeeze + breakout, qualquer regime)
-      3. RSI Reversal (RSI extremo em tendencia)
-      4. Range Trader (BB band bounce, ADX < 20 — LATERAL)
-      5. RSI Extremes (RSI < 25 / > 75 + virada, QUALQUER regime)
+      1. CTEV Pullback/Momentum (trend-following strict, SL 3.5x/3.0x)
+      2. Squeeze Breakout (BBWP < 35, SL 3.0x, TP 7.0x)
+      3. RSI Reversal (RSI extremo em tendencia, SL 3.0x, TP 6.5x)
+
+    DESATIVADAS v21.0 (SL muito justo para 1h, geravam ruido):
+      4. Range Trader -- DESATIVADO
+      5. RSI Extremes -- DESATIVADO
+      6. Scalp -- DESATIVADO
     """
-    # 1. CTEV (highest quality — strict trend-following)
+    # 1. CTEV (highest quality -- strict trend-following)
     signal = evaluate_long(row, profile=profile)
     if signal is not None:
         return signal
@@ -801,21 +796,9 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # v19.0: Range Trader — BB band bounce em mercado LATERAL
-    signal = evaluate_range_long(row)
-    if signal is not None:
-        return signal
-    signal = evaluate_range_short(row)
-    if signal is not None:
-        return signal
-
-    # v19.0: RSI Extremes — reversao por RSI extremo (QUALQUER regime)
-    signal = evaluate_rsi_extremes_long(row)
-    if signal is not None:
-        return signal
-    signal = evaluate_rsi_extremes_short(row)
-    if signal is not None:
-        return signal
+    # v21.0: Range Trader, RSI Extremes, Scalp -- DESATIVADOS
+    # Estas estrategias tinham SL 1.0-1.5x ATR que e ruido em 1h BTC.
+    # Resultado: 86% SL hit rate. Desativadas para focar em qualidade.
 
     return None
 
@@ -1742,17 +1725,17 @@ def evaluate_rsi_extremes_short(row: pd.Series) -> Optional[Signal]:
 
 
 def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
-    """RSI Reversal LONG — RSI sobrevendido em tendencia de alta = compra.
+    """RSI Reversal LONG -- RSI sobrevendido em tendencia de alta = compra.
 
-    v20.0: RSI < 40 (de 35) para mais triggers.
+    v21.0: RSI < 38 (de 40) mais seletivo. SL 3.0x, TP 6.5x.
 
     Requisitos:
       1. ema50 > ema200 (tendencia de alta estabelecida)
-      2. RSI < 40 (sobrevenda relativa na tendencia)
-      3. rsi_delta > 0 (RSI virando para cima — reversao)
+      2. RSI < 38 (sobrevenda relativa na tendencia)
+      3. rsi_delta > 0 (RSI virando para cima -- reversao)
       4. close > ema50 (ainda acima da MA media)
       5. ATR percentile 10-90
-      6. SL 1.5x, TP 3.0x ATR, max 48 bars
+      6. SL 3.0x, TP 6.5x ATR, max 96 bars
     """
     close = float(row["close"])
     ema50 = float(row["ema50"])
@@ -1765,8 +1748,8 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
     # 1. Established uptrend (EMA stack)
     if not (ema50 > ema200):
         return None
-    # 2. RSI oversold in uptrend — v20.0: 40 (de 35)
-    if rsi >= 40.0:
+    # 2. RSI oversold in uptrend -- v21.0: 38 (de 40)
+    if rsi >= 38.0:
         return None
     # 3. RSI turning up (reversal confirmation)
     if rsi_delta <= 0:
@@ -1795,17 +1778,17 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
 
 
 def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
-    """RSI Reversal SHORT — RSI sobrecomprado em tendencia de baixa = venda.
+    """RSI Reversal SHORT -- RSI sobrecomprado em tendencia de baixa = venda.
 
-    v20.0: RSI > 60 (de 65) para mais triggers.
+    v21.0: RSI > 62 (de 60) mais seletivo. SL 3.0x, TP 6.5x.
 
     Requisitos:
       1. ema50 < ema200 (tendencia de baixa estabelecida)
-      2. RSI > 60 (sobrecompra relativa na tendencia)
-      3. rsi_delta < 0 (RSI virando para baixo — reversao)
+      2. RSI > 62 (sobrecompra relativa na tendencia)
+      3. rsi_delta < 0 (RSI virando para baixo -- reversao)
       4. close < ema50 (ainda abaixo da MA media)
       5. ATR percentile 10-90
-      6. SL 1.5x, TP 3.0x ATR, max 48 bars
+      6. SL 3.0x, TP 6.5x ATR, max 96 bars
     """
     close = float(row["close"])
     ema50 = float(row["ema50"])
@@ -1818,8 +1801,8 @@ def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
     # 1. Established downtrend (EMA stack)
     if not (ema50 < ema200):
         return None
-    # 2. RSI overbought in downtrend — v20.0: 60 (de 65)
-    if rsi <= 60.0:
+    # 2. RSI overbought in downtrend -- v21.0: 62 (de 60)
+    if rsi <= 62.0:
         return None
     # 3. RSI turning down (reversal confirmation)
     if rsi_delta >= 0:

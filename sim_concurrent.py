@@ -37,22 +37,22 @@ from backtest import (
 )
 
 
-MAX_CONCURRENT = 4       # v18.2: 4 para atingir 1+/dia
+MAX_CONCURRENT = 3       # v21.0: 3 (de 4) -- menos posicoes, mais seletivo
 RISK_PER_TRADE = 0.01   # 1% do balance por trade
 
-# v20.0: Correlation Guard — evita entradas correlacionadas
-MIN_SAME_DIR_BARS = 6    # Minimo 6 bars entre entradas na mesma direcao
-MIN_PRICE_DIST_ATR = 1.0 # Minimo 1.0 ATR de distancia entre entradas mesmosentido
+# v21.0: Correlation Guard -- mais estrito para evitar entradas correlacionadas
+MIN_SAME_DIR_BARS = 10   # v21.0: 10 (de 6) -- mais tempo entre entradas mesmas direcao
+MIN_PRICE_DIST_ATR = 2.0 # v21.0: 2.0 (de 1.0) -- mais distancia minima
 
-# v20.0: Position sizing balanceado — todas as estrategias com allocation significativa
+# v21.0: Position sizing agressivo -- compensa menos trades com maior risk
 ENTRY_RISK = {
-    "ctev_pullback": 0.008,    # 0.8% — restaurado (era 0.1% — muito baixo)
-    "ctev_momentum": 0.012,    # 1.2% — momentum consistente
-    "squeeze_breakout": 0.015, # 1.5% — squeeze com bom R:R
-    "range_trader": 0.012,     # 1.2% — range trader para lateral
-    "rsi_extremes": 0.015,     # 1.5% — rsi extremes funciona em qualquer regime
-    "rsi_reversal": 0.010,     # 1.0% — reversao em tendencia
-    "ema_bounce": 0.008,       # 0.8% — complementar
+    "ctev_pullback": 0.020,    # v21.0: 2.0% (de 0.8%)
+    "ctev_momentum": 0.025,    # v21.0: 2.5% (de 1.2%)
+    "squeeze_breakout": 0.025, # v21.0: 2.5% (de 1.5%) -- bom R:R
+    "range_trader": 0.012,     # DESATIVADO mas mantido
+    "rsi_extremes": 0.015,     # DESATIVADO mas mantido
+    "rsi_reversal": 0.020,     # v21.0: 2.0% (de 1.0%)
+    "ema_bounce": 0.008,       # DESATIVADO mas mantido
 }
 
 
@@ -119,13 +119,13 @@ def simulate_trades_concurrent(
     _diag_cooldown_skip = 0
     _diag_max_concurrent_hit = 0
 
-    # v20.0: Cooldown 4 bars (de 8) — mais rapido para periodos curtos
+    # v21.0: Cooldown 6 bars -- medio (de 4)
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None
     _cooldown_until_bar = 0
     _COOLDOWN_TRIGGER = 2
-    _COOLDOWN_BARS = 4  # v20.0: 4 bars (~1/6 dia)
+    _COOLDOWN_BARS = 6  # v21.0: 6 bars (~1/4 dia)
 
     # v20.0: Correlation guard state
     _last_entry_bar = {"LONG": -100, "SHORT": -100}
