@@ -111,15 +111,15 @@ class Signal:
 # ── Parametros da estrategia CTEV v13.0 (ACTIVE TRADER MULTI-STRATEGY) ──
 # v13.0: CTEV relaxado + Momentum + Mean-Reversion = 4+ trades/semana.
 
-# REGIME FILTER — v13.2: COMPROMISSO CTEV for more signals
-ADX_MIN = 25.0                # v17.1: 25 (de 32) — frequencia maxima com concurrent positions
-ALLOW_TRANSITION = False      # v16.2: OFF — igual v14.3 (transition nao adiciona com filtros strict)
+# REGIME FILTER — v18.1: ADX 22 (leve relaxacao para mais sinais)
+ADX_MIN = 22.0                # v18.1: 22 (de 25) — leve relaxacao, concurrent positions protegem
+ALLOW_TRANSITION = False      # OFF — transition nao adiciona com filtros strict
 
-# RSI como zona de pullback (v13.0: alargado para mais sinais)
-RSI_LONG_MIN = 45.0           # v16.2: RESTAURADO 45 (grid-optimized)
-RSI_LONG_MAX = 65.0           # v16.2: RESTAURADO 65
-RSI_SHORT_MIN = 35.0          # v16.2: RESTAURADO 35
-RSI_SHORT_MAX = 55.0          # v16.2: RESTAURADO 55
+# RSI como zona de pullback (v18.1: grid-optimized mantido — 45-65/35-55)
+RSI_LONG_MIN = 45.0           # v18.1: RESTAURADO 45 (grid-optimized)
+RSI_LONG_MAX = 65.0           # v18.1: RESTAURADO 65
+RSI_SHORT_MIN = 35.0          # v18.1: RESTAURADO 35
+RSI_SHORT_MAX = 55.0          # v18.1: RESTAURADO 55
 
 # RSI Delta — desabilitado
 RSI_DELTA_LONG_MIN = -5.0    # effectively disabled
@@ -180,18 +180,18 @@ MOMENTUM_MAX_BARS = 168
 # Cada tipo tem SL/TP/max_bars proprios via Signal dataclass.
 # ═══════════════════════════════════════════════════════════════════
 
-# v17.1: CTEV EMA Bounce DESATIVADO (WR 26-35%, sem edge nem com EMA stack)
-# Apenas CTEV + Squeeze tem edge comprovado.
-EMA_BOUNCE_SL_ATR_MULT = 2.50
-EMA_BOUNCE_TP_ATR_MULT = 5.00
-EMA_BOUNCE_MAX_BARS = 96
+# v18.1: EMA Bounce DESATIVADO — adicionou 219 trades sem edge em 730d
+# Proven WR 26-35% even with MACD filter. Removed to protect long-term edge.
+EMA_BOUNCE_SL_ATR_MULT = 2.00
+EMA_BOUNCE_TP_ATR_MULT = 4.50
+EMA_BOUNCE_MAX_BARS = 72
 
-# Squeeze Breakout: BBWP squeeze + breakout de banda com volume
-# v17.1: BBWP threshold relaxado 20->30, SL alargado para CTEV-proven
-SQUEEZE_SL_ATR_MULT = 2.50
-SQUEEZE_TP_ATR_MULT = 5.00
-SQUEEZE_MAX_BARS = 96
-SQUEEZE_BBWP_THRESHOLD = 30.0
+# Squeeze Breakout: BBWP squeeze + breakout de banda
+# v18.2: BBWP < 25 (alta qualidade), SL 2.0x, TP 6.0x
+SQUEEZE_SL_ATR_MULT = 2.00
+SQUEEZE_TP_ATR_MULT = 6.00
+SQUEEZE_MAX_BARS = 72
+SQUEEZE_BBWP_THRESHOLD = 25.0
 
 # RSI Reversal: RSI extremo em tendencia = oportunidade de reversao
 # v17.1: DESATIVADO na chain — muito restritivo (0 trades)
@@ -352,11 +352,12 @@ def evaluate_long(
         if _stoch_k <= _stoch_d:
             return None
 
-    # 4. PULLBACK: Fibonacci zone OU EMA touch OU EMA proximity OU BB touch (v14.1)
-    # v14.1: Pullback OBRIGATORIO mas deteccao muito ampliada
+    # 4. PULLBACK: v18.2 — apenas Fibonacci (EMA touch removido — baixa qualidade)
+    # EMA touch gerava muitos pullbacks falsos que nao tinham edge real.
+    # Apenas Fibonacci levels + ADX > 25 = pullback de alta qualidade.
     pullback_type = None
 
-    # 4a. Fibonacci check (tolerancia 4.0% — mais niveis detectados)
+    # 4a. Fibonacci check (tolerancia 2.5% — grid-optimized)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == 1:
         pullback_type = "fibonacci"
@@ -367,15 +368,9 @@ def evaluate_long(
                     _price_near_fib(low, fib_0618, _fib_tol)):
                 pullback_type = "fibonacci"
 
-    # 4b. EMA(20) touch (low cruzou EMA20 e close recuperou)
-    if pullback_type is None:
-        if bool(row.get("ema20_touched", False)) and close > ema20:
-            pullback_type = "ema20_touch"
-
-    # 4c. EMA(50) touch
-    if pullback_type is None:
-        if bool(row.get("ema50_touched", False)) and close > ema50:
-            pullback_type = "ema50_touch"
+    # v18.2: EMA touch REMOVIDO — entradas sem edge comprovado
+    # Os EMA touch geravam ~40% dos pullbacks mas com WR similar ao momentum.
+    # Apenas Fibonacci + ADX > 25 = pullback de qualidade superior.
 
     # 4d. EMA(20) PROXIMITY — 1.2% (v14.2: corrigido — so abaixo da EMA para LONG)
     _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
@@ -395,20 +390,33 @@ def evaluate_long(
         if close <= bb_lower * (1 + BB_TOUCH_PCT):
             pullback_type = "bb_lower_touch"
 
-    # v16.2: Pullback OPCIONAL — unico ganho de frequencia (filtros strict v14.3)
+    # v18.2: Pullback requer ADX > 25 (stricter) — momentum entra com ADX > 22
+    # Isso reduz pullback em mercados fracos (onde perde) e mantem momentum vivo
+    _PULLBACK_ADX_MIN = 25.0
+    if pullback_type is not None:
+        if pd.isna(adx) or adx < _PULLBACK_ADX_MIN:
+            pullback_type = None  # downgraded to momentum
+    
     if pullback_type is not None:
         _entry_type = "ctev_pullback"
-        _max_bars_use = 168  # igual v14.3
+        _max_bars_use = 168  # grid-optimized
+        _sl_use = _sl_mult  # 2.8x/5.5x — grid-optimized
+        _tp_use = _tp_mult
     else:
         pullback_type = "none"
         _entry_type = "ctev_momentum"
         _max_bars_use = 72   # fecha mais rapido sem pullback
-
-    _sl_use = _sl_mult  # SL/TP identicos (2.8x/5.5x)
-    _tp_use = _tp_mult
+        # v18.2: Momentum com SL justo e TP com melhor R:R (2.25:1)
+        _sl_use = 2.0
+        _tp_use = 4.5
 
     # 5. RSI: Zona de pullback (adaptada ao profile)
     if not (_rsi_l_min <= rsi <= _rsi_l_max):
+        return None
+
+    # v18.2: Momentum RSI — RSI > 50 para LONG momentum (evita zona ambigua)
+    # Momentum sem pullback precisa de confirmacao direcional clara.
+    if pullback_type == "none" and rsi < 50.0:
         return None
 
     # 6. VOLUME: Soft confirmation (adaptada ao profile)
@@ -586,11 +594,10 @@ def evaluate_short(
         if _stoch_k >= _stoch_d:
             return None
 
-    # 4. PULLBACK: Fibonacci OU EMA touch OU EMA proximity OU BB touch (v14.1)
-    # v14.1: Pullback OBRIGATORIO mas deteccao muito ampliada
+    # 4. PULLBACK: v18.2 — apenas Fibonacci (EMA touch removido — baixa qualidade)
     pullback_type = None
 
-    # 4a. Fibonacci check (tolerancia 4.0% — mais niveis detectados)
+    # 4a. Fibonacci check (tolerancia 2.5% — grid-optimized)
     in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
     if in_fib and fib_dir == -1:
         pullback_type = "fibonacci"
@@ -601,17 +608,7 @@ def evaluate_short(
                     _price_near_fib(high, fib_0618, _fib_tol)):
                 pullback_type = "fibonacci"
 
-    # 4b. EMA(20) touch (high cruzou EMA20 e close rejeitou abaixo)
-    if pullback_type is None:
-        if bool(row.get("ema20_touched", False)) and close < ema20:
-            if high >= ema20:
-                pullback_type = "ema20_touch"
-
-    # 4c. EMA(50) touch
-    if pullback_type is None:
-        if bool(row.get("ema50_touched_up", False)) and close < ema50:
-            if high >= ema50:
-                pullback_type = "ema50_touch"
+    # v18.2: EMA touch REMOVIDO — entradas sem edge comprovado
 
     # 4d. EMA(20) PROXIMITY — 1.2% (v14.2: corrigido — so acima da EMA para SHORT)
     _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
@@ -631,20 +628,31 @@ def evaluate_short(
         if close >= bb_upper * (1 - BB_TOUCH_PCT):
             pullback_type = "bb_upper_touch"
 
-    # v16.2: Pullback OPCIONAL — unico ganho de frequencia
+    # v18.2: Pullback requer ADX > 25 (stricter) — momentum entra com ADX > 22
+    _PULLBACK_ADX_MIN_S = 25.0
+    if pullback_type is not None:
+        if pd.isna(adx) or adx < _PULLBACK_ADX_MIN_S:
+            pullback_type = None  # downgraded to momentum
+
     if pullback_type is not None:
         _entry_type_s = "ctev_pullback"
-        _max_bars_use_s = 168  # igual v14.3
+        _max_bars_use_s = 168
+        _sl_use_s = _sl_mult  # 2.8x/5.5x — grid-optimized
+        _tp_use_s = _tp_mult
     else:
         pullback_type = "none"
         _entry_type_s = "ctev_momentum"
         _max_bars_use_s = 72
-
-    _sl_use_s = _sl_mult
-    _tp_use_s = _tp_mult
+        # v18.2: Momentum com SL justo e TP com melhor R:R (2.25:1)
+        _sl_use_s = 2.0
+        _tp_use_s = 4.5
 
     # 5. RSI: Zona de rally (adaptada ao profile)
     if not (_rsi_s_min <= rsi <= _rsi_s_max):
+        return None
+
+    # v18.2: Momentum RSI — RSI < 50 para SHORT momentum (evita zona ambigua)
+    if pullback_type == "none" and rsi > 50.0:
         return None
 
     # 6. VOLUME: Soft confirmation (adaptada ao profile)
@@ -751,7 +759,8 @@ def evaluate_row_signals(
     # if signal is not None:
     #     return signal
 
-    # v17.1: EMA Bounce DESATIVADO (WR 26-35%, sem edge)
+    # v18.1: EMA Bounce DESATIVADO — sem edge comprovado (WR 26-35%)
+    # Adicionou 219 trades ruins em 730d. Mantido desativado.
     # signal = evaluate_ema_bounce_long(row)
     # if signal is not None:
     #     return signal
@@ -1163,16 +1172,17 @@ def _make_signal(
 def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
     """EMA Bounce LONG — preco toca EMA20 e recupera em tendencia.
 
-    v17.1: Requer EMA stack (close > ema50 > ema200) para edge real.
-    EMA Bounce sem stack = sem edge (provado v17.0).
+    v18.0: Requer EMA stack + MACD alinhado para edge real.
+    SL mais justo (2.0x) e TP moderado (4.5x) para R:R ~2.25:1.
 
     Requisitos:
       1. close > EMA50 E EMA50 > EMA200 (EMA stack — tendencia real)
       2. low <= EMA20 (preco tocou EMA20 — pullback)
       3. close > EMA20 (recuperou — bounce confirmado)
-      4. RSI 40-65 (zona moderada)
-      5. ATR percentile 10-90
-      6. SL 2.5x, TP 5.0x ATR, max 96 bars
+      4. RSI 38-62 (zona moderada — mais ampla que v17.1)
+      5. MACD hist > 0 OU macd > macd_signal (momentum alinhado)
+      6. ATR percentile 10-90
+      7. SL 2.0x, TP 4.5x ATR, max 72 bars
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -1182,8 +1192,11 @@ def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
     rsi = float(row["rsi"])
     atr = float(row["atr"])
     atr_pct = float(row.get("atr_percentile", 0.5))
+    macd_hist = float(row.get("macd_hist", 0.0))
+    macd_val = float(row.get("macd", 0.0))
+    macd_sig = float(row.get("macd_signal", 0.0))
 
-    # 1. EMA stack — tendencia REAL (diferenca do v17.0)
+    # 1. EMA stack — tendencia REAL
     if not (close > ema50 > ema200):
         return None
     # 2. Price touched EMA20 (pullback)
@@ -1192,13 +1205,16 @@ def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
     # 3. Price recovered above EMA20 (bounce)
     if close <= ema20:
         return None
-    # 4. RSI zone (not extreme)
-    if not (40.0 <= rsi <= 65.0):
+    # 4. RSI zone (not extreme) — v18.0: 38-62 (mais amplo)
+    if not (38.0 <= rsi <= 62.0):
         return None
-    # 5. ATR percentile
+    # 5. v18.0: MACD alinhado — pelo menos um indicador de momentum positivo
+    if not (macd_hist > 0 or macd_val > macd_sig):
+        return None
+    # 6. ATR percentile
     if not (0.10 <= atr_pct <= 0.90):
         return None
-    # 6. Minimum ATR
+    # 7. Minimum ATR
     if atr <= 0:
         return None
 
@@ -1218,15 +1234,17 @@ def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
 def evaluate_ema_bounce_short(row: pd.Series) -> Optional[Signal]:
     """EMA Bounce SHORT — preco toca EMA20 e rejeita em tendencia.
 
-    v17.1: Requer EMA stack (close < ema50 < ema200) para edge real.
+    v18.0: Requer EMA stack + MACD alinhado para edge real.
+    SL mais justo (2.0x) e TP moderado (4.5x) para R:R ~2.25:1.
 
     Requisitos:
       1. close < EMA50 E EMA50 < EMA200 (EMA stack — tendencia real)
       2. high >= EMA20 (preco tocou EMA20 — rally)
       3. close < EMA20 (rejeitou — bounce baixista)
-      4. RSI 35-60 (zona moderada)
-      5. ATR percentile 10-90
-      6. SL 2.5x, TP 5.0x ATR, max 96 bars
+      4. RSI 38-62 (zona moderada)
+      5. MACD hist < 0 OU macd < macd_signal (momentum alinhado)
+      6. ATR percentile 10-90
+      7. SL 2.0x, TP 4.5x ATR, max 72 bars
     """
     close = float(row["close"])
     high = float(row["high"])
@@ -1236,6 +1254,9 @@ def evaluate_ema_bounce_short(row: pd.Series) -> Optional[Signal]:
     rsi = float(row["rsi"])
     atr = float(row["atr"])
     atr_pct = float(row.get("atr_percentile", 0.5))
+    macd_hist = float(row.get("macd_hist", 0.0))
+    macd_val = float(row.get("macd", 0.0))
+    macd_sig = float(row.get("macd_signal", 0.0))
 
     # 1. EMA stack — tendencia REAL
     if not (close < ema50 < ema200):
@@ -1246,13 +1267,16 @@ def evaluate_ema_bounce_short(row: pd.Series) -> Optional[Signal]:
     # 3. Price rejected below EMA20
     if close >= ema20:
         return None
-    # 4. RSI zone
-    if not (35.0 <= rsi <= 60.0):
+    # 4. RSI zone — v18.0: 38-62 (mais amplo)
+    if not (38.0 <= rsi <= 62.0):
         return None
-    # 5. ATR percentile
+    # 5. v18.0: MACD alinhado — pelo menos um indicador de momentum negativo
+    if not (macd_hist < 0 or macd_val < macd_sig):
+        return None
+    # 6. ATR percentile
     if not (0.10 <= atr_pct <= 0.90):
         return None
-    # 6. Minimum ATR
+    # 7. Minimum ATR
     if atr <= 0:
         return None
 
@@ -1270,12 +1294,14 @@ def evaluate_ema_bounce_short(row: pd.Series) -> Optional[Signal]:
 def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout LONG — BBWP squeeze seguido de breakout superior.
 
+    v18.2: SL 2.0x, TP 6.0x ATR, BBWP < 25, max 72 bars.
+
     Requisitos:
-      1. BBWP < 20 (squeeze — volatilidade comprimida)
+      1. BBWP < 25 (squeeze — volatilidade comprimida)
       2. close > bb_upper (breakout da banda superior)
       3. RSI > 45 (momentum de alta)
       4. ATR percentile 10-90
-      5. SL 2.0x, TP 5.0x ATR, max 96 bars
+      5. SL 2.0x, TP 6.0x ATR, max 72 bars
     """
     close = float(row["close"])
     bb_upper = float(row["bb_upper"])
@@ -1316,12 +1342,14 @@ def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
 def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout SHORT — BBWP squeeze seguido de breakout inferior.
 
+    v18.2: SL 2.0x, TP 6.0x ATR, BBWP < 25, max 72 bars.
+
     Requisitos:
-      1. BBWP < 20 (squeeze)
+      1. BBWP < 25 (squeeze)
       2. close < bb_lower (breakout da banda inferior)
       3. RSI < 55 (momentum de baixa)
       4. ATR percentile 10-90
-      5. SL 2.0x, TP 5.0x ATR, max 96 bars
+      5. SL 2.0x, TP 6.0x ATR, max 72 bars
     """
     close = float(row["close"])
     bb_lower = float(row["bb_lower"])

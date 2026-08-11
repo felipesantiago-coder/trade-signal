@@ -37,7 +37,7 @@ from backtest import (
 )
 
 
-MAX_CONCURRENT = 4       # v17.1: 4 para atingir 1+/dia. Direcional loss guard protege contra perdas cascata.
+MAX_CONCURRENT = 4       # v18.2: 4 para atingir 1+/dia
 RISK_PER_TRADE = 0.01   # 1% do balance por trade
 
 
@@ -60,6 +60,7 @@ class _OpenPosition:
     highest_favorable: float = 0.0
     sl_updates: int = 0
     bars: int = 0
+    early_scalp_filled: bool = False  # v18.2: disabled
 
 
 def simulate_trades_concurrent(
@@ -103,15 +104,15 @@ def simulate_trades_concurrent(
     _diag_cooldown_skip = 0
     _diag_max_concurrent_hit = 0
 
-    # Cooldown state
+    # v18.1: Cooldown 8 bars (de 16) para mais rapidez em periodos curtos
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None
     _cooldown_until_bar = 0
     _COOLDOWN_TRIGGER = 2
-    _COOLDOWN_BARS = 16
+    _COOLDOWN_BARS = 8  # v18.1: 8 bars (~1/3 dia, de 16)
 
-    # Anti-martingale (disabled — _RISK_REDUCTION = 0)
+    # Anti-martingale DESATIVADO (v18.1: revert — nao ajuda com alta frequencia)
     _base_risk = risk_per_trade_pct
     _current_risk = _base_risk
     _consecutive_losses = 0
@@ -183,6 +184,13 @@ def simulate_trades_concurrent(
                 pos.highest_favorable = min(pos.highest_favorable, f_low)
 
             fav_dist = abs(pos.highest_favorable - pos.entry_price)
+
+            # v18.2: Early Scalp DESATIVADO — custos de trading tornam BE negativo
+            # if not pos.early_scalp_filled and fav_dist >= pos.atr * 1.5:
+            #     pos.early_scalp_filled = True
+            #     pos.be_triggered = True
+            #     pos.current_sl = pos.entry_price
+            #     pos.sl_updates += 1
 
             # Trailing (pos-TP1 only, same as advanced)
             if pos.partial_tp_filled:
@@ -268,6 +276,8 @@ def simulate_trades_concurrent(
                 pnl_pct = (adj_exit - entry_price) / entry_price * 100
             else:
                 pnl_pct = (entry_price - adj_exit) / entry_price * 100
+
+            # v18.2: Early Scalp DESATIVADO
 
             # Partial TP handling
             if pos.partial_tp_filled and exit_reason == "tp":
@@ -365,22 +375,9 @@ def simulate_trades_concurrent(
                     _diag_cooldown_skip += 1
                     continue
 
-                # v17.1: Directional loss guard — nao abre posicao na mesma
-                # direcao se ja existe uma posicao na mesma direcao perdendo
-                _same_dir_losing = False
-                for op in open_positions:
-                    if op.is_long == signal.type == SignalType.LONG:
-                        # Estimate unrealized PnL
-                        if op.is_long:
-                            _est_pnl = (float(row['close']) - op.entry_price) / op.entry_price * 100
-                        else:
-                            _est_pnl = (op.entry_price - float(row['close'])) / op.entry_price * 100
-                        if _est_pnl < -0.5:  # losing > 0.5%
-                            _same_dir_losing = True
-                            break
-                if _same_dir_losing:
-                    _diag_cooldown_skip += 1
-                    continue
+                # v18.0: Allow same-direction entries (removed directional loss guard)
+                # O cooldown e anti-martingale ja protegem contra perdas cascata.
+                # O loss guard era excessivamente restritivo em periodos curtos.
 
                 entry_price = signal.entry_price
                 sl = signal.stop_loss

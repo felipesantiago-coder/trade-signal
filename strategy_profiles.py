@@ -182,11 +182,12 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v15.0] CTEV v14.3 signals + v15.0 risk management. "
-        "ADX 32, DI ON, transition OFF, RSI 45-65/35-55 (grid). "
-        "SL 2.8x, TP 5.5x ATR. Trailing pos-TP1 1.0x, cooldown 16b."
+        "[v18.2] CTEV fib-pullback (ADX>25) + momentum (RSI>50) + Squeeze (BBWP<25). "
+        "ADX 22 base, DI ON, RSI 45-65/35-55 (grid). "
+        "Pullback: SL 2.8/TP 5.5, 168b. Momentum: SL 2.0/TP 4.5, 72b. "
+        "Squeeze: SL 2.0/TP 6.0, 72b. Cooldown 8b, 4 concurrent."
     ),
-    adx_min=25.0,
+    adx_min=22.0,
     allow_transition=False,
     rsi_long_min=45.0,
     rsi_long_max=65.0,
