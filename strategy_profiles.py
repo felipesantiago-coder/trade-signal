@@ -182,30 +182,29 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v18.2] CTEV fib-pullback (ADX>25) + momentum (RSI>50) + Squeeze (BBWP<25). "
-        "ADX 22 base, DI ON, RSI 45-65/35-55 (grid). "
-        "Pullback: SL 2.8/TP 5.5, 168b. Momentum: SL 2.0/TP 4.5, 72b. "
-        "Squeeze: SL 2.0/TP 6.0, 72b. Cooldown 8b, 4 concurrent."
+        "[v22.0] 7 estrategias ativas. ADX>18, transition ON, DI OFF, MACD OFF. "
+        "RSI 38-72/28-62. SL 2.0x/TP 5.5x. Squeeze BBWP<50. "
+        "Range/Scalp/RSI Extremes reativados. 5 concurrent, cooldown 2b."
     ),
-    adx_min=22.0,
-    allow_transition=False,
-    rsi_long_min=45.0,
-    rsi_long_max=65.0,
-    rsi_short_min=35.0,
-    rsi_short_max=55.0,
-    fib_tolerance_pct=0.025,
-    ema50_slope_min=-0.5,
-    ema20_proximity_pct=0.000,
-    ema50_proximity_pct=0.000,
+    adx_min=18.0,
+    allow_transition=True,
+    rsi_long_min=38.0,
+    rsi_long_max=72.0,
+    rsi_short_min=28.0,
+    rsi_short_max=62.0,
+    fib_tolerance_pct=0.035,
+    ema50_slope_min=-1.0,
+    ema20_proximity_pct=0.015,
+    ema50_proximity_pct=0.020,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
     # Volatilidade
-    atr_pct_min=0.10,
-    atr_pct_max=0.90,
+    atr_pct_min=0.08,
+    atr_pct_max=0.95,
 
     # Gestao de risco
-    sl_atr_mult=2.80,
+    sl_atr_mult=2.00,
     tp_atr_mult=5.50,
     max_bars_held=168,
 )

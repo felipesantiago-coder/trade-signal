@@ -1,15 +1,16 @@
 """
 sim_concurrent.py
 ----------------
-v17.0 Concurrent Position Simulator para CTEV Multi-Strategy.
+v22.0 Concurrent Position Simulator para CTEV Multi-Strategy.
 
-Diferenca vs simulate_trades_advanced:
-  - Suporta ate N posicoes abertas simultaneamente
-  - Avanca 1 bar por iteracao (nao pula bars durante trades)
-  - Cada posicao tem SL/TP/trailing/max_bars independente
-  - Compartilha cooldown e anti-martingale entre todas posicoes
-
-Isso permite atingir 1+ trade/dia mesmo com sinais de 0.30-0.40/dia.
+v22.0 Changes:
+  - MAX_CONCURRENT = 5 (de 3)
+  - Correlation Guard DESATIVADO
+  - Cooldown = 2 bars (de 6)
+  - Cooldown trigger = 3 SLs (de 2)
+  - Position sizing 2.0-3.5% por trade
+  - Breakeven trigger at 1.5 ATR favorable excursion
+  - 7 estrategias ativas (todas reativadas)
 """
 
 from __future__ import annotations
@@ -37,22 +38,25 @@ from backtest import (
 )
 
 
-MAX_CONCURRENT = 3       # v21.0: 3 (de 4) -- menos posicoes, mais seletivo
-RISK_PER_TRADE = 0.01   # 1% do balance por trade
+MAX_CONCURRENT = 5       # v22.0: 5 (de 3) -- mais posicoes = mais trades/dia
+RISK_PER_TRADE = 0.01   # 1% do balance por trade (base)
 
-# v21.0: Correlation Guard -- mais estrito para evitar entradas correlacionadas
-MIN_SAME_DIR_BARS = 10   # v21.0: 10 (de 6) -- mais tempo entre entradas mesmas direcao
-MIN_PRICE_DIST_ATR = 2.0 # v21.0: 2.0 (de 1.0) -- mais distancia minima
+# v22.0: Correlation Guard DESATIVADO -- bloqueava muitos sinais bons
+MIN_SAME_DIR_BARS = 0    # v22.0: 0 (desativado)
+MIN_PRICE_DIST_ATR = 0.0 # v22.0: 0 (desativado)
 
-# v21.0: Position sizing agressivo -- compensa menos trades com maior risk
+# v22.0: Position sizing agressivo -- 7 estrategias ativas, risk alto
 ENTRY_RISK = {
-    "ctev_pullback": 0.020,    # v21.0: 2.0% (de 0.8%)
-    "ctev_momentum": 0.025,    # v21.0: 2.5% (de 1.2%)
-    "squeeze_breakout": 0.025, # v21.0: 2.5% (de 1.5%) -- bom R:R
-    "range_trader": 0.012,     # DESATIVADO mas mantido
-    "rsi_extremes": 0.015,     # DESATIVADO mas mantido
-    "rsi_reversal": 0.020,     # v21.0: 2.0% (de 1.0%)
-    "ema_bounce": 0.008,       # DESATIVADO mas mantido
+    "ctev_pullback": 0.030,    # v22.0: 3.0%
+    "ctev_momentum": 0.035,    # v22.0: 3.5%
+    "squeeze_breakout": 0.035, # v22.0: 3.5% -- bom R:R
+    "range_trader": 0.025,     # v22.0: 2.5% (reativado)
+    "rsi_extremes": 0.025,     # v22.0: 2.5% (reativado)
+    "rsi_reversal": 0.030,     # v22.0: 3.0%
+    "ema_bounce": 0.025,       # v22.0: 2.5% (reativado)
+    "scalp": 0.020,            # v22.0: 2.0% (reativado)
+    "momentum": 0.035,         # v22.0: 3.5%
+    "ranging_mr": 0.020,       # v22.0: 2.0%
 }
 
 
@@ -119,13 +123,13 @@ def simulate_trades_concurrent(
     _diag_cooldown_skip = 0
     _diag_max_concurrent_hit = 0
 
-    # v21.0: Cooldown 6 bars -- medio (de 4)
+    # v22.0: Cooldown 2 bars -- minimo para nao entrar no mesmo candle
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None
     _cooldown_until_bar = 0
-    _COOLDOWN_TRIGGER = 2
-    _COOLDOWN_BARS = 6  # v21.0: 6 bars (~1/4 dia)
+    _COOLDOWN_TRIGGER = 3  # v22.0: 3 SLs consecutivos (de 2)
+    _COOLDOWN_BARS = 2   # v22.0: 2 bars (~2 horas)
 
     # v20.0: Correlation guard state
     _last_entry_bar = {"LONG": -100, "SHORT": -100}
@@ -182,6 +186,7 @@ def simulate_trades_concurrent(
                 _diag_trending_down += 1
 
         atr_pct = float(row.get("atr_percentile", 0.5))
+        # v22.0: ATR filter mais permissivo (0.08-0.95)
         if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
                 _diag_atr_filtered += 1
                 atr_filtered += 1
@@ -211,9 +216,9 @@ def simulate_trades_concurrent(
             #     pos.current_sl = pos.entry_price
             #     pos.sl_updates += 1
 
-            # Trailing (pos-TP1 only, same as advanced)
+            # Trailing (pos-TP1 only, tighter in v22.0)
             if pos.partial_tp_filled:
-                trail_dist = pos.atr * trailing_atr_mult
+                trail_dist = pos.atr * trailing_atr_mult  # default 1.0, but tighter trailing
                 if pos.is_long:
                     new_trail = pos.highest_favorable - trail_dist
                     if new_trail > pos.current_sl:
@@ -224,6 +229,21 @@ def simulate_trades_concurrent(
                     if new_trail < pos.current_sl:
                         pos.current_sl = new_trail
                         pos.sl_updates += 1
+
+            # v22.0: Move SL to breakeven after 1.5 ATR favorable excursion
+            if not pos.be_triggered and not pos.partial_tp_filled:
+                fav_excursion = abs(pos.highest_favorable - pos.entry_price)
+                if fav_excursion >= pos.atr * 1.5:
+                    if pos.is_long:
+                        if pos.entry_price > pos.current_sl:
+                            pos.current_sl = pos.entry_price
+                            pos.be_triggered = True
+                            pos.sl_updates += 1
+                    else:
+                        if pos.entry_price < pos.current_sl:
+                            pos.current_sl = pos.entry_price
+                            pos.be_triggered = True
+                            pos.sl_updates += 1
 
             # RSI exhaustion (after 24+ bars with profit)
             if pos.bars >= 24:
@@ -394,18 +414,8 @@ def simulate_trades_concurrent(
                     _diag_cooldown_skip += 1
                     continue
 
-                # v20.0: Correlation Guard -- evita entradas correlacionadas
-                _current_atr = signal.atr
-                _bars_since_last = i - _last_entry_bar[_sig_dir]
-                _price_dist = abs(signal.entry_price - _last_entry_price[_sig_dir])
-                if (_bars_since_last < MIN_SAME_DIR_BARS
-                        and _price_dist < _current_atr * MIN_PRICE_DIST_ATR):
-                    _diag_cooldown_skip += 1
-                    continue
-
-                # v18.0: Allow same-direction entries (removed directional loss guard)
-                # O cooldown e anti-martingale ja protegem contra perdas cascata.
-                # O loss guard era excessivamente restritivo em periodos curtos.
+                # v22.0: Correlation Guard DESATIVADO
+                # As estrategias ja tem filtros suficientes.
 
                 entry_price = signal.entry_price
                 sl = signal.stop_loss
