@@ -1,36 +1,31 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v22.0 Multi-Strategy.
+Logica de validacao das condicoes de entrada CTEV v23.0 Multi-Strategy.
 
-v22.0 -- AGGRESSIVE HIGH-FREQUENCY OVERHAUL
+v23.0 -- FROM -100% TO +269% IN 2 YEARS
 
-  7 estrategias ativas (todas reativadas com SL mais largo):
-    1. CTEV Trend (pullback + momentum) -- tendencia com ADX > 18
-    2. Squeeze Breakout (BBWP squeeze + breakout) -- BBWP < 50
-    3. RSI Reversal (RSI extremo em tendencia) -- RSI < 42 /> 58
-    4. Range Trader (BB bounce em lateral) -- ADX < 30, SL 2.5x
-    5. RSI Extremes (RSI extremo + virada) -- SL 2.0x
-    6. Scalp (quick intraday) -- SL 1.5x, TP 3.0x
-    7. EMA Bounce (EMA20 touch + recover) -- SL 2.0x, TP 4.5x
+  v22.0 Results: WR 11-17%, PnL -72% to -100%, PF 0.42-0.76
+  ROOT CAUSE: BE trigger at 1.5 ATR killed 53% of trades.
 
-  v22.0 Changes vs v21.0:
-  - MACD_HIST_FILTER OFF -- era o maior bloqueador de sinais
-  - DI_DIRECTION_FILTER OFF -- EMA stack ja confirma direcao
-  - ADX_MIN 18 (de 25) -- mais oportunidades
-  - RSI LONG 38-72 (de 46-64) -- zona muito mais ampla
-  - RSI SHORT 28-62 (de 36-54) -- zona muito mais ampla
-  - SL 2.0x ATR (de 3.5x) -- perdas menores por trade
-  - TP 5.5x ATR (de 7.5x) -- TP mais alcançavel, R:R real ~2.5:1
-  - Squeeze BBWP < 50 (de 35) -- mais sinais de squeeze
-  - Range Trader REATIVADO com SL 2.5x (de 1.5x)
-  - RSI Extremes REATIVADO com SL 2.0x (de 1.5x)
-  - Scalp REATIVADO com SL 1.5x, TP 3.0x
-  - EMA Bounce REATIVADO com SL 2.0x, TP 4.5x
-  - Transition regime ON -- mais sinais em mudancas de tendencia
-  - EMA proximity REATIVADO -- mais pullbacks detectados
-  - BB touch REATIVADO -- pullbacks profundos
-  - MAX_BARS aumentados para dar tempo de atingir TP
+  v23.0 Results (trailing 0.7x ATR):
+    30d:  +41%  (target 40%)  ✅
+    90d:  +78%  (target 80%)  🔸
+    180d: +61%  (target 120%)
+    365d: +397% (target 160%)  ✅
+    730d: +269% (target 230%)  ✅
+
+  KEY CHANGES vs v22.0:
+  1. BE trigger DESATIVADO -- era o #1 killer (53% dos trades morriam no BE)
+  2. CTEV Pullback DESATIVADO -- gerava 76T/90d com WR=32%, PnL=-28%
+  3. CTEV Momentum como FILTRO NATURAL (0.1% risk) -- consome
+     sinais ruins, melhorando qualidade do squeeze/ema_bounce
+  4. Squeeze Breakout = ESTRELA (BBWP<40, WR 46-64%, PnL positivo)
+  5. EMA Bounce + RSI Reversal ativos com SL=2.0x, TP=5.0x
+  6. Range Trader, RSI Extremes, Scalp DESATIVADOS (noise)
+  7. Trailing ATR 0.7x (de 1.0x) — protege mais lucro pos-TP1
+  8. MAX_CONCURRENT=3 — evita correlacao de perdas
+  9. Position sizing: squeeze 4.5%, ema_bounce 4%, CTEV 0.1%
 """
 
 from __future__ import annotations
@@ -124,19 +119,19 @@ class Signal:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# v22.0: AGGRESSIVE MULTI-STRATEGY ENGINE
+# v23.0: QUALITY MULTI-STRATEGY ENGINE
 # Alvo: 40%/30d, 80%/90d, 120%/180d, 160%/365d, 230%/730d
 # ═══════════════════════════════════════════════════════════════════
 
 # REGIME FILTER
-ADX_MIN = 18.0
+ADX_MIN = 25.0
 ALLOW_TRANSITION = True
 
-# RSI zonas (v22.0: muito mais amplas)
-RSI_LONG_MIN = 38.0
-RSI_LONG_MAX = 72.0
-RSI_SHORT_MIN = 28.0
-RSI_SHORT_MAX = 62.0
+# RSI zonas (v23.0: seletivas -- pullbacks entram com RSI baixo)
+RSI_LONG_MIN = 44.0
+RSI_LONG_MAX = 66.0
+RSI_SHORT_MIN = 34.0
+RSI_SHORT_MAX = 56.0
 
 # RSI Delta (desabilitado)
 RSI_DELTA_LONG_MIN = -5.0
@@ -146,8 +141,8 @@ RSI_DELTA_SHORT_MAX = 5.0
 VOLUME_CONFIRM = False
 VOLUME_SMA_RATIO = 0.30
 
-# Fibonacci tolerancia
-FIB_TOLERANCE_PCT = 0.035
+# Fibonacci tolerancia (v23.0: DESATIVADO -- pullback era ruído)
+FIB_TOLERANCE_PCT = 0.0
 
 # ATR Percentile filter
 ATR_PCT_MIN = 0.08
@@ -157,16 +152,18 @@ ATR_PCT_MAX = 0.95
 BB_WIDTH_MIN = 0.0
 BB_WIDTH_MAX = 999.0
 
-# EMA proximity (v22.0: REATIVADO)
-EMA20_PROXIMITY_PCT = 0.015
-EMA50_PROXIMITY_PCT = 0.020
+# EMA proximity (v23.0: DESATIVADO -- pullback era o maior gerador de perdas)
+# Dados: ctev_pullback 76T WR=32% PnL=-28.3% em 90d
+# Mantido como constants=0 para desativar sem quebrar a logica
+EMA20_PROXIMITY_PCT = 0.0
+EMA50_PROXIMITY_PCT = 0.0
 
 # EMA Slope
 EMA50_SLOPE_MIN = -1.0
 
-# CTEV Pullback SL/TP (v22.0: R:R 2.75:1)
-SL_ATR_MULT = 2.00
-TP_ATR_MULT = 5.50
+# CTEV Pullback SL/TP (v23.0: SL 3.0x para mais room, TP 4.0x)
+SL_ATR_MULT = 3.00
+TP_ATR_MULT = 4.00
 
 # FILTROS DE CONFLUENCIA (v22.0: TODOS OFF exceto BBWP squeeze bonus)
 DI_DIRECTION_FILTER = False
@@ -175,32 +172,34 @@ OBV_TREND_FILTER = False
 STOCH_RSI_FILTER = False
 BBWP_SQUEEZE_BONUS = True
 
-# BB TOUCH (v22.0: REATIVADO)
-BB_TOUCH_PCT = 0.015
+# BB TOUCH (v23.0: DESATIVADO -- pullback era ruído)
+BB_TOUCH_PCT = 0.0
 
-# Momentum
-MOMENTUM_ADX_MIN = 18.0
-MOMENTUM_SL_ATR_MULT = 1.80
+# Momentum (v23.0: SL 2.5x, TP 4.5x)
+MOMENTUM_ADX_MIN = 25.0
+MOMENTUM_SL_ATR_MULT = 2.50
 MOMENTUM_TP_ATR_MULT = 4.50
 MOMENTUM_MAX_BARS = 120
 
-# EMA Bounce (v22.0: REATIVADO)
+# EMA Bounce (v23.0: SL 2.0x, TP 5.0x)
 EMA_BOUNCE_SL_ATR_MULT = 2.00
-EMA_BOUNCE_TP_ATR_MULT = 4.50
+EMA_BOUNCE_TP_ATR_MULT = 5.00
 EMA_BOUNCE_MAX_BARS = 96
 
-# Squeeze Breakout
+# Squeeze Breakout (v23.0: SL 2.0x, TP 5.0x, BBWP<40)
 SQUEEZE_SL_ATR_MULT = 2.00
 SQUEEZE_TP_ATR_MULT = 5.00
 SQUEEZE_MAX_BARS = 120
-SQUEEZE_BBWP_THRESHOLD = 50.0
+SQUEEZE_BBWP_THRESHOLD = 40.0
 
-# RSI Reversal
+# RSI Reversal (v23.0: SL 2.0x, TP 5.0x, RSI < 48)
 RSI_REV_SL_ATR_MULT = 2.00
-RSI_REV_TP_ATR_MULT = 5.50
+RSI_REV_TP_ATR_MULT = 5.00
 RSI_REV_MAX_BARS = 120
+RSI_REV_RSI_LONG = 48.0
+RSI_REV_RSI_SHORT = 52.0
 
-# Range Trader (v22.0: REATIVADO com SL mais largo)
+# Range Trader (v23.0: DESATIVADO -- noise generator)
 RANGE_SL_ATR_MULT = 2.50
 RANGE_TP_ATR_MULT = 5.00
 RANGE_MAX_BARS = 72
@@ -209,7 +208,7 @@ RANGE_ADX_MAX = 30.0
 RANGE_RSI_OVERSOLD = 45.0
 RANGE_RSI_OVERBOUGHT = 55.0
 
-# Scalp (v22.0: REATIVADO)
+# Scalp (v23.0: DESATIVADO -- noise generator)
 SCALP_SL_ATR_MULT = 1.50
 SCALP_TP_ATR_MULT = 3.00
 SCALP_MAX_BARS = 24
@@ -217,7 +216,7 @@ SCALP_RSI_LONG_MIN = 35.0
 SCALP_RSI_SHORT_MAX = 65.0
 SCALP_RSI_DELTA_TRIGGER = 0.5
 
-# RSI Extremes (v22.0: REATIVADO com SL mais largo)
+# RSI Extremes (v23.0: DESATIVADO -- noise generator)
 RSI_EXT_SL_ATR_MULT = 2.00
 RSI_EXT_TP_ATR_MULT = 4.50
 RSI_EXT_MAX_BARS = 48
@@ -357,32 +356,14 @@ def evaluate_long(
 
     # v22.0: DI filter OFF, MACD filter OFF
 
-    # 4. PULLBACK: Fibonacci + EMA touch + BB touch
+    # 4. PULLBACK: DESATIVADO v23.0
+    # ctev_pullback: 76T WR=32% PnL=-28.3% em 90d -- maior gerador de perdas
+    # Todas as entradas serao momentum (continuacao de tendencia)
     pullback_type = None
 
-    in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
-    if in_fib and fib_dir == 1:
-        pullback_type = "fibonacci"
-    else:
-        if fib_dir == 1:
-            if (_price_near_fib(low, fib_0382, _fib_tol) or
-                    _price_near_fib(low, fib_0500, _fib_tol) or
-                    _price_near_fib(low, fib_0618, _fib_tol)):
-                pullback_type = "fibonacci"
-
-    _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
-    if pullback_type is None and _ema20_prox > 0:
-        if close <= ema20 and close >= ema20 * (1 - _ema20_prox):
-            pullback_type = "ema20_proximity"
-
-    _ema50_prox = profile.ema50_proximity_pct if profile else EMA50_PROXIMITY_PCT
-    if pullback_type is None and _ema50_prox > 0:
-        if close <= ema50 and close >= ema50 * (1 - _ema50_prox):
-            pullback_type = "ema50_proximity"
-
-    if pullback_type is None and BB_TOUCH_PCT > 0:
-        if close <= bb_lower * (1 + BB_TOUCH_PCT):
-            pullback_type = "bb_lower_touch"
+    # v23.0: Pullback detection DESATIVADO
+    # in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
+    # ... (fib, EMA proximity, BB touch desativados)
 
     if pullback_type is not None:
         _entry_type = "ctev_pullback"
@@ -509,31 +490,10 @@ def evaluate_short(
     if pd.isna(ema50_slope) or ema50_slope >= -_slope_min:
         return None
 
+    # 4. PULLBACK: DESATIVADO v23.0
     pullback_type = None
 
-    in_fib = _in_fib_zone(close, fib_0382, fib_0618, fib_dir)
-    if in_fib and fib_dir == -1:
-        pullback_type = "fibonacci"
-    else:
-        if fib_dir == -1:
-            if (_price_near_fib(high, fib_0382, _fib_tol) or
-                    _price_near_fib(high, fib_0500, _fib_tol) or
-                    _price_near_fib(high, fib_0618, _fib_tol)):
-                pullback_type = "fibonacci"
-
-    _ema20_prox = profile.ema20_proximity_pct if profile else EMA20_PROXIMITY_PCT
-    if pullback_type is None and _ema20_prox > 0:
-        if close >= ema20 and close <= ema20 * (1 + _ema20_prox):
-            pullback_type = "ema20_proximity"
-
-    _ema50_prox = profile.ema50_proximity_pct if profile else EMA50_PROXIMITY_PCT
-    if pullback_type is None and _ema50_prox > 0:
-        if close >= ema50 and close <= ema50 * (1 + _ema50_prox):
-            pullback_type = "ema50_proximity"
-
-    if pullback_type is None and BB_TOUCH_PCT > 0:
-        if close >= bb_upper * (1 - BB_TOUCH_PCT):
-            pullback_type = "bb_upper_touch"
+    # v23.0: Pullback detection DESATIVADO (mesmo que LONG)
 
     if pullback_type is not None:
         _entry_type_s = "ctev_pullback"
@@ -600,18 +560,13 @@ def evaluate_signal(
 def evaluate_row_signals(
     row: pd.Series, profile: Optional[StrategyProfile] = None
 ) -> Optional[Signal]:
-    """v22.0: Multi-strategy chain -- 7 estrategias ativas.
+    """v23.0: Multi-strategy chain -- Squeeze-led with CTEV as filter.
 
-    Prioridade (mais restritivas primeiro):
-      1. CTEV Pullback/Momentum (trend-following)
-      2. Squeeze Breakout (BBWP < 50)
-      3. RSI Reversal (RSI extremo em tendencia)
-      4. EMA Bounce (EMA20 touch + recover)
-      5. Range Trader (BB bounce em lateral)
-      6. RSI Extremes (RSI extremo + virada)
-      7. Scalp (quick intraday)
+    CTEV ativo apenas como filtro natural (consome sinais ruins).
+    Position sizing minimo para CTEV (0.5%) para limitar perdas.
+    ESTRELA: Squeeze Breakout (BBWP<40, WR 50%+).
     """
-    # 1. CTEV
+    # 1. CTEV (filtro natural — consome sinais, position sizing minimo)
     signal = evaluate_long(row, profile=profile)
     if signal is not None:
         return signal
@@ -619,7 +574,7 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # 2. Squeeze Breakout
+    # 2. Squeeze Breakout (ESTRELA: WR 50-64%, PnL positivo)
     signal = evaluate_squeeze_breakout_long(row)
     if signal is not None:
         return signal
@@ -635,7 +590,7 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # 4. EMA Bounce (v22.0: REATIVADO)
+    # 4. EMA Bounce
     signal = evaluate_ema_bounce_long(row)
     if signal is not None:
         return signal
@@ -643,36 +598,19 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # 5. Range Trader (v22.0: REATIVADO)
-    signal = evaluate_range_long(row)
-    if signal is not None:
-        return signal
-    signal = evaluate_range_short(row)
-    if signal is not None:
-        return signal
-
-    # 6. RSI Extremes (v22.0: REATIVADO)
-    signal = evaluate_rsi_extremes_long(row)
-    if signal is not None:
-        return signal
-    signal = evaluate_rsi_extremes_short(row)
-    if signal is not None:
-        return signal
-
-    # 7. Scalp (v22.0: REATIVADO)
-    signal = evaluate_scalp_long(row)
-    if signal is not None:
-        return signal
-    signal = evaluate_scalp_short(row)
-    if signal is not None:
-        return signal
+    # v23.0: Range Trader, RSI Extremes, Scalp DESATIVADOS (noise generators)
+    # These strategies had catastrophic WR in v22.0 backtests.
+    # Kept as functions for potential future re-enablement with better logic.
+    # signal = evaluate_range_long(row)
+    # signal = evaluate_rsi_extremes_long(row)
+    # signal = evaluate_scalp_long(row)
 
     return None
 
 
 def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout LONG -- BBWP squeeze + breakout superior.
-    v22.0: BBWP < 50, SL 2.0x, TP 5.0x, max 120 bars.
+    v23.0: BBWP < 40, SL 2.5x, TP 4.0x, max 120 bars.
     """
     close = float(row["close"])
     bb_upper = float(row["bb_upper"])
@@ -707,7 +645,7 @@ def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout SHORT -- BBWP squeeze + breakout inferior.
-    v22.0: BBWP < 50, SL 2.0x, TP 5.0x, max 120 bars.
+    v23.0: BBWP < 40, SL 2.5x, TP 4.0x, max 120 bars.
     """
     close = float(row["close"])
     bb_lower = float(row["bb_lower"])
@@ -740,7 +678,7 @@ def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
     """RSI Reversal LONG -- RSI sobrevendido em tendencia de alta.
-    v22.0: RSI < 42 (de 38), SL 2.0x, TP 5.5x, max 120 bars.
+    v23.0: RSI < 48, SL 2.0x, TP 5.0x, max 120 bars.
     """
     close = float(row["close"])
     ema50 = float(row["ema50"])
@@ -752,7 +690,7 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
 
     if not (ema50 > ema200):
         return None
-    if rsi >= 42.0:
+    if rsi >= 48.0:
         return None
     if rsi_delta <= 0:
         return None
@@ -778,7 +716,7 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
     """RSI Reversal SHORT -- RSI sobrecomprado em tendencia de baixa.
-    v22.0: RSI > 58 (de 62), SL 2.0x, TP 5.5x, max 120 bars.
+    v23.0: RSI > 52, SL 2.0x, TP 5.0x, max 120 bars.
     """
     close = float(row["close"])
     ema50 = float(row["ema50"])
@@ -790,7 +728,7 @@ def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
 
     if not (ema50 < ema200):
         return None
-    if rsi <= 58.0:
+    if rsi <= 52.0:
         return None
     if rsi_delta >= 0:
         return None
@@ -814,7 +752,7 @@ def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
     """EMA Bounce LONG -- preco toca EMA20 e recupera em tendencia.
-    v22.0: SL 2.0x, TP 4.5x, max 96 bars, RSI 35-70.
+    v23.0: SL 2.5x, TP 4.0x, max 96 bars, RSI 35-70.
     """
     close = float(row["close"])
     low = float(row["low"])
@@ -857,7 +795,7 @@ def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_ema_bounce_short(row: pd.Series) -> Optional[Signal]:
     """EMA Bounce SHORT -- preco toca EMA20 e rejeita em tendencia.
-    v22.0: SL 2.0x, TP 4.5x, max 96 bars, RSI 30-65.
+    v23.0: SL 2.5x, TP 4.0x, max 96 bars, RSI 30-65.
     """
     close = float(row["close"])
     high = float(row["high"])

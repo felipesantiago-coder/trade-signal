@@ -182,20 +182,18 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v22.0] 7 estrategias ativas. ADX>18, transition ON, DI OFF, MACD OFF. "
-        "RSI 38-72/28-62. SL 2.0x/TP 5.5x. Squeeze BBWP<50. "
-        "Range/Scalp/RSI Extremes reativados. 5 concurrent, cooldown 2b."
+        "[v23.0] 4 estrategias. ADX>25, SL 3.0x/TP 4.0x. BE OFF. 3 concurrent."
     ),
-    adx_min=18.0,
+    adx_min=25.0,
     allow_transition=True,
-    rsi_long_min=38.0,
-    rsi_long_max=72.0,
-    rsi_short_min=28.0,
-    rsi_short_max=62.0,
+    rsi_long_min=44.0,
+    rsi_long_max=66.0,
+    rsi_short_min=34.0,
+    rsi_short_max=56.0,
     fib_tolerance_pct=0.035,
     ema50_slope_min=-1.0,
-    ema20_proximity_pct=0.015,
-    ema50_proximity_pct=0.020,
+    ema20_proximity_pct=0.0,
+    ema50_proximity_pct=0.0,
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
@@ -204,8 +202,8 @@ PROFILE_STANDARD = StrategyProfile(
     atr_pct_max=0.95,
 
     # Gestao de risco
-    sl_atr_mult=2.00,
-    tp_atr_mult=5.50,
+    sl_atr_mult=3.00,
+    tp_atr_mult=4.00,
     max_bars_held=168,
 )
 

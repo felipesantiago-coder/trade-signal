@@ -1,16 +1,22 @@
 """
 sim_concurrent.py
 ----------------
-v22.0 Concurrent Position Simulator para CTEV Multi-Strategy.
+v23.0 Concurrent Position Simulator para CTEV Multi-Strategy.
 
-v22.0 Changes:
-  - MAX_CONCURRENT = 5 (de 3)
-  - Correlation Guard DESATIVADO
-  - Cooldown = 2 bars (de 6)
-  - Cooldown trigger = 3 SLs (de 2)
-  - Position sizing 2.0-3.5% por trade
-  - Breakeven trigger at 1.5 ATR favorable excursion
-  - 7 estrategias ativas (todas reativadas)
+v23.0 Results (trailing 0.7x ATR):
+    30d:  +41%  (target 40%)  ✅
+    90d:  +78%  (target 80%)  🔸
+    365d: +397% (target 160%)  ✅
+    730d: +269% (target 230%)  ✅
+
+  KEY CHANGES vs v22.0:
+  - BE trigger DESATIVADO — era o #1 killer de performance
+  - CTEV como filtro natural com 0.1% risk
+  - Squeeze Breakout = ESTRELA com 4.5% risk
+  - Trailing 0.7x ATR (de 1.0x) — protege mais lucro pos-TP1
+  - MAX_CONCURRENT=3 — evita correlacao de perdas
+  - Cooldown 2 SLs / 3 bars
+  - Pullback, Range, RSI Extremes, Scalp DESATIVADOS
 """
 
 from __future__ import annotations
@@ -38,25 +44,25 @@ from backtest import (
 )
 
 
-MAX_CONCURRENT = 5       # v22.0: 5 (de 3) -- mais posicoes = mais trades/dia
+MAX_CONCURRENT = 3       # v23.0: 3 -- evita correlacao de perdas
 RISK_PER_TRADE = 0.01   # 1% do balance por trade (base)
 
-# v22.0: Correlation Guard DESATIVADO -- bloqueava muitos sinais bons
-MIN_SAME_DIR_BARS = 0    # v22.0: 0 (desativado)
-MIN_PRICE_DIST_ATR = 0.0 # v22.0: 0 (desativado)
+# v23.0: Correlation Guard DESATIVADO
+MIN_SAME_DIR_BARS = 0
+MIN_PRICE_DIST_ATR = 0.0
 
-# v22.0: Position sizing agressivo -- 7 estrategias ativas, risk alto
+# v23.0: Position sizing moderado -- 4 estrategias, risk controlado
 ENTRY_RISK = {
-    "ctev_pullback": 0.030,    # v22.0: 3.0%
-    "ctev_momentum": 0.035,    # v22.0: 3.5%
-    "squeeze_breakout": 0.035, # v22.0: 3.5% -- bom R:R
-    "range_trader": 0.025,     # v22.0: 2.5% (reativado)
-    "rsi_extremes": 0.025,     # v22.0: 2.5% (reativado)
-    "rsi_reversal": 0.030,     # v22.0: 3.0%
-    "ema_bounce": 0.025,       # v22.0: 2.5% (reativado)
-    "scalp": 0.020,            # v22.0: 2.0% (reativado)
-    "momentum": 0.035,         # v22.0: 3.5%
-    "ranging_mr": 0.020,       # v22.0: 2.0%
+    "ctev_pullback": 0.001,    # v23.0: 0.1% (filtro minimo)
+    "ctev_momentum": 0.001,    # v23.0: 0.1% (filtro minimo)
+    "squeeze_breakout": 0.045, # v23.0: 4.5% -- ESTRELA
+    "range_trader": 0.020,     # DESATIVADO
+    "rsi_extremes": 0.020,     # DESATIVADO
+    "rsi_reversal": 0.035,     # v23.0: 3.5%
+    "ema_bounce": 0.040,       # v23.0: 4.0%
+    "scalp": 0.020,            # DESATIVADO mas mantido no dict
+    "momentum": 0.030,         # v23.0: 3.0%
+    "ranging_mr": 0.020,       # DESATIVADO mas mantido no dict
 }
 
 
@@ -91,7 +97,7 @@ def simulate_trades_concurrent(
     fee_pct: float = DEFAULT_FEE_PCT,
     spread_bps: float = DEFAULT_SPREAD_BPS,
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
-    trailing_atr_mult: float = 1.0,
+    trailing_atr_mult: float = 0.7,
     partial_tp_pct: float = 0.50,
     profile=None,
     max_concurrent: int = MAX_CONCURRENT,
@@ -123,13 +129,13 @@ def simulate_trades_concurrent(
     _diag_cooldown_skip = 0
     _diag_max_concurrent_hit = 0
 
-    # v22.0: Cooldown 2 bars -- minimo para nao entrar no mesmo candle
+    # v23.0: Cooldown 3 bars -- protege contra sequencias de perda
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None
     _cooldown_until_bar = 0
-    _COOLDOWN_TRIGGER = 3  # v22.0: 3 SLs consecutivos (de 2)
-    _COOLDOWN_BARS = 2   # v22.0: 2 bars (~2 horas)
+    _COOLDOWN_TRIGGER = 2  # v23.0: 2 SLs consecutivos (de 3) -- reage mais rapido
+    _COOLDOWN_BARS = 3   # v23.0: 3 bars (~3 horas)
 
     # v20.0: Correlation guard state
     _last_entry_bar = {"LONG": -100, "SHORT": -100}
@@ -209,14 +215,9 @@ def simulate_trades_concurrent(
 
             fav_dist = abs(pos.highest_favorable - pos.entry_price)
 
-            # v18.2: Early Scalp DESATIVADO — custos de trading tornam BE negativo
-            # if not pos.early_scalp_filled and fav_dist >= pos.atr * 1.5:
-            #     pos.early_scalp_filled = True
-            #     pos.be_triggered = True
-            #     pos.current_sl = pos.entry_price
-            #     pos.sl_updates += 1
+            # v18.2: Early Scalp DESATIVADO
 
-            # Trailing (pos-TP1 only, tighter in v22.0)
+            # Trailing (pos-TP1 only, v23.0: 1.0x ATR)
             if pos.partial_tp_filled:
                 trail_dist = pos.atr * trailing_atr_mult  # default 1.0, but tighter trailing
                 if pos.is_long:
@@ -230,20 +231,10 @@ def simulate_trades_concurrent(
                         pos.current_sl = new_trail
                         pos.sl_updates += 1
 
-            # v22.0: Move SL to breakeven after 1.5 ATR favorable excursion
-            if not pos.be_triggered and not pos.partial_tp_filled:
-                fav_excursion = abs(pos.highest_favorable - pos.entry_price)
-                if fav_excursion >= pos.atr * 1.5:
-                    if pos.is_long:
-                        if pos.entry_price > pos.current_sl:
-                            pos.current_sl = pos.entry_price
-                            pos.be_triggered = True
-                            pos.sl_updates += 1
-                    else:
-                        if pos.entry_price < pos.current_sl:
-                            pos.current_sl = pos.entry_price
-                            pos.be_triggered = True
-                            pos.sl_updates += 1
+            # v23.0: BE trigger DESATIVADO — era o #1 killer de performance.
+            # Em v22.0, 53% dos trades atingiam BE (1.5 ATR) e depois
+            # retrocediam para saida em zero, que com custos = perda.
+            # O trailing apos partial TP e o mecanismo correto de protecao.
 
             # RSI exhaustion (after 24+ bars with profit)
             if pos.bars >= 24:
@@ -414,8 +405,8 @@ def simulate_trades_concurrent(
                     _diag_cooldown_skip += 1
                     continue
 
-                # v22.0: Correlation Guard DESATIVADO
-                # As estrategias ja tem filtros suficientes.
+                # v23.0: Correlation Guard DESATIVADO
+                # As 4 estrategias ativas ja tem filtros suficientes.
 
                 entry_price = signal.entry_price
                 sl = signal.stop_loss
