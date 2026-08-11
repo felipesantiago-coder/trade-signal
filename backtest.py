@@ -116,6 +116,7 @@ from strategy import (
     evaluate_momentum_short,
     evaluate_mean_reversion_long,
     evaluate_mean_reversion_short,
+    evaluate_row_signals,
     ATR_PCT_MIN as _ATR_PCT_MIN_STRATEGY,
     ATR_PCT_MAX as _ATR_PCT_MAX_STRATEGY,
     ADX_MIN as _ADX_MIN_STRATEGY,
@@ -255,6 +256,9 @@ class TradeResult:
     trailing_activated: bool = False
     partial_tp_filled: bool = False
     sl_updates: int = 0  # quantas vezes o SL foi movido
+    # v17.0: Multi-strategy tracking
+    entry_type: str = "ctev_pullback"  # ctev_pullback, ctev_momentum, momentum,
+                                         # ema_bounce, squeeze_breakout, rsi_reversal, ranging_mr
 
 
 @dataclass
@@ -827,12 +831,11 @@ def simulate_trades_advanced(
             regime_filtered += 1
             i += 1
             continue
+        # v17.0: ranging NAO e mais pulado — EMA Bounce, Squeeze, RSI Rev
+        # e MR podem gerar sinais em ranging.
         if regime == "ranging":
             _diag_regime_ranging += 1
-            # v16.1: ranging skipped (MR removed — WR < 25%)
-            regime_filtered += 1
-            i += 1
-            continue
+            # passa adiante — evaluate_row_signals decide se ha sinal
 
         atr_pct = float(row.get("atr_percentile", 0.5))
         if atr_pct < atr_pct_min or atr_pct > atr_pct_max:
@@ -841,10 +844,9 @@ def simulate_trades_advanced(
             i += 1
             continue
 
-        # v16.1: CTEV-only (pullback + momentum), MR removed (WR < 25%)
-        signal = evaluate_long(row, profile=profile)
-        if signal is None:
-            signal = evaluate_short(row, profile=profile)
+        # v17.0: Multi-Strategy Engine — tenta TODOS os tipos de entrada
+        # CTEV > Momentum > EMA Bounce > Squeeze > RSI Rev > MR
+        signal = evaluate_row_signals(row, profile=profile)
 
         if signal is None:
             _diag_no_signal += 1
@@ -1047,6 +1049,7 @@ def simulate_trades_advanced(
             trailing_activated=trailing_activated,
             partial_tp_filled=partial_tp_filled,
             sl_updates=sl_updates,
+            entry_type=getattr(signal, 'entry_type', 'unknown'),
         ))
 
         # Track equity for live streaming
@@ -2797,13 +2800,18 @@ def run_backtest(
             df_clean, _atr_min, _atr_max, profile=profile,
         )
     elif advanced:
-        trades, atr_filtered, _diag = simulate_trades_advanced(
-            df_clean, _atr_min, _atr_max, profile=profile,
+        # v17.0: Multi-Strategy Concurrent Positions
+        from sim_concurrent import simulate_trades_concurrent
+        trades, atr_filtered, _diag = simulate_trades_concurrent(
+            df_clean, _atr_min, _atr_max,
+            profile=profile,
         )
     elif profile.name == "STANDARD":
-        # v7.0: STANDARD sempre usa advanced (trailing/BE/partial/momentum exit)
-        trades, atr_filtered, _diag = simulate_trades_advanced(
-            df_clean, _atr_min, _atr_max, profile=profile,
+        # v17.0: Multi-Strategy Concurrent Positions (DEFAULT para 1h)
+        from sim_concurrent import simulate_trades_concurrent
+        trades, atr_filtered, _diag = simulate_trades_concurrent(
+            df_clean, _atr_min, _atr_max,
+            profile=profile,
         )
     else:
         trades, atr_filtered, _diag = simulate_trades(

@@ -186,7 +186,7 @@ PROFILE_STANDARD = StrategyProfile(
         "ADX 32, DI ON, transition OFF, RSI 45-65/35-55 (grid). "
         "SL 2.8x, TP 5.5x ATR. Trailing pos-TP1 1.0x, cooldown 16b."
     ),
-    adx_min=32.0,
+    adx_min=25.0,
     allow_transition=False,
     rsi_long_min=45.0,
     rsi_long_max=65.0,

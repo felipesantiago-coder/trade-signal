@@ -112,7 +112,7 @@ class Signal:
 # v13.0: CTEV relaxado + Momentum + Mean-Reversion = 4+ trades/semana.
 
 # REGIME FILTER — v13.2: COMPROMISSO CTEV for more signals
-ADX_MIN = 32.0                # v16.2: RESTAURADO 32 — grid-optimized
+ADX_MIN = 25.0                # v17.1: 25 (de 32) — frequencia maxima com concurrent positions
 ALLOW_TRANSITION = False      # v16.2: OFF — igual v14.3 (transition nao adiciona com filtros strict)
 
 # RSI como zona de pullback (v13.0: alargado para mais sinais)
@@ -172,6 +172,33 @@ MOMENTUM_MAX_BARS = 168
 
 # v14.1: MEAN-REVERSION DESATIVADO (WR < 25% — sem edge)
 # Mantido apenas para referencia futura se necessario.
+
+
+# ═══════════════════════════════════════════════════════════════════
+# v17.0: MULTI-STRATEGY ENGINE — Tipos de entrada complementares
+# Objetivo: 1+ trade/dia combinando multiplas estrategias por regime.
+# Cada tipo tem SL/TP/max_bars proprios via Signal dataclass.
+# ═══════════════════════════════════════════════════════════════════
+
+# v17.1: CTEV EMA Bounce DESATIVADO (WR 26-35%, sem edge nem com EMA stack)
+# Apenas CTEV + Squeeze tem edge comprovado.
+EMA_BOUNCE_SL_ATR_MULT = 2.50
+EMA_BOUNCE_TP_ATR_MULT = 5.00
+EMA_BOUNCE_MAX_BARS = 96
+
+# Squeeze Breakout: BBWP squeeze + breakout de banda com volume
+# v17.1: BBWP threshold relaxado 20->30, SL alargado para CTEV-proven
+SQUEEZE_SL_ATR_MULT = 2.50
+SQUEEZE_TP_ATR_MULT = 5.00
+SQUEEZE_MAX_BARS = 96
+SQUEEZE_BBWP_THRESHOLD = 30.0
+
+# RSI Reversal: RSI extremo em tendencia = oportunidade de reversao
+# v17.1: DESATIVADO na chain — muito restritivo (0 trades)
+# Mantido para referencia futura.
+RSI_REV_SL_ATR_MULT = 2.50
+RSI_REV_TP_ATR_MULT = 5.00
+RSI_REV_MAX_BARS = 96
 
 
 def _price_near_fib(
@@ -683,37 +710,77 @@ def evaluate_signal(
     df_ind: pd.DataFrame, profile: Optional[StrategyProfile] = None
 ) -> Optional[Signal]:
     """
-    Ponto de entrada principal da estrategia v14.0.
+    Ponto de entrada principal da estrategia v17.0.
     Recebe o DataFrame com indicadores e avalia apenas a ultima linha.
-    Tenta CTEV > Momentum > Mean-Reversion. Retorna o primeiro sinal.
+    Tenta todos os tipos de entrada via evaluate_row_signals().
 
-    v14.0: CTEV trend-flow (pullback opcional) + Momentum + MR (disabled).
-
-    Parameters:
-        df_ind: DataFrame com indicadores calculados
-        profile: StrategyProfile do timeframe (None = usa padrao 1h v5.0)
+    v17.0: Multi-Strategy Engine — CTEV + Momentum + EMA Bounce +
+    Squeeze Breakout + RSI Reversal + Mean-Reversion.
     """
     if df_ind.empty:
         return None
+    return evaluate_row_signals(df_ind.iloc[-1], profile=profile)
 
-    last = df_ind.iloc[-1]
-    # v13.0: Multi-strategy priority chain
-    signal = evaluate_long(last, profile=profile)
+
+def evaluate_row_signals(
+    row: pd.Series, profile: Optional[StrategyProfile] = None
+) -> Optional[Signal]:
+    """v17.0: Multi-strategy priority chain — tenta todos os tipos de entrada.
+
+    Prioridade (maior qualidade primeiro):
+      1. CTEV Pullback/Momentum (trend-following strict)
+      2. Momentum Continuation (trending, sem pullback)
+      3. EMA Bounce (trend anchor + EMA20 bounce, funciona em ranging)
+      4. Squeeze Breakout (BBWP squeeze + breakout, qualquer regime)
+      5. RSI Reversal (RSI extremo em tendencia)
+      6. Mean-Reversion BB (ranging, low ADX — ultimo recurso)
+    """
+    # 1. CTEV (highest quality — strict trend-following)
+    signal = evaluate_long(row, profile=profile)
     if signal is not None:
         return signal
-    signal = evaluate_short(last, profile=profile)
+    signal = evaluate_short(row, profile=profile)
     if signal is not None:
         return signal
-    signal = evaluate_momentum_long(last)
+
+    # v17.1: Momentum DESATIVADO (WR 20-40%, sem edge comprovado)
+    # signal = evaluate_momentum_long(row)
+    # if signal is not None:
+    #     return signal
+    # signal = evaluate_momentum_short(row)
+    # if signal is not None:
+    #     return signal
+
+    # v17.1: EMA Bounce DESATIVADO (WR 26-35%, sem edge)
+    # signal = evaluate_ema_bounce_long(row)
+    # if signal is not None:
+    #     return signal
+    # signal = evaluate_ema_bounce_short(row)
+    # if signal is not None:
+    #     return signal
+
+    # 4. Squeeze Breakout (volatility expansion from BB squeeze)
+    signal = evaluate_squeeze_breakout_long(row)
     if signal is not None:
         return signal
-    signal = evaluate_momentum_short(last)
+    signal = evaluate_squeeze_breakout_short(row)
     if signal is not None:
         return signal
-    signal = evaluate_mean_reversion_long(last)
-    if signal is not None:
-        return signal
-    return evaluate_mean_reversion_short(last)
+
+    # v17.1: RSI Reversal DESATIVADO (0 trades — filtros muito restritivos)
+    # signal = evaluate_rsi_reversal_long(row)
+    # if signal is not None:
+    #     return signal
+    # signal = evaluate_rsi_reversal_short(row)
+    # if signal is not None:
+    #     return signal
+
+    # v17.1: Mean-Reversion DESATIVADO (WR 27-36%, sem edge)
+    # signal = evaluate_mean_reversion_long(row)
+    # if signal is not None:
+    #     return signal
+    # return evaluate_mean_reversion_short(row)
+    return None
 
 
 def evaluate_momentum_long(row: pd.Series) -> Optional[Signal]:
@@ -1048,3 +1115,344 @@ def evaluate_mean_reversion_short(row: pd.Series) -> Optional[Signal]:
         entry_type="ranging_mr", max_bars=48,
         timestamp=ts,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# v17.0: NOVOS TIPOS DE ENTRADA
+# ═══════════════════════════════════════════════════════════════════
+
+def _make_signal(
+    sig_type: SignalType, entry: float, sl: float, tp: float,
+    atr: float, row: pd.Series, pullback_type: str,
+    entry_type: str, max_bars: int,
+) -> Optional[Signal]:
+    """Helper para criar Signal com todos os campos obrigatorios."""
+    if sl <= 0 and sig_type == SignalType.LONG:
+        return None
+    return Signal(
+        type=sig_type, entry_price=entry, stop_loss=sl,
+        take_profit=tp, atr=atr,
+        rsi=float(row["rsi"]),
+        rsi_delta=float(row.get("rsi_delta", 0.0)),
+        macd_hist=float(row.get("macd_hist", 0.0)),
+        ema20=float(row["ema20"]),
+        ema50=float(row["ema50"]),
+        ema200=float(row["ema200"]),
+        adx=float(row.get("adx", 0.0)),
+        plus_di=float(row.get("plus_di", 0.0)),
+        minus_di=float(row.get("minus_di", 0.0)),
+        regime=str(row.get("regime", "")),
+        bb_lower=float(row["bb_lower"]),
+        bb_upper=float(row["bb_upper"]),
+        bb_width=float(row.get("bb_width", 0.0)),
+        bb_squeeze_pct=float(row.get("bb_squeeze_pct", 0.5)),
+        volume=float(row["volume"]),
+        volume_sma20=float(row["volume_sma20"]),
+        volume_sma50=float(row.get("volume_sma50", 0.0)),
+        atr_percentile=float(row.get("atr_percentile", 0.5)),
+        fib_0382=0.0, fib_0500=0.0, fib_0618=0.0,
+        fib_direction=0, fib_proximity=0.0,
+        pullback_type=pullback_type,
+        entry_type=entry_type,
+        max_bars=max_bars,
+        ema50_slope=float(row.get("ema50_slope", 0.0)),
+        timestamp=row.name,
+    )
+
+
+def evaluate_ema_bounce_long(row: pd.Series) -> Optional[Signal]:
+    """EMA Bounce LONG — preco toca EMA20 e recupera em tendencia.
+
+    v17.1: Requer EMA stack (close > ema50 > ema200) para edge real.
+    EMA Bounce sem stack = sem edge (provado v17.0).
+
+    Requisitos:
+      1. close > EMA50 E EMA50 > EMA200 (EMA stack — tendencia real)
+      2. low <= EMA20 (preco tocou EMA20 — pullback)
+      3. close > EMA20 (recuperou — bounce confirmado)
+      4. RSI 40-65 (zona moderada)
+      5. ATR percentile 10-90
+      6. SL 2.5x, TP 5.0x ATR, max 96 bars
+    """
+    close = float(row["close"])
+    low = float(row["low"])
+    ema20 = float(row["ema20"])
+    ema50 = float(row["ema50"])
+    ema200 = float(row["ema200"])
+    rsi = float(row["rsi"])
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. EMA stack — tendencia REAL (diferenca do v17.0)
+    if not (close > ema50 > ema200):
+        return None
+    # 2. Price touched EMA20 (pullback)
+    if low > ema20:
+        return None
+    # 3. Price recovered above EMA20 (bounce)
+    if close <= ema20:
+        return None
+    # 4. RSI zone (not extreme)
+    if not (40.0 <= rsi <= 65.0):
+        return None
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    # 6. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry - (EMA_BOUNCE_SL_ATR_MULT * atr)
+    tp = entry + (EMA_BOUNCE_TP_ATR_MULT * atr)
+    if sl <= 0:
+        return None
+
+    return _make_signal(
+        SignalType.LONG, entry, sl, tp, atr, row,
+        pullback_type="ema20_bounce", entry_type="ema_bounce",
+        max_bars=EMA_BOUNCE_MAX_BARS,
+    )
+
+
+def evaluate_ema_bounce_short(row: pd.Series) -> Optional[Signal]:
+    """EMA Bounce SHORT — preco toca EMA20 e rejeita em tendencia.
+
+    v17.1: Requer EMA stack (close < ema50 < ema200) para edge real.
+
+    Requisitos:
+      1. close < EMA50 E EMA50 < EMA200 (EMA stack — tendencia real)
+      2. high >= EMA20 (preco tocou EMA20 — rally)
+      3. close < EMA20 (rejeitou — bounce baixista)
+      4. RSI 35-60 (zona moderada)
+      5. ATR percentile 10-90
+      6. SL 2.5x, TP 5.0x ATR, max 96 bars
+    """
+    close = float(row["close"])
+    high = float(row["high"])
+    ema20 = float(row["ema20"])
+    ema50 = float(row["ema50"])
+    ema200 = float(row["ema200"])
+    rsi = float(row["rsi"])
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. EMA stack — tendencia REAL
+    if not (close < ema50 < ema200):
+        return None
+    # 2. Price touched EMA20 (rally)
+    if high < ema20:
+        return None
+    # 3. Price rejected below EMA20
+    if close >= ema20:
+        return None
+    # 4. RSI zone
+    if not (35.0 <= rsi <= 60.0):
+        return None
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    # 6. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry + (EMA_BOUNCE_SL_ATR_MULT * atr)
+    tp = entry - (EMA_BOUNCE_TP_ATR_MULT * atr)
+
+    return _make_signal(
+        SignalType.SHORT, entry, sl, tp, atr, row,
+        pullback_type="ema20_bounce", entry_type="ema_bounce",
+        max_bars=EMA_BOUNCE_MAX_BARS,
+    )
+
+
+def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
+    """Squeeze Breakout LONG — BBWP squeeze seguido de breakout superior.
+
+    Requisitos:
+      1. BBWP < 20 (squeeze — volatilidade comprimida)
+      2. close > bb_upper (breakout da banda superior)
+      3. RSI > 45 (momentum de alta)
+      4. ATR percentile 10-90
+      5. SL 2.0x, TP 5.0x ATR, max 96 bars
+    """
+    close = float(row["close"])
+    bb_upper = float(row["bb_upper"])
+    bbwp = float(row.get("bbwp", 50.0))
+    rsi = float(row["rsi"])
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. BB Squeeze
+    if pd.isna(bbwp) or bbwp >= SQUEEZE_BBWP_THRESHOLD:
+        return None
+    # 2. Breakout above upper BB
+    if close <= bb_upper:
+        return None
+    # 3. RSI momentum
+    if rsi <= 45.0:
+        return None
+    # 4. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    # 5. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry - (SQUEEZE_SL_ATR_MULT * atr)
+    tp = entry + (SQUEEZE_TP_ATR_MULT * atr)
+    if sl <= 0:
+        return None
+
+    return _make_signal(
+        SignalType.LONG, entry, sl, tp, atr, row,
+        pullback_type="squeeze_breakout", entry_type="squeeze_breakout",
+        max_bars=SQUEEZE_MAX_BARS,
+    )
+
+
+def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
+    """Squeeze Breakout SHORT — BBWP squeeze seguido de breakout inferior.
+
+    Requisitos:
+      1. BBWP < 20 (squeeze)
+      2. close < bb_lower (breakout da banda inferior)
+      3. RSI < 55 (momentum de baixa)
+      4. ATR percentile 10-90
+      5. SL 2.0x, TP 5.0x ATR, max 96 bars
+    """
+    close = float(row["close"])
+    bb_lower = float(row["bb_lower"])
+    bbwp = float(row.get("bbwp", 50.0))
+    rsi = float(row["rsi"])
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. BB Squeeze
+    if pd.isna(bbwp) or bbwp >= SQUEEZE_BBWP_THRESHOLD:
+        return None
+    # 2. Breakout below lower BB
+    if close >= bb_lower:
+        return None
+    # 3. RSI momentum
+    if rsi >= 55.0:
+        return None
+    # 4. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    # 5. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry + (SQUEEZE_SL_ATR_MULT * atr)
+    tp = entry - (SQUEEZE_TP_ATR_MULT * atr)
+
+    return _make_signal(
+        SignalType.SHORT, entry, sl, tp, atr, row,
+        pullback_type="squeeze_breakout", entry_type="squeeze_breakout",
+        max_bars=SQUEEZE_MAX_BARS,
+    )
+
+
+def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
+    """RSI Reversal LONG — RSI sobrevendido em tendencia de alta = compra.
+
+    Requisitos:
+      1. ema50 > ema200 (tendencia de alta estabelecida)
+      2. RSI < 35 (sobrevenda relativa na tendencia)
+      3. rsi_delta > 0 (RSI virando para cima — reversao)
+      4. close > ema50 (ainda acima da MA media)
+      5. ATR percentile 10-90
+      6. SL 1.5x, TP 3.0x ATR, max 48 bars
+    """
+    close = float(row["close"])
+    ema50 = float(row["ema50"])
+    ema200 = float(row["ema200"])
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. Established uptrend (EMA stack)
+    if not (ema50 > ema200):
+        return None
+    # 2. RSI oversold in uptrend
+    if rsi >= 35.0:
+        return None
+    # 3. RSI turning up (reversal confirmation)
+    if rsi_delta <= 0:
+        return None
+    # 4. Still above medium-term MA
+    if close <= ema50:
+        return None
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    # 6. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry - (RSI_REV_SL_ATR_MULT * atr)
+    tp = entry + (RSI_REV_TP_ATR_MULT * atr)
+    if sl <= 0:
+        return None
+
+    return _make_signal(
+        SignalType.LONG, entry, sl, tp, atr, row,
+        pullback_type="rsi_reversal", entry_type="rsi_reversal",
+        max_bars=RSI_REV_MAX_BARS,
+    )
+
+
+def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
+    """RSI Reversal SHORT — RSI sobrecomprado em tendencia de baixa = venda.
+
+    Requisitos:
+      1. ema50 < ema200 (tendencia de baixa estabelecida)
+      2. RSI > 65 (sobrecompra relativa na tendencia)
+      3. rsi_delta < 0 (RSI virando para baixo — reversao)
+      4. close < ema50 (ainda abaixo da MA media)
+      5. ATR percentile 10-90
+      6. SL 1.5x, TP 3.0x ATR, max 48 bars
+    """
+    close = float(row["close"])
+    ema50 = float(row["ema50"])
+    ema200 = float(row["ema200"])
+    rsi = float(row["rsi"])
+    rsi_delta = float(row.get("rsi_delta", 0.0))
+    atr = float(row["atr"])
+    atr_pct = float(row.get("atr_percentile", 0.5))
+
+    # 1. Established downtrend (EMA stack)
+    if not (ema50 < ema200):
+        return None
+    # 2. RSI overbought in downtrend
+    if rsi <= 65.0:
+        return None
+    # 3. RSI turning down (reversal confirmation)
+    if rsi_delta >= 0:
+        return None
+    # 4. Still below medium-term MA
+    if close >= ema50:
+        return None
+    # 5. ATR percentile
+    if not (0.10 <= atr_pct <= 0.90):
+        return None
+    # 6. Minimum ATR
+    if atr <= 0:
+        return None
+
+    entry = close
+    sl = entry + (RSI_REV_SL_ATR_MULT * atr)
+    tp = entry - (RSI_REV_TP_ATR_MULT * atr)
+
+    return _make_signal(
+        SignalType.SHORT, entry, sl, tp, atr, row,
+        pullback_type="rsi_reversal", entry_type="rsi_reversal",
+        max_bars=RSI_REV_MAX_BARS,
+    )
+
