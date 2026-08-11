@@ -394,10 +394,10 @@ def simulate_trades_concurrent(
                     _diag_cooldown_skip += 1
                     continue
 
-                # v20.0: Correlation Guard — evita entradas correlacionadas
+                # v20.0: Correlation Guard -- evita entradas correlacionadas
                 _current_atr = signal.atr
                 _bars_since_last = i - _last_entry_bar[_sig_dir]
-                _price_dist = abs(entry_price - _last_entry_price[_sig_dir])
+                _price_dist = abs(signal.entry_price - _last_entry_price[_sig_dir])
                 if (_bars_since_last < MIN_SAME_DIR_BARS
                         and _price_dist < _current_atr * MIN_PRICE_DIST_ATR):
                     _diag_cooldown_skip += 1
