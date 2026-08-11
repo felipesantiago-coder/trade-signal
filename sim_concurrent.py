@@ -40,14 +40,18 @@ from backtest import (
 MAX_CONCURRENT = 4       # v18.2: 4 para atingir 1+/dia
 RISK_PER_TRADE = 0.01   # 1% do balance por trade
 
-# v19.1: Position sizing por tipo de entrada — otimizado para multi-periodo
+# v20.0: Correlation Guard — evita entradas correlacionadas
+MIN_SAME_DIR_BARS = 6    # Minimo 6 bars entre entradas na mesma direcao
+MIN_PRICE_DIST_ATR = 1.0 # Minimo 1.0 ATR de distancia entre entradas mesmosentido
+
+# v20.0: Position sizing balanceado — todas as estrategias com allocation significativa
 ENTRY_RISK = {
-    "ctev_pullback": 0.001,    # 0.1% — pullback WR inconsistente em curto prazo
-    "ctev_momentum": 0.015,    # 1.5% — momentum tem 54% WR em 90d
-    "squeeze_breakout": 0.022, # 2.2% — squeeze melhor edge (50% WR, 3:1 R:R)
-    "range_trader": 0.012,     # 1.2% — range 50% WR em 30d
-    "rsi_extremes": 0.018,     # 1.8% — rsi extremes tem WR alto
-    "rsi_reversal": 0.008,     # 0.8% — reversao em tendencia
+    "ctev_pullback": 0.008,    # 0.8% — restaurado (era 0.1% — muito baixo)
+    "ctev_momentum": 0.012,    # 1.2% — momentum consistente
+    "squeeze_breakout": 0.015, # 1.5% — squeeze com bom R:R
+    "range_trader": 0.012,     # 1.2% — range trader para lateral
+    "rsi_extremes": 0.015,     # 1.5% — rsi extremes funciona em qualquer regime
+    "rsi_reversal": 0.010,     # 1.0% — reversao em tendencia
     "ema_bounce": 0.008,       # 0.8% — complementar
 }
 
@@ -115,13 +119,17 @@ def simulate_trades_concurrent(
     _diag_cooldown_skip = 0
     _diag_max_concurrent_hit = 0
 
-    # v18.1: Cooldown 8 bars (de 16) para mais rapidez em periodos curtos
+    # v20.0: Cooldown 4 bars (de 8) — mais rapido para periodos curtos
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None
     _cooldown_until_bar = 0
     _COOLDOWN_TRIGGER = 2
-    _COOLDOWN_BARS = 8  # v18.1: 8 bars (~1/3 dia)
+    _COOLDOWN_BARS = 4  # v20.0: 4 bars (~1/6 dia)
+
+    # v20.0: Correlation guard state
+    _last_entry_bar = {"LONG": -100, "SHORT": -100}
+    _last_entry_price = {"LONG": 0.0, "SHORT": 0.0}
 
     # Anti-martingale DESATIVADO (v18.1: revert — nao ajuda com alta frequencia)
     _base_risk = risk_per_trade_pct
@@ -386,6 +394,15 @@ def simulate_trades_concurrent(
                     _diag_cooldown_skip += 1
                     continue
 
+                # v20.0: Correlation Guard — evita entradas correlacionadas
+                _current_atr = signal.atr
+                _bars_since_last = i - _last_entry_bar[_sig_dir]
+                _price_dist = abs(entry_price - _last_entry_price[_sig_dir])
+                if (_bars_since_last < MIN_SAME_DIR_BARS
+                        and _price_dist < _current_atr * MIN_PRICE_DIST_ATR):
+                    _diag_cooldown_skip += 1
+                    continue
+
                 # v18.0: Allow same-direction entries (removed directional loss guard)
                 # O cooldown e anti-martingale ja protegem contra perdas cascata.
                 # O loss guard era excessivamente restritivo em periodos curtos.
@@ -432,6 +449,9 @@ def simulate_trades_concurrent(
                     risk_usd=risk_usd,
                     highest_favorable=entry_price,
                 ))
+                # v20.0: Atualiza correlation guard state
+                _last_entry_bar[_sig_dir] = i
+                _last_entry_price[_sig_dir] = entry_price
         elif len(open_positions) >= max_concurrent:
             _diag_max_concurrent_hit += 1
 

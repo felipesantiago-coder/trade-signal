@@ -8,32 +8,19 @@ v19.1 — Regime-Aware Adaptive Multi-Strategy System
     1. CTEV Trend (pullback/momentum) — tendencia com ADX > 22
     2. Squeeze Breakout (BBWP squeeze + breakout) — qualquer regime
     3. RSI Reversal (RSI extremo em tendencia) — tendencia estabelecida
-    4. Range Trader (BB band bounce) — ADX < 20, mercado lateral
-    5. RSI Extremes (RSI < 25 / > 75 + virada) — qualquer regime
+    4. Range Trader (BB band bounce) — ADX < 25, mercado lateral
+    5. RSI Extremes (RSI < 30 / > 70 + virada) — qualquer regime
     6. Scalp (intraday rapido, experimental) — qualquer regime
 
-  Metas: 90d/180d >= 30%, 365d >= 70%, 730d >= 120%.
-  Resultados v19.1: 90d +36.95%, 180d +61.08%, 365d +129.42%, 730d +232.15%
-
-  Chave: Position sizing por tipo de entrada (sim_concurrent.py).
-    - Squeeze (50% WR, 3:1 R:R) recebe 2.2% risk
-    - Momentum (54% WR em 90d) recebe 1.5% risk
-    - Pullback (WR inconsistente) recebe 0.1% risk
-"""
-
-v14.3 FINAL — CTEV ADX-32 (compromisso otimo frequencia/qualidade)
-  Evolucao: v12.0 -> v14.3 (unica mudanca: ADX 36 -> 32)
-
-  v12.0 base (grid-optimized, provado):
-    ADX 36, DI ON, transition OFF, RSI 45-65/35-55, EMA stack,
-    slope, Fib 2.5% tolerance, SL 2.8x/TP 5.5x ATR.
-
-  v14.3 mudanca: ADX 36 -> 32 (2o melhor do grid search)
-
-  v15.0 backtest: Trailing pos-TP1 1.0x ATR + Cooldown 16 bars
-    730d: +58.23% (era +49.03%) | 365d: +45.25% (era +33.55%)
-    180d: +5.45% (era -0.21%)  |  90d: +4.86% (era +2.48%)
-    Sinais CTEV nao alterados — mudancas apenas na camada de gestao de risco.
+  v20.0 — Correlation Guard + Strategy Relaxation
+  - Correlation Guard: minimo 6 bars entre entradas mesmas direcao
+  - Range Trader: ADX < 25 (de 20), BB touch 1.5% (de 0.5%)
+  - RSI Extremes: RSI < 30 /> 70 (de 25 /> 75), delta > 0.3 (de 0.5)
+  - Squeeze: BBWP < 45 (de 35)
+  - RSI Reversal: RSI < 40 /> 60 (de 35 /> 65)
+  - Position sizing balanceado (pullback 0.8%, todos >= 0.8%)
+  - Cooldown 4 bars (de 8)
+  - Metas: 30d/90d/180d >= 30%, 365d >= 70%, 730d >= 120%.
 """
 
 from __future__ import annotations
@@ -207,24 +194,24 @@ EMA_BOUNCE_MAX_BARS = 72
 SQUEEZE_SL_ATR_MULT = 2.00
 SQUEEZE_TP_ATR_MULT = 6.00
 SQUEEZE_MAX_BARS = 72
-SQUEEZE_BBWP_THRESHOLD = 35.0  # v19.1: 35 — sweet spot entre qualidade e quantidade
+SQUEEZE_BBWP_THRESHOLD = 45.0  # v20.0: 45 (de 35) — mais sinais, edge mantida
 
 # RSI Reversal: RSI extremo em tendencia = oportunidade de reversao
 RSI_REV_SL_ATR_MULT = 2.50
 RSI_REV_TP_ATR_MULT = 5.00
 RSI_REV_MAX_BARS = 96
 
-# ── v19.0: RANGE TRADER — BB Band Bounce para mercados laterais ──
-# Opera quando ADX < 20 (sem tendencia) e preco toca bandas BB.
-# Usa SL justo (1.5x ATR) e TP moderado (3.5x ATR) para R:R ~2.3:1.
-# Max bars curto (36 = 1.5 dias) para turnover rapido.
+# ── v20.0: RANGE TRADER — BB Band Bounce para mercados laterais ──
+# Opera quando ADX < 25 (lateral/fraca tendencia) e preco toca bandas BB.
+# v20.0: ADX < 25 (de 20), BB touch 1.5% (de 0.5%), RSI 42/58 (de 38/62)
+# Max bars 48 (de 36) para dar mais tempo ao trade.
 RANGE_SL_ATR_MULT = 1.50
 RANGE_TP_ATR_MULT = 3.50
-RANGE_MAX_BARS = 36
-RANGE_BB_TOUCH_THRESHOLD = 0.005   # 0.5% — preco deve estar DENTRO da banda
-RANGE_ADX_MAX = 20.0                # Apenas lateral verdadeiro
-RANGE_RSI_OVERSOLD = 38.0           # RSI < 38 para LONG
-RANGE_RSI_OVERBOUGHT = 62.0         # RSI > 62 para SHORT
+RANGE_MAX_BARS = 48
+RANGE_BB_TOUCH_THRESHOLD = 0.015   # 1.5% — preco perto da banda (de 0.5%)
+RANGE_ADX_MAX = 25.0                # v20.0: 25 (de 20) — captura mais cenarios
+RANGE_RSI_OVERSOLD = 42.0           # v20.0: 42 (de 38) — mais triggers
+RANGE_RSI_OVERBOUGHT = 58.0         # v20.0: 58 (de 62) — mais triggers
 
 # ── v19.1: SCALP — Quick intraday trades em QUALQUER regime ──
 # Alta frequencia (max 18 bars = ¾ dia), SL justo (1.0x), TP rapido (1.5x).
@@ -242,9 +229,9 @@ SCALP_RSI_DELTA_TRIGGER = 0.8  # RSI delta minimo para virada
 RSI_EXT_SL_ATR_MULT = 1.50
 RSI_EXT_TP_ATR_MULT = 3.00
 RSI_EXT_MAX_BARS = 36
-RSI_EXT_OVERSOLD = 25.0
-RSI_EXT_OVERBOUGHT = 75.0
-RSI_EXT_RSI_DELTA_MIN = 0.5    # RSI deve estar virando
+RSI_EXT_OVERSOLD = 30.0          # v20.0: 30 (de 25) — mais triggers
+RSI_EXT_OVERBOUGHT = 70.0        # v20.0: 70 (de 75) — mais triggers
+RSI_EXT_RSI_DELTA_MIN = 0.3    # v20.0: 0.3 (de 0.5) — mais sensivel
 
 
 def _price_near_fib(
@@ -1757,9 +1744,11 @@ def evaluate_rsi_extremes_short(row: pd.Series) -> Optional[Signal]:
 def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
     """RSI Reversal LONG — RSI sobrevendido em tendencia de alta = compra.
 
+    v20.0: RSI < 40 (de 35) para mais triggers.
+
     Requisitos:
       1. ema50 > ema200 (tendencia de alta estabelecida)
-      2. RSI < 35 (sobrevenda relativa na tendencia)
+      2. RSI < 40 (sobrevenda relativa na tendencia)
       3. rsi_delta > 0 (RSI virando para cima — reversao)
       4. close > ema50 (ainda acima da MA media)
       5. ATR percentile 10-90
@@ -1776,8 +1765,8 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
     # 1. Established uptrend (EMA stack)
     if not (ema50 > ema200):
         return None
-    # 2. RSI oversold in uptrend
-    if rsi >= 35.0:
+    # 2. RSI oversold in uptrend — v20.0: 40 (de 35)
+    if rsi >= 40.0:
         return None
     # 3. RSI turning up (reversal confirmation)
     if rsi_delta <= 0:
@@ -1808,9 +1797,11 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
 def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
     """RSI Reversal SHORT — RSI sobrecomprado em tendencia de baixa = venda.
 
+    v20.0: RSI > 60 (de 65) para mais triggers.
+
     Requisitos:
       1. ema50 < ema200 (tendencia de baixa estabelecida)
-      2. RSI > 65 (sobrecompra relativa na tendencia)
+      2. RSI > 60 (sobrecompra relativa na tendencia)
       3. rsi_delta < 0 (RSI virando para baixo — reversao)
       4. close < ema50 (ainda abaixo da MA media)
       5. ATR percentile 10-90
@@ -1827,8 +1818,8 @@ def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
     # 1. Established downtrend (EMA stack)
     if not (ema50 < ema200):
         return None
-    # 2. RSI overbought in downtrend
-    if rsi <= 65.0:
+    # 2. RSI overbought in downtrend — v20.0: 60 (de 65)
+    if rsi <= 60.0:
         return None
     # 3. RSI turning down (reversal confirmation)
     if rsi_delta >= 0:
