@@ -289,6 +289,8 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
                         "type": t.type,
                         "entry_price": t.entry_price,
                         "exit_price": t.exit_price,
+                        "stop_loss": t.stop_loss,
+                        "take_profit": t.take_profit,
                         "pnl_pct": t.pnl_pct,
                         "exit_reason": t.exit_reason,
                         "bars_held": t.bars_held,
@@ -297,6 +299,7 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
                         "trailing_activated": t.trailing_activated,
                         "partial_tp_filled": t.partial_tp_filled,
                         "position_usd": t.position_usd,
+                        "entry_type": getattr(t, 'entry_type', ''),
                     }
                     for t in trades
                 ],
@@ -387,9 +390,16 @@ async def api_trades(limit: int = 50) -> dict:
     }
 
 
-@app.get("/api/backtest/export", summary="Exporta resultado do backtest como Markdown")
+@app.get("/api/backtest/export", summary="Exporta resultado do backtest como Markdown Auditavel")
 async def api_backtest_export() -> Response:
-    """Gera e retorna arquivo .md com relatorio completo do ultimo backtest."""
+    """Gera e retorna arquivo .md com relatorio auditavel completo do ultimo backtest.
+
+    Utiliza o modulo report_auditor.py que implementa:
+    - 34 secoes com formula transparency (DADO->FORMULA->CALCULO->RESULTADO->INTERPRETACAO)
+    - Veredito 5 niveis (ROBUSTA/PROMISSORA/FRAGIL/NAO VALIDADA/REJEITADA)
+    - Monte Carlo, outlier analysis, cost sensitivity, overfitting audit
+    - Principio: AUDITABILIDADE > APARENCIA > MARKETING
+    """
     global _backtest_result, _backtest_meta
     if _backtest_result is None or not _backtest_result.get("ok"):
         return JSONResponse(
@@ -398,132 +408,21 @@ async def api_backtest_export() -> Response:
         )
 
     from datetime import datetime as _dt
+    from report_auditor import generate_audit_report
 
     m = _backtest_result.get("metrics", {})
     trades = _backtest_result.get("trades", [])
     tf = _backtest_meta.get("timeframe", "1h")
     days = _backtest_meta.get("days", 730)
-    now_str = _dt.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    tf_label = {"15m": "15 minutos", "30m": "30 minutos", "1h": "1 hora", "2h": "2 horas", "4h": "4 horas"}.get(tf, tf)
+    md_content = generate_audit_report(
+        metrics=m,
+        trades=trades,
+        timeframe=tf,
+        days=days,
+    )
 
-    # Verdict — v3: Reconhece estrategia assimetrica (baixo WR, alto R:R)
-    # Trend-following lucrativo tipicamente tem WR 25-35% com grandes winners.
-    # Classificacao deve priorizar: retorno absoluto, PF, e Return/DD ratio.
-    wr = m.get("win_rate", 0)
-    pnl = m.get("total_pnl_pct", 0)
-    bh = m.get("buy_hold_pct", 0)
-    pf = m.get("profit_factor", 0)
-    dd = m.get("max_drawdown_pct", 0)
-    alpha = pnl - bh
-    sharpe = m.get("sharpe_ratio", 0)
-
-    # Return-to-drawdown ratio (retorno por unidade de risco)
-    rd_ratio = pnl / dd if dd > 0 else 0
-
-    if pnl >= 200 and pf >= 1.1 and rd_ratio > 3.0:
-        verdict = "**EXCELENTE** — Retorno excepcional com risco controlado."
-    elif pnl >= 100 and pf >= 1.1 and rd_ratio > 2.0:
-        verdict = "**EXCELENTE** — Retorno excepcional com qualidade superior."
-    elif pnl >= 50 and pf >= 1.0 and rd_ratio > 1.5:
-        verdict = "**MUITO BOM** — Retorno forte e consistente."
-    elif pnl >= 20 and pf >= 1.0:
-        verdict = "**BOM** — Estrategia rentavel e solida."
-    elif pnl > 0 and pf >= 0.9:
-        verdict = "**ACEITAVEL** — Positivo, com espaco para otimizacao."
-    elif pnl > 0:
-        verdict = "**POSITIVO** — Retorno positivo, mas metricas de qualidade baixas."
-    else:
-        verdict = "**FRACO** — Precisa de otimizacao."
-
-    lines = [
-        f"# Relatorio de Backtest — CTEV Bot",
-        f"",
-        f"> Gerado em {now_str} | Timeframe: {tf_label} | Periodo: {days} dias",
-        f"> Veredicto: {verdict}",
-        f"",
-        f"---",
-        f"",
-        f"## Metricas de Performance",
-        f"",
-        f"| Metrica | Valor |",
-        f"|---------|-------|",
-        f"| Total de Trades | {m.get('total_trades', 0)} |",
-        f"| Trades Long | {m.get('long_trades', 0)} |",
-        f"| Trades Short | {m.get('short_trades', 0)} |",
-        f"| Vitorias | {m.get('wins', 0)} |",
-        f"| Derrotas | {m.get('losses', 0)} |",
-        f"| **Taxa de Acerto** | **{wr:.1f}%** |",
-        f"| **Fator de Lucro** | **{pf:.2f}** |",
-        f"| **Resultado Total** | **{pnl:+.2f}%** |",
-        f"| Buy & Hold | {bh:+.2f}% |",
-        f"| **Alpha vs B&H** | **{alpha:+.2f} pp** |",
-        f"| **Max Drawdown** | **{dd:.2f}%** |",
-        f"| Sharpe Ratio | {m.get('sharpe_ratio', 0):.2f} |",
-        f"| Ganho Medio | {m.get('avg_win_pct', 0):+.2f}% |",
-        f"| Perda Media | {m.get('avg_loss_pct', 0):+.2f}% |",
-        f"| Melhor Trade | {m.get('best_trade_pct', 0):+.2f}% |",
-        f"| Pior Trade | {m.get('worst_trade_pct', 0):+.2f}% |",
-        f"| Barras Medias em Posicao | {m.get('avg_bars_held', 0):.0f} |",
-        f"| R:R Medio | {m.get('avg_r_r', 0):.2f} |",
-        f"| Break-Even Triggered | {m.get('be_triggered_count', 0)} |",
-        f"| Trailing Stop Activated | {m.get('trailing_activated_count', 0)} |",
-        f"| Partial TP Filled | {m.get('partial_tp_count', 0)} |",
-        f"| Sinais Filtrados (ATR) | {m.get('atr_pct_filtered', 0)} |",
-        f"",
-        f"Periodo: `{m.get('period_start', '?')}` a `{m.get('period_end', '?')}`",
-        f"",
-        f"---",
-        f"",
-        f"## Historico de Trades",
-        f"",
-    ]
-
-    if trades:
-        lines.append(
-            f"| # | Entrada | Saida | Tipo | Preco Entrada | Preco Saida | Resultado | Motivo | Barras |"
-        )
-        lines.append(
-            f"|---|---------|-------|------|---------------|-------------|-----------|--------|--------|"
-        )
-        for i, t in enumerate(trades, 1):
-            pnl_val = t.get("pnl_pct", 0)
-            pnl_str = f"{pnl_val:+.2f}%"
-            entry_ts = str(t.get("entry_ts", ""))[:16]
-            exit_ts = str(t.get("exit_ts", ""))[:16]
-            lines.append(
-                f"| {i} | {entry_ts} | {exit_ts} | {t.get('type', '')} "
-                f"| ${t.get('entry_price', 0):,.2f} | ${t.get('exit_price', 0):,.2f} "
-                f"| {pnl_str} | {t.get('exit_reason', '-')} | {t.get('bars_held', 0)} |"
-            )
-    else:
-        lines.append("*Nenhum trade executado no periodo.*")
-
-    # Filter diagnostics
-    diag = m.get("filter_diag", {})
-    if diag and m.get("total_trades", 0) == 0:
-        lines.extend([
-            f"",
-            f"---",
-            f"",
-            f"## Diagnostico de Filtros (0 trades)",
-            f"",
-            f"| Regime | Quantidade |",
-            f"|--------|------------|",
-            f"| NaN (indicadores) | {diag.get('nan_filtered', 0):,} |",
-            f"| Trending Up | {diag.get('trending_up', 0):,} |",
-            f"| Trending Down | {diag.get('trending_down', 0):,} |",
-            f"| Regime Ranging | {diag.get('regime_ranging', 0):,} |",
-            f"| Regime Volatile | {diag.get('regime_volatile', 0):,} |",
-            f"| Transition | {diag.get('regime_transition', 0):,} |",
-            f"| Filtrado ATR | {diag.get('atr_filtered_diag', 0):,} |",
-            f"| Sem Sinal | {diag.get('no_signal', 0):,} |",
-        ])
-
-    lines.extend(["", f"---", f"", f"*Relatorio gerado automaticamente pelo CTEV Bot v4.0*"])
-
-    md_content = "\n".join(lines)
-    filename = f"backtest_{tf}_{days}d_{_dt.now(timezone.utc).strftime('%Y%m%d_%H%M')}.md"
+    filename = f"audit_{tf}_{days}d_{_dt.now(timezone.utc).strftime('%Y%m%d_%H%M')}.md"
 
     return Response(
         content=md_content.encode("utf-8"),
