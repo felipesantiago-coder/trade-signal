@@ -407,10 +407,9 @@ async def api_backtest_export() -> Response:
 
     tf_label = {"15m": "15 minutos", "30m": "30 minutos", "1h": "1 hora", "2h": "2 horas", "4h": "4 horas"}.get(tf, tf)
 
-    # Verdict — v2: Crypto-appropriate classification
-    # Em crypto, B&H pode retornar 200-500%+ em bull markets, tornando alpha vs B&H
-    # um benchmark irreal para estrategias gerenciadas com risco.
-    # Nova logica: classifica pelo retorno absoluto + qualidade (WR, PF, DD).
+    # Verdict — v3: Reconhece estrategia assimetrica (baixo WR, alto R:R)
+    # Trend-following lucrativo tipicamente tem WR 25-35% com grandes winners.
+    # Classificacao deve priorizar: retorno absoluto, PF, e Return/DD ratio.
     wr = m.get("win_rate", 0)
     pnl = m.get("total_pnl_pct", 0)
     bh = m.get("buy_hold_pct", 0)
@@ -419,16 +418,18 @@ async def api_backtest_export() -> Response:
     alpha = pnl - bh
     sharpe = m.get("sharpe_ratio", 0)
 
-    # Return-to-drawdown ratio (quanto retorno por unidade de risco)
+    # Return-to-drawdown ratio (retorno por unidade de risco)
     rd_ratio = pnl / dd if dd > 0 else 0
 
-    if wr >= 45 and pf >= 1.2 and pnl > 100 and rd_ratio > 2.0:
+    if pnl >= 200 and pf >= 1.1 and rd_ratio > 3.0:
+        verdict = "**EXCELENTE** — Retorno excepcional com risco controlado."
+    elif pnl >= 100 and pf >= 1.1 and rd_ratio > 2.0:
         verdict = "**EXCELENTE** — Retorno excepcional com qualidade superior."
-    elif wr >= 40 and pf >= 1.1 and pnl > 50 and rd_ratio > 1.0:
+    elif pnl >= 50 and pf >= 1.0 and rd_ratio > 1.5:
         verdict = "**MUITO BOM** — Retorno forte e consistente."
-    elif wr >= 35 and pf >= 1.0 and pnl > 20:
+    elif pnl >= 20 and pf >= 1.0:
         verdict = "**BOM** — Estrategia rentavel e solida."
-    elif pnl > 0 and (wr >= 30 or pf >= 0.9):
+    elif pnl > 0 and pf >= 0.9:
         verdict = "**ACEITAVEL** — Positivo, com espaco para otimizacao."
     elif pnl > 0:
         verdict = "**POSITIVO** — Retorno positivo, mas metricas de qualidade baixas."
