@@ -417,7 +417,6 @@ async def api_backtest_export() -> Response:
     pf = m.get("profit_factor", 0)
     dd = m.get("max_drawdown_pct", 0)
     alpha = pnl - bh
-    trades = m.get("total_trades", 0)
     sharpe = m.get("sharpe_ratio", 0)
 
     # Return-to-drawdown ratio (quanto retorno por unidade de risco)
