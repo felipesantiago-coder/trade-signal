@@ -182,7 +182,7 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v23.0] 4 estrategias. ADX>25, SL 3.0x/TP 4.0x. BE OFF. 3 concurrent."
+        "[v24.0] 4 estrategias. ADX>25. CTEV SL 1.8x/TP 5.5x (R:R=3.06). 3 concurrent."
     ),
     adx_min=25.0,
     allow_transition=True,

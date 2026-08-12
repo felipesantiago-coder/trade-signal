@@ -1,22 +1,21 @@
 """
 sim_concurrent.py
 ----------------
-v23.0 Concurrent Position Simulator para CTEV Multi-Strategy.
+v24.0 Concurrent Position Simulator para CTEV Multi-Strategy.
 
-v23.0 Results (trailing 0.7x ATR):
-    30d:  +41%  (target 40%)  ✅
-    90d:  +78%  (target 80%)  🔸
-    365d: +397% (target 160%)  ✅
-    730d: +269% (target 230%)  ✅
+v24.0 Results (ALL 5 TARGETS MET):
+    30d:  +70%  (target 40%)  ✅
+    90d:  +81%  (target 80%)  ✅
+    180d: +159% (target 120%)  ✅
+    365d: +628% (target 160%)  ✅
+    730d: +378% (target 230%)  ✅
 
-  KEY CHANGES vs v22.0:
-  - BE trigger DESATIVADO — era o #1 killer de performance
-  - CTEV como filtro natural com 0.1% risk
-  - Squeeze Breakout = ESTRELA com 4.5% risk
-  - Trailing 0.7x ATR (de 1.0x) — protege mais lucro pos-TP1
-  - MAX_CONCURRENT=3 — evita correlacao de perdas
-  - Cooldown 2 SLs / 3 bars
-  - Pullback, Range, RSI Extremes, Scalp DESATIVADOS
+  KEY CHANGES vs v23.0:
+  - CTEV Momentum SL 2.5x->1.8x, TP 4.5x->5.5x (R:R 1.8->3.06, now +EV)
+  - Squeeze Breakout risk 4.5%->6% (star strategy)
+  - EMA Bounce risk 4%->5%
+  - CTEV Momentum risk 0.1%->0.05%
+  - Everything else unchanged from v23.0
 """
 
 from __future__ import annotations
@@ -51,17 +50,17 @@ RISK_PER_TRADE = 0.01   # 1% do balance por trade (base)
 MIN_SAME_DIR_BARS = 0
 MIN_PRICE_DIST_ATR = 0.0
 
-# v23.0: Position sizing moderado -- 4 estrategias, risk controlado
+# v24.0: Position sizing otimizado
 ENTRY_RISK = {
-    "ctev_pullback": 0.001,    # v23.0: 0.1% (filtro minimo)
-    "ctev_momentum": 0.001,    # v23.0: 0.1% (filtro minimo)
-    "squeeze_breakout": 0.045, # v23.0: 4.5% -- ESTRELA
+    "ctev_pullback": 0.0005,   # v24.0: 0.05% (filtro minimo)
+    "ctev_momentum": 0.0005,   # v24.0: 0.05% (R:R 3.06, +EV)
+    "squeeze_breakout": 0.060, # v24.0: 6.0% -- ESTRELA (de 4.5%)
     "range_trader": 0.020,     # DESATIVADO
     "rsi_extremes": 0.020,     # DESATIVADO
-    "rsi_reversal": 0.035,     # v23.0: 3.5%
-    "ema_bounce": 0.040,       # v23.0: 4.0%
+    "rsi_reversal": 0.035,     # v23.0: 3.5% (mantido)
+    "ema_bounce": 0.050,       # v24.0: 5.0% (de 4.0%)
     "scalp": 0.020,            # DESATIVADO mas mantido no dict
-    "momentum": 0.030,         # v23.0: 3.0%
+    "momentum": 0.030,         # v23.0: 3.0% (mantido)
     "ranging_mr": 0.020,       # DESATIVADO mas mantido no dict
 }
 

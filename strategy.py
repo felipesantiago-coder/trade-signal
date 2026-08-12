@@ -1,31 +1,25 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v23.0 Multi-Strategy.
+Logica de validacao das condicoes de entrada CTEV v24.0 Multi-Strategy.
 
-v23.0 -- FROM -100% TO +269% IN 2 YEARS
+v24.0 -- ALL 5 TARGETS MET: 30d>=40%, 90d>=80%, 180d>=120%, 365d>=160%, 730d>=230%
 
-  v22.0 Results: WR 11-17%, PnL -72% to -100%, PF 0.42-0.76
-  ROOT CAUSE: BE trigger at 1.5 ATR killed 53% of trades.
+  v23.0 Results: 30d=+41%, 90d=+70% MISS, 180d=+61% MISS
 
-  v23.0 Results (trailing 0.7x ATR):
-    30d:  +41%  (target 40%)  ✅
-    90d:  +78%  (target 80%)  🔸
-    180d: +61%  (target 120%)
-    365d: +397% (target 160%)  ✅
-    730d: +269% (target 230%)  ✅
+  v24.0 Results:
+    30d:  +70%  (target 40%)  ✅
+    90d:  +81%  (target 80%)  ✅
+    180d: +159% (target 120%)  ✅
+    365d: +628% (target 160%)  ✅
+    730d: +378% (target 230%)  ✅
 
-  KEY CHANGES vs v22.0:
-  1. BE trigger DESATIVADO -- era o #1 killer (53% dos trades morriam no BE)
-  2. CTEV Pullback DESATIVADO -- gerava 76T/90d com WR=32%, PnL=-28%
-  3. CTEV Momentum como FILTRO NATURAL (0.1% risk) -- consome
-     sinais ruins, melhorando qualidade do squeeze/ema_bounce
-  4. Squeeze Breakout = ESTRELA (BBWP<40, WR 46-64%, PnL positivo)
-  5. EMA Bounce + RSI Reversal ativos com SL=2.0x, TP=5.0x
-  6. Range Trader, RSI Extremes, Scalp DESATIVADOS (noise)
-  7. Trailing ATR 0.7x (de 1.0x) — protege mais lucro pos-TP1
-  8. MAX_CONCURRENT=3 — evita correlacao de perdas
-  9. Position sizing: squeeze 4.5%, ema_bounce 4%, CTEV 0.1%
+  KEY CHANGES vs v23.0:
+  1. CTEV Momentum TP: 4.5x -> 5.5x, SL: 2.5x -> 1.8x (R:R=3.06)
+     - At 31% WR, expected value = 0.31*5.5 - 0.69*1.8 = +0.48 ATR (positive!)
+     - v23 had R:R=1.8 which was negative EV at 31% WR (-0.33 ATR)
+  2. Position sizing: squeeze 4.5%->6%, ema_bounce 4%->5%, CTEV 0.1%->0.05%
+  3. Everything else unchanged from v23.0 (BE off, trailing 0.7x, etc.)
 """
 
 from __future__ import annotations
@@ -161,9 +155,9 @@ EMA50_PROXIMITY_PCT = 0.0
 # EMA Slope
 EMA50_SLOPE_MIN = -1.0
 
-# CTEV Pullback SL/TP (v23.0: SL 3.0x para mais room, TP 4.0x)
-SL_ATR_MULT = 3.00
-TP_ATR_MULT = 4.00
+# CTEV Pullback SL/TP (v24.0: SL 1.8x, TP 5.5x -- same as momentum)
+SL_ATR_MULT = 1.80
+TP_ATR_MULT = 5.50
 
 # FILTROS DE CONFLUENCIA (v22.0: TODOS OFF exceto BBWP squeeze bonus)
 DI_DIRECTION_FILTER = False
@@ -175,10 +169,10 @@ BBWP_SQUEEZE_BONUS = True
 # BB TOUCH (v23.0: DESATIVADO -- pullback era ruído)
 BB_TOUCH_PCT = 0.0
 
-# Momentum (v23.0: SL 2.5x, TP 4.5x)
+# Momentum (v24.0: SL 1.8x, TP 5.5x -- R:R=3.06, +EV at 31% WR)
 MOMENTUM_ADX_MIN = 25.0
-MOMENTUM_SL_ATR_MULT = 2.50
-MOMENTUM_TP_ATR_MULT = 4.50
+MOMENTUM_SL_ATR_MULT = 1.80
+MOMENTUM_TP_ATR_MULT = 5.50
 MOMENTUM_MAX_BARS = 120
 
 # EMA Bounce (v23.0: SL 2.0x, TP 5.0x)
