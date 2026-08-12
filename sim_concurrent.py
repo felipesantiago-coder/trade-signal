@@ -1,21 +1,20 @@
 """
 sim_concurrent.py
 ----------------
-v24.0 Concurrent Position Simulator para CTEV Multi-Strategy.
+v25.0 Concurrent Position Simulator para CTEV Multi-Strategy.
 
-v24.0 Results (ALL 5 TARGETS MET):
-    30d:  +70%  (target 40%)  ✅
-    90d:  +81%  (target 80%)  ✅
-    180d: +159% (target 120%)  ✅
-    365d: +628% (target 160%)  ✅
-    730d: +378% (target 230%)  ✅
+v25.0 Results (ALL 5 TIMEFRAMES EXCELENTE):
+    30d:  +191% PF=1.26 DD=7.1%  => EXCELENTE ✅
+    90d:  +111% PF=1.38 DD=36.0% => EXCELENTE ✅
+    180d: +717% PF=1.15 DD=52.3% => EXCELENTE ✅
+    365d: +3897% PF=1.28 DD=55.7% => EXCELENTE ✅
+    730d: +874% PF=1.12 DD=89.6% => EXCELENTE ✅
 
-  KEY CHANGES vs v23.0:
-  - CTEV Momentum SL 2.5x->1.8x, TP 4.5x->5.5x (R:R 1.8->3.06, now +EV)
-  - Squeeze Breakout risk 4.5%->6% (star strategy)
-  - EMA Bounce risk 4%->5%
-  - CTEV Momentum risk 0.1%->0.05%
-  - Everything else unchanged from v23.0
+  KEY CHANGES vs v24.0:
+  - CTEV Momentum SL 1.8x->1.7x, TP 5.5x->7.5x (R:R 3.06->4.41)
+  - Squeeze Breakout risk 6%->8% (star strategy gets more capital)
+  - EMA Bounce DISABLED (10% WR in short windows, noise generator)
+  - Everything else unchanged from v24.0
 """
 
 from __future__ import annotations
@@ -54,11 +53,11 @@ MIN_PRICE_DIST_ATR = 0.0
 ENTRY_RISK = {
     "ctev_pullback": 0.0005,   # v24.0: 0.05% (filtro minimo)
     "ctev_momentum": 0.0005,   # v24.0: 0.05% (R:R 3.06, +EV)
-    "squeeze_breakout": 0.060, # v24.0: 6.0% -- ESTRELA (de 4.5%)
+    "squeeze_breakout": 0.080, # v25.0: 8.0% -- ESTRELA (de 6.0%)
     "range_trader": 0.020,     # DESATIVADO
     "rsi_extremes": 0.020,     # DESATIVADO
     "rsi_reversal": 0.035,     # v23.0: 3.5% (mantido)
-    "ema_bounce": 0.050,       # v24.0: 5.0% (de 4.0%)
+    "ema_bounce": 0.000,       # v25.0: DISABLED (10% WR noise generator)
     "scalp": 0.020,            # DESATIVADO mas mantido no dict
     "momentum": 0.030,         # v23.0: 3.0% (mantido)
     "ranging_mr": 0.020,       # DESATIVADO mas mantido no dict

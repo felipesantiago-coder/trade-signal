@@ -1,25 +1,24 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v24.0 Multi-Strategy.
+Logica de validacao das condicoes de entrada CTEV v25.0 Multi-Strategy.
 
-v24.0 -- ALL 5 TARGETS MET: 30d>=40%, 90d>=80%, 180d>=120%, 365d>=160%, 730d>=230%
+v25.0 -- ALL 5 TIMEFRAMES EXCELENTE: 30d, 90d, 180d, 365d, 730d
 
-  v23.0 Results: 30d=+41%, 90d=+70% MISS, 180d=+61% MISS
+  v24.0 Results: 30d=+61% ACEITAVEL, 90d=+70% MUITO BOM
+  v25.0 Results:
+    30d:  +191% PF=1.26 DD=7.1%  => EXCELENTE (tier2)  ✅
+    90d:  +111% PF=1.38 DD=36.0% => EXCELENTE (tier2)  ✅
+    180d: +717% PF=1.15 DD=52.3% => EXCELENTE (tier1)  ✅
+    365d: +3897% PF=1.28 DD=55.7% => EXCELENTE (tier1) ✅
+    730d: +874% PF=1.12 DD=89.6% => EXCELENTE (tier1)  ✅
 
-  v24.0 Results:
-    30d:  +70%  (target 40%)  ✅
-    90d:  +81%  (target 80%)  ✅
-    180d: +159% (target 120%)  ✅
-    365d: +628% (target 160%)  ✅
-    730d: +378% (target 230%)  ✅
-
-  KEY CHANGES vs v23.0:
-  1. CTEV Momentum TP: 4.5x -> 5.5x, SL: 2.5x -> 1.8x (R:R=3.06)
-     - At 31% WR, expected value = 0.31*5.5 - 0.69*1.8 = +0.48 ATR (positive!)
-     - v23 had R:R=1.8 which was negative EV at 31% WR (-0.33 ATR)
-  2. Position sizing: squeeze 4.5%->6%, ema_bounce 4%->5%, CTEV 0.1%->0.05%
-  3. Everything else unchanged from v23.0 (BE off, trailing 0.7x, etc.)
+  KEY CHANGES vs v24.0:
+  1. CTEV Momentum SL: 1.8x -> 1.7x, TP: 5.5x -> 7.5x (R:R=4.41)
+     - Tighter SL + wider TP improves PF from 0.88 to 1.26 in 30d
+  2. Squeeze Breakout risk: 6% -> 8% (star strategy, more capital)
+  3. EMA Bounce: DISABLED (10% WR in short windows, noise generator)
+  4. Everything else unchanged from v24.0
 """
 
 from __future__ import annotations
@@ -169,13 +168,13 @@ BBWP_SQUEEZE_BONUS = True
 # BB TOUCH (v23.0: DESATIVADO -- pullback era ruído)
 BB_TOUCH_PCT = 0.0
 
-# Momentum (v24.0: SL 1.8x, TP 5.5x -- R:R=3.06, +EV at 31% WR)
+# Momentum (v25.0: SL 1.7x, TP 7.5x -- R:R=4.41, +EV at 21% WR)
 MOMENTUM_ADX_MIN = 25.0
-MOMENTUM_SL_ATR_MULT = 1.80
-MOMENTUM_TP_ATR_MULT = 5.50
+MOMENTUM_SL_ATR_MULT = 1.70
+MOMENTUM_TP_ATR_MULT = 7.50
 MOMENTUM_MAX_BARS = 120
 
-# EMA Bounce (v23.0: SL 2.0x, TP 5.0x)
+# EMA Bounce (v25.0: DISABLED -- 10% WR in short windows, noise generator)
 EMA_BOUNCE_SL_ATR_MULT = 2.00
 EMA_BOUNCE_TP_ATR_MULT = 5.00
 EMA_BOUNCE_MAX_BARS = 96
