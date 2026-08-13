@@ -309,7 +309,7 @@ def generate_audit_report_v2(
         for i, pt in enumerate(full_equity):
             if step > 1 and i % step != 0 and i != len(full_equity) - 1:
                 continue
-            L.append(f"| {pt['trade_num']} | {pt['timestamp'][:16]} | {pt['balance']:,.2f} | {_pct(pt['return_pct'], 2)} | {_pct(pt['drawdown_pct'], 2)} | {pt['strategy']} | {pt['direction']} | {pt['r_multiple']} |")
+            L.append(f"| {pt['trade_num']} | {pt['timestamp'][:16]} | {pt['balance']:,.2f} | {_pct(pt.get('return_cumulative_pct', 0), 2)} | {_pct(pt['drawdown_pct'], 2)} | {pt.get('entry_type', '')} | {pt.get('type', '')} | {pt.get('r_multiple', 0)} |")
         L.append(f"\n*Equity curve completa: {len(full_equity)} pontos.")
     else:
         L.append(f"INFORMACAO NAO DISPONIVEL")
@@ -318,16 +318,15 @@ def generate_audit_report_v2(
     L.append(f"\n---\n\n## 14. Drawdown Analysis\n")
     L.append(f"| Metrica | Valor |")
     L.append(f"|---------|-------|")
-    L.append(f"| Max Drawdown | {_pct(dd_audit.max_dd)} |")
-    L.append(f"| Media | {_pct(dd_audit.avg_dd)} |")
-    L.append(f"| Mediana | {_pct(dd_audit.median_dd)} |")
-    L.append(f"| Recovery Factor | {_med(dd_audit.recovery_factor)} |")
-    L.append(f"| Episodios de DD | {dd_audit.n_dd_episodes} |")
-    L.append(f"| Duracao media | {dd_audit.avg_dd_duration_bars:.1f} trades |")
-    L.append(f"| Maior duracao | {dd_audit.longest_dd_bars} trades |")
-    L.append(f"| DD-Return correlacao | {dd_audit.dd_return_correlation:.4f} |")
-    L.append(f"| Tempo DD > 10% | {dd_audit.time_below_10pct} trades |")
-    L.append(f"| Tempo DD > 20% | {dd_audit.time_below_20pct} trades |")
+    L.append(f"| Max Drawdown | {_pct(dd_audit.max_drawdown_pct)} |")
+    L.append(f"| Media | {_pct(dd_audit.avg_drawdown_pct)} |")
+    L.append(f"| Mediana | N/A |")
+    L.append(f"| Recovery Factor | N/A |")
+    L.append(f"| Episodios DD > 10% | {dd_audit.n_drawdowns_above_10pct} |")
+    L.append(f"| Episodios DD > 20% | {dd_audit.n_drawdowns_above_20pct} |")
+    L.append(f"| Pior tempo recuperacao | {dd_audit.worst_recovery_time_bars} bars |")
+    L.append(f"| Duracao max DD | {dd_audit.max_dd_duration_bars} bars |")
+    L.append(f"| DD atual | {_pct(dd_audit.current_drawdown_pct)} |")
 
     # 15. DRAWDOWN MANAGEMENT AUDIT (NEW)
     L.append(f"\n---\n\n## 15. Gestao de Drawdown (Auditoria)\n")
@@ -336,27 +335,31 @@ def generate_audit_report_v2(
     L.append(f"| DD-based risk reduction | NAO IMPLEMENTADO | - |")
     L.append(f"| Circuit breaker diario (5%) | NAO IMPLEMENTADO | - |")
     L.append(f"| Circuit breaker semanal (10%) | NAO IMPLEMENTADO | - |")
-    L.append(f"| Recovery target | {dd_audit.recovery_factor:.2f} | {'BOM' if dd_audit.recovery_factor > 2 else 'FRACO'} |")
-    L.append(f"| Max DD controlado < 25% | {'SIM' if dd_audit.max_dd < 25 else 'NAO'} | {'OK' if dd_audit.max_dd < 25 else 'ATENCAO'} |")
-    L.append(f"| DD < 30% por < 50% do tempo | {'SIM' if dd_audit.time_below_30pct < len(trades) * 0.5 else 'NAO'} | - |")
+    L.append(f"| Max DD controlado < 25% | {'SIM' if dd_audit.max_drawdown_pct < 25 else 'NAO'} | {'OK' if dd_audit.max_drawdown_pct < 25 else 'ATENCAO'} |")
+    L.append(f"| DD < 30% | {'SIM' if dd_audit.max_drawdown_pct < 30 else 'NAO'} | - |")
 
     # 16. LONG vs SHORT (enhanced)
     L.append(f"\n---\n\n## 16. LONG vs SHORT\n")
-    for d in ["long", "short"]:
-        s = ls_analysis.get(d, {})
-        L.append(f"### {d.upper()} ({s.get('n_trades', 0)} trades)\n")
-        L.append(f"| Metrica | Valor |")
-        L.append(f"|---------|-------|")
-        L.append(f"| Win Rate | {_pct(s.get('win_rate', 0))} |")
-        L.append(f"| Profit Factor | {_med(s.get('profit_factor', 0))} |")
-        L.append(f"| Retorno total | {_fmt(s.get('total_pnl', 0))}% |")
-        L.append(f"| Ganho medio | {_fmt(s.get('avg_win', 0))}% |")
-        L.append(f"| Perda media | {_fmt(s.get('avg_loss', 0))}% |")
-        L.append(f"| Expectancy | {_fmt(s.get('expectancy', 0))}% |")
-        L.append(f"| Avg R-Multiple | {_med(s.get('avg_r_multiple', 0))} |")
-        L.append("")
-    asym = ls_analysis.get("asymmetry", {})
-    L.append(f"**Assimetria:** {asym.get('warning', '')}\n")
+    L.append(f"### LONG ({ls_analysis.long_trades} trades)\n")
+    L.append(f"| Metrica | Valor |")
+    L.append(f"|---------|-------|")
+    L.append(f"| Win Rate | {_pct(ls_analysis.long_wr)} |")
+    L.append(f"| Profit Factor | {_med(ls_analysis.long_pf)} |")
+    L.append(f"| Retorno total | {_fmt(ls_analysis.long_pnl)}% |")
+    L.append(f"| Ganho medio | {_fmt(ls_analysis.long_avg_win)}% |")
+    L.append(f"| Perda media | {_fmt(ls_analysis.long_avg_loss)}% |")
+    L.append("")
+    L.append(f"### SHORT ({ls_analysis.short_trades} trades)\n")
+    L.append(f"| Metrica | Valor |")
+    L.append(f"|---------|-------|")
+    L.append(f"| Win Rate | {_pct(ls_analysis.short_wr)} |")
+    L.append(f"| Profit Factor | {_med(ls_analysis.short_pf)} |")
+    L.append(f"| Retorno total | {_fmt(ls_analysis.short_pnl)}% |")
+    L.append(f"| Ganho medio | {_fmt(ls_analysis.short_avg_win)}% |")
+    L.append(f"| Perda media | {_fmt(ls_analysis.short_avg_loss)}% |")
+    L.append("")
+    asym_label = 'BALANCEADA' if ls_analysis.asymmetry_ratio < 2 else 'LONG-BIASED' if ls_analysis.long_pnl > ls_analysis.short_pnl else 'SHORT-BIASED'
+    L.append(f"**Assimetria:** ratio={ls_analysis.asymmetry_ratio:.2f} ({asym_label})\n")
 
     # 17. PERFORMANCE MENSAL
     L.append(f"\n---\n\n## 17. Performance Mensal\n")
@@ -378,11 +381,11 @@ def generate_audit_report_v2(
 
     # 19. PERFORMANCE POR REGIME (NEW)
     L.append(f"\n---\n\n## 19. Performance por Regime\n")
-    if regime_results:
-        L.append(f"| Regime | Trades | WR | PF | PnL | Avg PnL | Max DD | LONG% | SHORT% |")
-        L.append(f"|--------|-------|----|----|-----|---------|--------|--------|-------|--------|")
-        for r in regime_results:
-            L.append(f"| {r.regime} | {r.n_trades} | {_pct(r.win_rate)} | {_med(r.profit_factor)} | {_fmt(r.total_pnl)}% | {_fmt(r.avg_pnl)}% | {_pct(r.max_dd)} | {r.long_pct}% | {r.short_pct}% |")
+    if regime_results and regime_results.regimes:
+        L.append(f"| Regime | Trades | WR | PF | PnL | Avg PnL | R:R |")
+        L.append(f"|--------|-------|----|----|-----|---------|------|")
+        for name, data in sorted(regime_results.regimes.items(), key=lambda x: abs(x[1].get('total_pnl_pct', 0)), reverse=True):
+            L.append(f"| {name} | {data.get('n_trades', 0)} | {_pct(data.get('win_rate', 0))} | {_med(data.get('profit_factor', 0))} | {_fmt(data.get('total_pnl_pct', 0))}% | {_fmt(data.get('avg_pnl_pct', 0))}% | {data.get('avg_r_multiple', 0)} |")
     else:
         L.append(f"Dados de regime nao disponivel (campo regime_at_entry vazio).")
 
@@ -404,19 +407,17 @@ def generate_audit_report_v2(
     # 21. OUTLIERS (from audit_framework)
     L.append(f"\n---\n\n## 21. Outliers\n")
     if outlier_results:
-        L.append(f"**Dependencia dos melhores trades:**\n")
-        L.append(f"| Cenario | PnL Total | Diferenca vs Original |")
-        L.append(f"|---------|-----------|----------------------|")
-        for o in outlier_results:
-            L.append(f"| Sem top {o.removal_pct:.0f}% ({o.trades_removed} trades) | {_fmt(o.return_without_outliers_top)}% | {_fmt(o.return_without_outliers_top - o.return_original)}pp |")
-        L.append(f"\n**Dependencia dos piores trades:**\n")
-        L.append(f"| Cenario | PnL Total | Diferenca vs Original |")
-        L.append(f"|---------|-----------|----------------------|")
-        for o in outlier_results:
-            L.append(f"| Sem bottom {o.removal_pct:.0f}% ({o.trades_removed} trades) | {_fmt(o.return_without_outliers_bottom)}% | {_fmt(o.return_without_outliers_bottom - o.return_original)}pp |")
-        dep = outlier_results[0].top_dependency if outlier_results else 0
-        dep_label = 'baixa' if dep < 30 else 'media' if dep < 50 else 'alta' if dep < 70 else 'critica'
-        L.append(f"\nA dependencia de outliers e {dep_label} ({dep:.1f}% nos top 5%).")
+        L.append(f"**Top 5 trades (lucro):**\n")
+        for t in outlier_results.top_5_trades_pnl:
+            L.append(f"- {t.get('entry_type', '?')} | PnL={t.get('pnl_pct', 0):+.4f}% | R={t.get('r_multiple', 0)}")
+        L.append(f"\n**Bottom 5 trades (perda):**\n")
+        for t in outlier_results.bottom_5_trades_pnl:
+            L.append(f"- {t.get('entry_type', '?')} | PnL={t.get('pnl_pct', 0):+.4f}% | R={t.get('r_multiple', 0)}")
+        L.append(f"\n- **Contribuicao top 5:** {outlier_results.top_5_trades_contribution_pct:.1f}% do PnL total")
+        L.append(f"- **Tail Ratio:** {outlier_results.tail_ratio:.2f}")
+        L.append(f"- **Skewness:** {outlier_results.skewness:.2f}")
+        L.append(f"- **Kurtosis:** {outlier_results.kurtosis:.2f}")
+        L.append(f"- **Max single trade risk:** {outlier_results.max_single_trade_risk_pct:.2f}%")
 
     # 22. EXPECTANCY
     L.append(f"\n---\n\n## 22. Expectancy\n")
@@ -466,20 +467,22 @@ def generate_audit_report_v2(
     L.append(f"Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO\n")
     L.append(f"| Componente | Score (0-100) | Peso |")
     L.append(f"|-----------|---------------|------|")
-    L.append(f"| Robustez (Sharpe+Sortino+Calmar+RF) | {mo.robustness_score:.1f} | 35% |")
-    L.append(f"| Risco (inverso do MaxDD) | {mo.risk_score:.1f} | 25% |")
-    L.append(f"| Consistencia (PF+WR) | {mo.consistency_score:.1f} | 20% |")
-    L.append(f"| Retorno (CAGR) | {mo.return_score:.1f} | 20% |")
+    L.append(f"| Edge | {mo.edge_score:.1f} | 15% |")
+    L.append(f"| Gestao de Risco | {mo.risk_mgmt_score:.1f} | 15% |")
+    L.append(f"| Robustez | {mo.robustness_score:.1f} | 20% |")
+    L.append(f"| Validacao | {mo.validation_score:.1f} | 15% |")
+    L.append(f"| Anti-Overfitting | {mo.overfitting_score:.1f} | 15% |")
+    L.append(f"| Amostra | {mo.sample_score:.1f} | 10% |")
+    L.append(f"| Monte Carlo | {mo.mc_score:.1f} | 10% |")
     L.append(f"| **Composite** | **{mo.composite_score:.1f}** | **100%** |")
     L.append(f"\n| Metrica Avancada | Valor |")
     L.append(f"|-----------------|-------|")
-    L.append(f"| Sortino Ratio | {mo.sortino} |")
-    L.append(f"| Calmar Ratio | {mo.calmar} |")
-    L.append(f"| Omega Ratio | {mo.omega} |")
-    L.append(f"| Recovery Factor | {mo.recovery_factor} |")
-    L.append(f"| CAGR | {mo.cagr}% |")
-    L.append(f"| Expected Shortfall | {mo.expected_shortfall}% |")
-    L.append(f"| Expectancy/Risco | {mo.expectancy_per_risk} |")
+    L.append(f"| Sortino Ratio | {sortino} |")
+    L.append(f"| Calmar Ratio | {calmar} |")
+    L.append(f"| Omega Ratio | {omega} |")
+    L.append(f"| Recovery Factor | {recovery} |")
+    L.append(f"| CAGR | {cagr}% |")
+    L.append(f"| Expected Shortfall | {es}% |")
 
     # 27. SENSIBILIDADE DOS PARAMETROS
     L.append(f"\n---\n\n## 27. Sensibilidade dos Parametros\n")
@@ -492,9 +495,7 @@ def generate_audit_report_v2(
     L.append(f"**Fatores de risco:**")
     for f in overfitting.factors:
         L.append(f"- {f}")
-    L.append(f"\n**Mitigacoes:**")
-    for m in overfitting.mitigations:
-        L.append(f"- {m}")
+    L.append(f"\n**Detalhes:** {overfitting.details}")
 
     # 29. OUT-OF-SAMPLE
     L.append(f"\n---\n\n## 29. Out-of-Sample\n")
@@ -530,33 +531,41 @@ def generate_audit_report_v2(
 
     # 32. DECOMPOSICAO POR ESTRATEGIA (NEW)
     L.append(f"\n---\n\n## 32. Decomposicao por Estrategia\n")
-    L.append(f"| Estrategia | Trades | WR | PF | PnL | Contribuicao | Avg PnL | SL% | TP% | R:R |")
-    L.append(f"|------------|-------|----|----|-----|-------------|---------|-----|-----|------|")
+    L.append(f"| Estrategia | Trades | WR | PnL Total | Contribuicao | Avg PnL | R:R |")
+    L.append(f"|------------|-------|----|----------|-------------|---------|------|")
     for d in sorted(decomposition, key=lambda x: abs(x.total_pnl_pct), reverse=True):
-        L.append(f"| {d.strategy_name} | {d.n_trades} | {_pct(d.win_rate)} | {_med(d.profit_factor)} | {_fmt(d.total_pnl_pct)}% | {d.return_contribution_pct}% | {_fmt(d.avg_pnl)}% | {d.sl_rate}% | {d.tp_rate}% | {d.avg_r_multiple} |")
+        L.append(f"| {d.name} | {d.n_trades} | {_pct(d.win_rate)} | {_fmt(d.total_pnl_pct)}% | {d.contribution_pct}% | {_fmt(d.avg_pnl_pct)}% | {d.avg_r_multiple} |")
 
     # 33. CONTRIBUICAO AO PORTFOLIO (NEW)
     L.append(f"\n---\n\n## 33. Contribuicao ao Portfolio\n")
-    L.append(f"| Estrategia | PnL | Contribuicao | Trades | PF | WR |")
-    L.append(f"|------------|-----|-------------|-------|----|----|")
-    for c in portfolio_contrib.get("contributions", []):
-        L.append(f"| {c['strategy']} | {_fmt(c['pnl'])}% | {c['contribution_pct']}% | {c['n_trades']} | {_med(c['pf'])} | {_pct(c['wr'])} |")
-    L.append(f"\n- HHI: {portfolio_contrib.get('hhi', 0):.4f} ({portfolio_contrib.get('hhi_interpretation', '')})")
+    L.append(f"| Estrategia | PnL | Contribuicao | Trades | WR |")
+    L.append(f"|------------|-----|-------------|-------|----|")
+    for d in decomposition:
+        L.append(f"| {d.name} | {_fmt(d.total_pnl_pct)}% | {d.contribution_pct}% | {d.n_trades} | {_pct(d.win_rate)} |")
+    L.append(f"\n- HHI: {portfolio_contrib.get('concentration_hhi', 0):.4f}")
+    L.append(f"- Diversificacao: {portfolio_contrib.get('diversification_score', 0):.1f}/100")
     L.append(f"- Estrategia dominante: {portfolio_contrib.get('dominant_strategy', 'N/A')}")
 
     # 34. ESTABILIDADE TEMPORAL (NEW)
     L.append(f"\n---\n\n## 34. Estabilidade Temporal\n")
     if temporal and temporal.n_windows >= 2:
+        wins_pf = [w.get("profit_factor", 0) for w in temporal.window_results if w.get("profit_factor", 0) > 0]
+        wins_wr = [w.get("win_rate", 0) for w in temporal.window_results]
+        wins_ret = [w.get("total_pnl", 0) for w in temporal.window_results]
+        avg_pf = float(np.mean(wins_pf)) if wins_pf else 0
+        avg_ret = float(np.mean(wins_ret)) if wins_ret else 0
         L.append(f"| Metrica | Valor |")
         L.append(f"|---------|-------|")
-        L.append(f"| Janelas | {temporal.n_windows} ({temporal.window_size_days}d cada) |")
-        L.append(f"| PF medio | {temporal.avg_pf:.4f} (std={temporal.std_pf:.4f}) |")
-        L.append(f"| WR medio | {temporal.avg_wr:.2f}% (std={temporal.std_wr:.2f}%) |")
-        L.append(f"| Retorno medio | {temporal.avg_return:.2f}% (std={temporal.std_return:.2f}%) |")
-        L.append(f"| PF CV | {temporal.pf_cv:.4f} |")
-        L.append(f"| Consistencia | {temporal.consistency_score:.1%} ({temporal.n_windows}/{temporal.n_windows} janelas com PF>1 e retorno>0) |")
-        L.append(f"| Pior janela | {temporal.worst_window.get('start', '?')} | PF={temporal.worst_window.get('profit_factor', 0):.2f} |")
-        L.append(f"| Melhor janela | {temporal.best_window.get('start', '?')} | PF={temporal.best_window.get('profit_factor', 0):.2f} |")
+        L.append(f"| Janelas | {temporal.n_windows} ({temporal.window_days}d cada) |")
+        L.append(f"| WR std | {temporal.wr_std:.4f} |")
+        L.append(f"| PnL std | {temporal.pnl_std:.4f} |")
+        L.append(f"| Consistencia | {temporal.consistency_score:.1f}% |")
+        L.append(f"| Tendencia | {temporal.trend} |")
+        if temporal.window_results:
+            best = max(temporal.window_results, key=lambda w: w.get("total_pnl", 0))
+            worst = min(temporal.window_results, key=lambda w: w.get("total_pnl", 0))
+            L.append(f"| Melhor janela | {best.get('start', '?')} PnL={best.get('total_pnl', 0):.2f}% |")
+            L.append(f"| Pior janela | {worst.get('start', '?')} PnL={worst.get('total_pnl', 0):.2f}% |")
     else:
         L.append(f"Dados insuficientes para analise temporal (requer 10+ trades).")
 
@@ -575,14 +584,14 @@ def generate_audit_report_v2(
     L.append(f"\n---\n\n## 36. Ranking de Configuracoes\n")
     L.append(f"| Versao | Score | Robustez | Risco | Consistencia | Retorno |")
     L.append(f"|--------|-------|----------|-------|-------------|--------|")
-    L.append(f"| {version_label} | {mo.composite_score:.1f} | {mo.robustness_score:.1f} | {mo.risk_score:.1f} | {mo.consistency_score:.1f} | {mo.return_score:.1f} |")
+    L.append(f"| {version_label} | {mo.composite_score:.1f} | {mo.edge_score:.1f} | {mo.risk_mgmt_score:.1f} | {mo.robustness_score:.1f} | {mo.validation_score:.1f} |")
 
     # 37. 19-POINT RECOMMENDATIONS (NEW)
     L.append(f"\n---\n\n## 37. Recomendacoes Finais (19 Pontos)\n")
     L.append(f"| # | Recomendacao | Prioridade | Rationale |")
     L.append(f"|---|-------------|-----------|----------|")
-    for r in recommendations:
-        L.append(f"| {r['#']} | {r['rec']} | {r['priority']} | {r['rationale']} |")
+    for i, r in enumerate(recommendations, 1):
+        L.append(f"| {r.get('id', i)} | {r.get('action', '')} | {r.get('severity', '')} | {r.get('rationale', '')} |")
 
     # 38. ANEXO — TODAS AS OPERACOES
     L.append(f"\n---\n\n## 38. Anexo — Todas as Operacoes\n")
@@ -696,14 +705,14 @@ def generate_audit_report_v2(
     L.append(f"| Monte Carlo ({mc.n_simulations} paths) | P50={mc.return_dist.get('P50', 0):.1f}% | Lucro={mc.prob_profitable:.0f}% |")
     L.append(f"| Overfitting | {overfitting.level} (score={overfitting.score:.1f}/100) |")
     L.append(f"| Score Multi-Objetivo | {mo.composite_score:.1f}/100 (Grade {mo.grade}) |")
-    L.append(f"| Outliers | Tail Ratio={outlier_results.tail_ratio:.2f} | Kurtosis={outlier_results.kurtosis:.2f} |")
+    L.append(f"| Outliers | Tail Ratio={outlier_results.tail_ratio:.2f} | Kurtosis={outlier_results.kurtosis:.2f} | Skew={outlier_results.skewness:.2f} |")
     if temporal:
         L.append(f"| Estabilidade Temporal | {temporal.consistency_score:.1f}% | Trend={temporal.trend} |")
     else:
         L.append(f"| Estabilidade Temporal | Dados insuficientes |")
-    L.append(f"| Decomposicao | {len(decomposition)} estrategias | HHI={portfolio_contrib.get('concentration_hhi', 0):.3f} |")
-    L.append(f"\n### Veredito Final: {verdict}")
-    L.append(f"\n> {justification}")
+    L.append(f"| Decomposicao | {len(decomposition)} estrategias | HHI={portfolio_contrib.get('concentration_hhi', 0):.4f} |")
+    L.append(f"\n### Veredito Final: {verdict_text}")
+    L.append(f"\n> {verdict_justification}")
 
     # 45. CHECKLIST ATUALIZADO
     L.append(f"\n---\n\n## 45. Auditoria Final — Checklist Atualizado\n")
