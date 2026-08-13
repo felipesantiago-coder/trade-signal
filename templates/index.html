@@ -1844,13 +1844,25 @@ function renderBt(res) {
 }
 async function exportBacktestMarkdown() {
     try {
-        const link = document.createElement('a');
-        link.href = '/api/backtest/export';
-        link.download = '';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        showToast('Relatorio Markdown exportado!', 'success');
+        showToast('Gerando relatorio...', 'info');
+        const res = await fetch('/api/backtest/export');
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({error: res.statusText}));
+            throw new Error(err.error || 'Erro no servidor');
+        }
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : 'audit_report.md';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Relatorio exportado: ' + filename, 'success');
     } catch(e) {
         showToast('Erro ao exportar: ' + e.message, 'error');
     }
