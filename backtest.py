@@ -644,11 +644,11 @@ def _compute_audit_fields(
 ) -> dict:
     """v26.0: Compute detailed audit fields for a TradeResult.
     
-    Returns dict with: gross_pnl, fees, slippage, funding, net_pnl, return_pct, duration, pnl_pct
+    Returns dict with: gross_pnl, fees, slippage, funding, net_pnl, return_pct, duration
     """
     if entry_price <= 0:
         return {"gross_pnl": 0.0, "fees": 0.0, "slippage": 0.0, "funding": 0.0,
-            "net_pnl": 0.0, "return_pct": 0.0, "duration": "", "pnl_pct": 0.0}
+            "net_pnl": 0.0, "return_pct": 0.0, "duration": ""}
 
     # Raw gross PnL (no costs)
     if is_long:
@@ -719,7 +719,6 @@ def _compute_audit_fields(
         "net_pnl": round(net_pnl_usd, 4),
         "return_pct": round(return_pct, 4),
         "duration": duration,
-        "pnl_pct": round(net_pnl_pct, 4),
     }
 
 
