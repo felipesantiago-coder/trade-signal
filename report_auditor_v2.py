@@ -367,7 +367,9 @@ def generate_audit_report_v2(
         L.append(f"| Mes | Trades | Win Rate | PnL Total | PnL Medio |")
         L.append(f"|-----|--------|----------|-----------|-----------|")
         for m, data in monthly_perf.items():
-            L.append(f"| {m} | {data['trades']} | {_pct(data['win_rate'])} | {_fmt(data['total_pnl'])}% | {_fmt(data['avg_pnl'])}% |")
+            wr = _safe_div(data['wins'], data['trades'])
+            avg_pnl = _safe_div(data['pnl'], data['trades'])
+            L.append(f"| {m} | {data['trades']} | {_pct(wr)} | {_fmt(data['pnl'])}% | {_fmt(avg_pnl)}% |")
     else:
         L.append(f"Dados insuficientes para analise mensal.")
 
@@ -377,7 +379,8 @@ def generate_audit_report_v2(
         L.append(f"| Ano | Trades | Win Rate | PnL | Max DD | Sharpe |")
         L.append(f"|-----|--------|----------|-----|--------|--------|")
         for y, data in annual_perf.items():
-            L.append(f"| {y} | {data['trades']} | {_pct(data['win_rate'])} | {_fmt(data['total_pnl'])}% | {_pct(data['max_dd'])} | {_med(data.get('sharpe', 0))} |")
+            wr = _safe_div(data['wins'], data['trades'])
+            L.append(f"| {y} | {data['trades']} | {_pct(wr)} | {_fmt(data['pnl'])}% | {_pct(data['max_dd'])} | {_med(data.get('sharpe', 0))} |")
 
     # 19. PERFORMANCE POR REGIME (NEW)
     L.append(f"\n---\n\n## 19. Performance por Regime\n")
