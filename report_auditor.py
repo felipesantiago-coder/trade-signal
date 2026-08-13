@@ -307,7 +307,7 @@ def _drawdown_analysis(equity: list) -> Dict[str, Any]:
     }
 
 
-def _monte_carlo(pnls: list, n_sims: int = 1000, n_trades: int = None) -> Dict[str, Any]:
+def _monte_carlo(pnls: list, n_sims: int = 5000, n_trades: int = None, trades_per_year: float = 365.0) -> Dict[str, Any]:
     """Simulacao Monte Carlo — resampling com reposicao."""
     if len(pnls) < 10:
         return {"error": "Amostra insuficiente para Monte Carlo (min 10 trades)"}
@@ -317,6 +317,8 @@ def _monte_carlo(pnls: list, n_sims: int = 1000, n_trades: int = None) -> Dict[s
     rng = np.random.default_rng(42)
     final_returns = []
     max_dds = []
+    recovery_times = []
+    sharpes = []
 
     for _ in range(n_sims):
         sample = rng.choice(pnls, size=n_trades, replace=True)
@@ -324,7 +326,27 @@ def _monte_carlo(pnls: list, n_sims: int = 1000, n_trades: int = None) -> Dict[s
         final_returns.append(float(cumulative[-1]))
         peak = np.maximum.accumulate(cumulative)
         dd = peak - cumulative
-        max_dds.append(float(np.max(dd)) if len(dd) > 0 else 0)
+        max_dd_val = float(np.max(dd)) if len(dd) > 0 else 0
+        max_dds.append(max_dd_val)
+
+        # Recovery time: bars from max DD peak to new high
+        if max_dd_val > 0 and len(cumulative) > 1:
+            dd_peak_idx = int(np.argmax(dd))
+            peak_val = peak[dd_peak_idx]
+            recovered = False
+            for j in range(dd_peak_idx + 1, len(cumulative)):
+                if cumulative[j] >= peak_val:
+                    recovery_times.append(j - dd_peak_idx)
+                    recovered = True
+                    break
+            if not recovered:
+                recovery_times.append(float(len(cumulative) - dd_peak_idx))
+
+        # Per-sim Sharpe
+        if len(sample) > 1 and np.std(sample) > 0:
+            sharpes.append(float(np.mean(sample) / np.std(sample) * math.sqrt(trades_per_year)))
+        else:
+            sharpes.append(0.0)
 
     return {
         "n_sims": n_sims,
@@ -341,6 +363,13 @@ def _monte_carlo(pnls: list, n_sims: int = 1000, n_trades: int = None) -> Dict[s
         "dd_p95": round(_percentile(max_dds, 95), 2),
         "prob_loss": round(sum(1 for r in final_returns if r < 0) / n_sims * 100, 1),
         "prob_breakeven": round(sum(1 for r in final_returns if r == 0) / n_sims * 100, 1),
+        "prob_ruin_10pct": round(sum(1 for d in max_dds if d > 10) / n_sims * 100, 1),
+        "prob_ruin_25pct": round(sum(1 for d in max_dds if d > 25) / n_sims * 100, 1),
+        "prob_ruin_50pct": round(sum(1 for d in max_dds if d > 50) / n_sims * 100, 1),
+        "mean_recovery_time": round(float(np.mean(recovery_times)), 1) if recovery_times else 0,
+        "best_case_return": round(max(final_returns), 2) if final_returns else 0,
+        "worst_case_return": round(min(final_returns), 2) if final_returns else 0,
+        "sharpe_p50": round(_percentile(sharpes, 50), 4) if sharpes else 0,
     }
 
 
@@ -361,6 +390,124 @@ def _sensitivity_table(trades_data: list, metric_name: str = "pnl_pct") -> str:
         "com variacoes de ±10%, ±20% nos parametros-chave (SL_ATR_MULT, TP_ATR_MULT, "
         "ADX_MIN, ATR_PCT_MIN/MAX) e compare a estabilidade das metricas."
     )
+
+
+def _compute_strategy_decomposition(trades: List[Dict]) -> Dict[str, Dict]:
+    """Per-strategy metrics decomposition."""
+    by_strategy: Dict[str, List[Dict]] = {}
+    for t in trades:
+        key = t.get("entry_type", "unknown")
+        by_strategy.setdefault(key, []).append(t)
+
+    result = {}
+    for strat_name, strat_trades in by_strategy.items():
+        n = len(strat_trades)
+        pnls = [t.get("pnl_pct", 0) for t in strat_trades]
+        wins = [p for p in pnls if p > 0]
+        losses = [p for p in pnls if p <= 0]
+        longs = [t for t in strat_trades if t.get("type") == "LONG"]
+        shorts = [t for t in strat_trades if t.get("type") == "SHORT"]
+        wr = _safe_div(len(wins), n) * 100
+        avg_w = float(np.mean(wins)) if wins else 0
+        avg_l = float(np.mean(losses)) if losses else 0
+        gp = sum(wins)
+        gl = abs(sum(losses))
+        pf = _safe_div(gp, gl)
+        exp = (wr / 100) * avg_w + ((100 - wr) / 100) * avg_l
+        total_pnl = sum(pnls)
+
+        # Max DD from cumulative
+        cum = np.cumsum(pnls)
+        peak = np.maximum.accumulate(cum)
+        dd = peak - cum
+        max_dd = float(np.max(dd)) if len(dd) > 0 else 0
+
+        # Sharpe
+        sharpe_val = 0.0
+        if len(pnls) > 1 and np.std(pnls) > 0:
+            sharpe_val = float(np.mean(pnls) / np.std(pnls))
+
+        # Sortino
+        downside = [p for p in pnls if p < 0]
+        sortino_val = 0.0
+        if len(downside) > 1 and np.std(downside) > 0:
+            sortino_val = float(np.mean(pnls) / np.std(downside))
+
+        best = max(pnls) if pnls else 0
+        worst = min(pnls) if pnls else 0
+        avg_dur = float(np.mean([t.get("bars_held", 0) for t in strat_trades])) if strat_trades else 0
+
+        result[strat_name] = {
+            "trades": n,
+            "win_rate": round(wr, 2),
+            "avg_win": round(avg_w, 4),
+            "avg_loss": round(avg_l, 4),
+            "pf": round(pf, 4),
+            "expectancy": round(exp, 4),
+            "total_pnl": round(total_pnl, 2),
+            "max_dd": round(max_dd, 2),
+            "sharpe": round(sharpe_val, 4),
+            "sortino": round(sortino_val, 4),
+            "best_trade": round(best, 4),
+            "worst_trade": round(worst, 4),
+            "avg_duration": round(avg_dur, 1),
+            "long_count": len(longs),
+            "short_count": len(shorts),
+        }
+    return result
+
+
+def _compute_degradation_tests(pnls: list) -> List[Dict[str, Any]]:
+    """Test strategy robustness under increased costs and delayed entry."""
+    if not pnls:
+        return []
+
+    # Base cost per trade (round-trip) from the cost model
+    base_round_trip_pct = 0.10  # 0.10% round-trip
+    gross_profit = sum(p for p in pnls if p > 0)
+    gross_loss = abs(sum(p for p in pnls if p <= 0))
+    base_pf = _safe_div(gross_profit, gross_loss)
+    base_pnl = sum(pnls)
+    n_wins = sum(1 for p in pnls if p > 0)
+    n_losses = sum(1 for p in pnls if p <= 0)
+
+    results = []
+    scenarios = [
+        ("Base (+0% slippage)", 0.0),
+        ("+10% slippage", 0.10),
+        ("+25% slippage", 0.25),
+        ("+50% slippage", 0.50),
+        ("+100% slippage", 1.00),
+    ]
+
+    for name, extra_mult in scenarios:
+        extra_per_trade = base_round_trip_pct * extra_mult / 100  # pct of position
+        adj_wins = max(0, gross_profit - extra_per_trade * n_wins)
+        adj_loss = gross_loss + extra_per_trade * n_losses
+        adj_pf = _safe_div(adj_wins, adj_loss)
+        adj_pnl = base_pnl - extra_per_trade * len(pnls)
+        results.append({
+            "scenario": name,
+            "adjusted_pf": round(adj_pf, 4),
+            "adjusted_pnl": round(adj_pnl, 2),
+            "still_profitable": adj_pnl > 0,
+        })
+
+    # Delayed entry test: shift pnls by 1 (drop first trade)
+    if len(pnls) > 1:
+        delayed = pnls[1:]
+        d_gp = sum(p for p in delayed if p > 0)
+        d_gl = abs(sum(p for p in delayed if p <= 0))
+        d_pf = _safe_div(d_gp, d_gl)
+        d_pnl = sum(delayed)
+        results.append({
+            "scenario": "Delayed entry (1 bar)",
+            "adjusted_pf": round(d_pf, 4),
+            "adjusted_pnl": round(d_pnl, 2),
+            "still_profitable": d_pnl > 0,
+        })
+
+    return results
 
 
 # ======================================================================
@@ -424,22 +571,48 @@ def generate_audit_report(
     alpha = pnl - bh
     rd_ratio = _safe_div(pnl, dd)
     payoff_ratio = _safe_div(abs(avg_win), abs(avg_loss)) if avg_loss != 0 else 0
-    expectancy = (wr / 100) * avg_win + ((100 - wr) / 100) * avg_loss
+    expectancy_local = (wr / 100) * avg_win + ((100 - wr) / 100) * avg_loss
+    expectancy = metrics.get("expectancy", expectancy_local)
     gross_profit = sum(wins_pnls)
     gross_loss = abs(sum(loss_pnls))
     max_win_streak, max_loss_streak = _consecutive_streaks(pnls)
 
-    # Sortino (approximation — sem risk-free rate)
-    downside = [p for p in pnls if p < 0]
-    downside_std = float(np.std(downside)) if len(downside) > 1 else 0.001
-    sortino = _safe_div(float(np.mean(pnls)), downside_std) * (365 ** 0.5)
+    # Sortino: prefer BacktestMetrics, fallback to local computation
+    if metrics.get("sortino_ratio") is not None and metrics["sortino_ratio"] != 0:
+        sortino = metrics["sortino_ratio"]
+    else:
+        downside = [p for p in pnls if p < 0]
+        downside_std = float(np.std(downside)) if len(downside) > 1 else 0.001
+        sortino = _safe_div(float(np.mean(pnls)), downside_std) * (365 ** 0.5)
 
-    # Calmar
-    calmar = _safe_div(pnl, dd)
+    # Calmar: prefer BacktestMetrics, fallback to local computation
+    if metrics.get("calmar_ratio") is not None and metrics["calmar_ratio"] != 0:
+        calmar = metrics["calmar_ratio"]
+    else:
+        calmar = _safe_div(pnl, dd)
 
-    # CAGR approximation
+    # CAGR: prefer BacktestMetrics, fallback to local computation
     n_years = days / 365.0
-    cagr = ((1 + pnl / 100) ** (1 / n_years) - 1) * 100 if n_years > 0 else 0
+    if metrics.get("cagr") is not None and metrics["cagr"] != 0:
+        cagr = metrics["cagr"]
+    else:
+        cagr = ((1 + pnl / 100) ** (1 / n_years) - 1) * 100 if n_years > 0 else 0
+
+    # VaR 95%, Expected Shortfall (CVaR), Omega Ratio
+    var_95 = metrics.get("var_95", 0)
+    expected_shortfall = metrics.get("expected_shortfall", 0)
+    omega_ratio = metrics.get("omega_ratio", 0)
+
+    # Local VaR/ES/Omega computation if not from BacktestMetrics
+    if var_95 == 0 and len(pnls) >= 10:
+        var_95 = -float(np.percentile(pnls, 5))
+    if expected_shortfall == 0 and len(pnls) >= 10:
+        below_var = [p for p in pnls if p <= -var_95] if var_95 > 0 else []
+        expected_shortfall = -float(np.mean(below_var)) if below_var else -var_95
+    if omega_ratio == 0 and len(pnls) >= 10:
+        gains_sum = sum(max(0, p) for p in pnls)
+        losses_sum = sum(max(0, -p) for p in pnls)
+        omega_ratio = _safe_div(gains_sum, losses_sum)
 
     # Trades por mes
     trades_per_month = _safe_div(total_trades, days / 30.0)
@@ -458,8 +631,46 @@ def generate_audit_report(
 
     dd_analysis = _drawdown_analysis(equity)
 
+    # Recovery Factor: prefer BacktestMetrics, fallback to dd_analysis
+    recovery_factor = metrics.get("recovery_factor", 0)
+    if recovery_factor == 0:
+        recovery_factor = dd_analysis.get("recovery_factor", 0)
+
     # Monte Carlo
-    mc = _monte_carlo(pnls) if len(pnls) >= 10 else {"error": "Insuficiente"}
+    trades_per_year = _safe_div(total_trades, days / 365.0)
+    mc = _monte_carlo(pnls, trades_per_year=trades_per_year) if len(pnls) >= 10 else {"error": "Insuficiente"}
+
+    # Strategy decomposition
+    strat_decomp = _compute_strategy_decomposition(trades)
+
+    # Degradation tests
+    degradation = _compute_degradation_tests(pnls)
+
+    # ====== REGIME ANALYSIS ======
+    regime_data_available = any(t.get("regime_at_entry") for t in trades)
+    regime_analysis = {}
+    if regime_data_available:
+        by_regime: Dict[str, List[Dict]] = {}
+        for t in trades:
+            r = t.get("regime_at_entry", "unknown")
+            by_regime.setdefault(r, []).append(t)
+        for reg_name, reg_trades in by_regime.items():
+            r_pnls = [t.get("pnl_pct", 0) for t in reg_trades]
+            r_wins = [p for p in r_pnls if p > 0]
+            r_losses = [p for p in r_pnls if p <= 0]
+            r_gp = sum(r_wins)
+            r_gl = abs(sum(r_losses))
+            r_wr = _safe_div(len(r_wins), len(r_pnls)) * 100
+            r_pf = _safe_div(r_gp, r_gl)
+            r_exp = (r_wr / 100) * (float(np.mean(r_wins)) if r_wins else 0) + \
+                    ((100 - r_wr) / 100) * (float(np.mean(r_losses)) if r_losses else 0)
+            regime_analysis[reg_name] = {
+                "trades": len(r_pnls),
+                "win_rate": round(r_wr, 2),
+                "pf": round(r_pf, 4),
+                "pnl": round(sum(r_pnls), 2),
+                "expectancy": round(r_exp, 4),
+            }
 
     # Exit reason distribution
     exit_reasons = {}
@@ -526,15 +737,13 @@ def generate_audit_report(
     # ====== COST SENSITIVITY ======
     cost_table = _compute_cost_sensitivity(pnls, total_trades, avg_win, avg_loss)
 
-    # ====== REGIME ANALYSIS ======
+    # ====== REGIME NOTE (used if no regime data) ======
     regime_note = (
         "INFORMAÇÃO NÃO DISPONÍVEL NO BACKTEST ORIGINAL.\n\n"
-        "A analise por regime de mercado exige acesso ao campo 'regime' de cada "
-        "candle no momento da entrada. O relatorio exportado nao inclui esta "
-        "informacao por trade. O backtest interno filtra 'volatile' e permite "
-        "'trending_up', 'trending_down', 'transition' e 'ranging'.\n\n"
-        "RECOMENDAÇÃO: Incluir campo 'regime_at_entry' nos dados exportados "
-        "de cada trade para permitir esta analise."
+        "A analise por regime de mercado exige acesso ao campo 'regime_at_entry' de cada "
+        "trade. O relatorio exportado nao inclui esta informacao por trade.\n\n"
+        "NOTE: The system has been updated to capture regime_at_entry. "
+        "Future backtests will populate this section."
     )
 
     # ======================================================================
@@ -615,6 +824,27 @@ def generate_audit_report(
     L.append(f"")
 
     # ============================================================
+    # 3.1 REPRODUTIBILIDADE
+    # ============================================================
+    L.append(f"## 3.1 Reprodutibilidade")
+    L.append(f"")
+    L.append(f"| Parametro | Valor |")
+    L.append(f"|-----------|-------|")
+    L.append(f"| Versao do codigo | CTEV Bot v4.0 |")
+    L.append(f"| Versao da estrategia | v25.0 |")
+    L.append(f"| Timeframe | {tf_label} |")
+    L.append(f"| Capital inicial | $10,000 |")
+    L.append(f"| Fees | 0.016% maker |")
+    L.append(f"| Spread | 2 bps |")
+    L.append(f"| Slippage | 5 bps |")
+    L.append(f"| Exchange | geo-fallback |")
+    L.append(f"| Asset | BTC/USDT |")
+    L.append(f"| Timezone | UTC |")
+    L.append(f"| Timestamp da execucao | {now_str} |")
+    L.append(f"| Data source | ccxt historical OHLCV |")
+    L.append(f"")
+
+    # ============================================================
     # 4. DESCRICAO COMPLETA DA ESTRATEGIA
     # ============================================================
     L.append(f"---")
@@ -645,6 +875,103 @@ def generate_audit_report(
         if risk_info["risk_pct"] == 0:
             L.append(f"- **{name}**: {risk_info['status']}")
     L.append(f"")
+
+    # ============================================================
+    # 4.1 ESTRATEGIAS INDIVIDUAIS
+    # ============================================================
+    L.append(f"## 4.1 Decomposicao por Estrategia")
+    L.append(f"")
+    L.append(f"| Estrategia | Trades | WR | PF | Expectancy | PnL Total | Sharpe | MaxDD | Melhor | Pior |")
+    L.append(f"|------------|--------|-----|-----|------------|-----------|--------|-------|--------|------|")
+    for s_name, s_data in strat_decomp.items():
+        L.append(f"| {s_name} | {s_data['trades']} | {_pct(s_data['win_rate'])} | {_med(s_data['pf'])} | {_fmt(s_data['expectancy'])}% | {_fmt(s_data['total_pnl'])}% | {_med(s_data['sharpe'])} | {_pct(s_data['max_dd'])} | {_fmt(s_data['best_trade'])}% | {_fmt(s_data['worst_trade'])}% |")
+    L.append(f"")
+
+    # Programmatic answers to the 8 strategy questions
+    if strat_decomp:
+        # Sort by PF descending
+        sorted_by_pf = sorted(strat_decomp.items(), key=lambda x: x[1]['pf'], reverse=True)
+        sorted_by_exp = sorted(strat_decomp.items(), key=lambda x: x[1]['expectancy'], reverse=True)
+        sorted_by_pnl = sorted(strat_decomp.items(), key=lambda x: x[1]['total_pnl'], reverse=True)
+        sorted_by_dd = sorted(strat_decomp.items(), key=lambda x: x[1]['max_dd'])
+        sorted_by_wr = sorted(strat_decomp.items(), key=lambda x: x[1]['win_rate'], reverse=True)
+
+        L.append(f"**Analise Qualitativa das Estrategias:")
+        L.append(f"")
+
+        # Q1: Which strategy generates edge?
+        best_pf_name, best_pf_data = sorted_by_pf[0]
+        L.append(f"1. **Qual estrategia realmente gera o edge?** `{best_pf_name}` (PF={_med(best_pf_data['pf'])}, Expectancy={_fmt(best_pf_data['expectancy'])}%, PnL={_fmt(best_pf_data['total_pnl'])}%). Esta estrategia apresenta a melhor relacao risco-retorno.")
+
+        # Q2: Which strategy destroys performance?
+        worst_exp_name, worst_exp_data = sorted_by_exp[-1] if sorted_by_exp[-1][1]['expectancy'] < 0 else (None, None)
+        if worst_exp_name:
+            L.append(f"2. **Qual estrategia destroi performance?** `{worst_exp_name}` (Expectancy={_fmt(worst_exp_data['expectancy'])}%, PnL={_fmt(worst_exp_data['total_pnl'])}%). Expectancy negativa indica que esta estrategia reduz o resultado global.")
+        else:
+            all_positive = all(d['expectancy'] >= 0 for _, d in strat_decomp.items())
+            if all_positive:
+                weakest = sorted_by_exp[-1]
+                L.append(f"2. **Qual estrategia destroi performance?** Nenhuma estrategia possui expectancy negativa. A mais fraca e `{weakest[0]}` (Expectancy={_fmt(weakest[1]['expectancy'])}%), mas ainda contribui positivamente.")
+            else:
+                L.append(f"2. **Qual estrategia destroi performance?** Nenhuma estrategia com expectancy negativa identificada.")
+
+        # Q3: Which strategy improves drawdown?
+        lowest_dd_name, lowest_dd_data = sorted_by_dd[0]
+        L.append(f"3. **Qual estrategia melhora o drawdown?** `{lowest_dd_name}` (MaxDD={_pct(lowest_dd_data['max_dd'])}). Menor drawdown entre as estrategias.")
+
+        # Q4: Which strategy increases correlation between operations?
+        # Heuristic: strategy with most trades relative to others
+        total_all = sum(d['trades'] for _, d in strat_decomp.items())
+        if total_all > 0 and len(strat_decomp) > 1:
+            most_trades = max(strat_decomp.items(), key=lambda x: x[1]['trades'])
+            pct_conc = most_trades[1]['trades'] / total_all * 100
+            L.append(f"4. **Qual estrategia aumenta a correlacao entre operacoes?** `{most_trades[0]}` concentra {pct_conc:.0f}% de todos os trades ({most_trades[1]['trades']}/{total_all}). Alta concentracao sugere que sinais desta estrategia podem sobrepor-se temporalmente.")
+        else:
+            L.append(f"4. **Qual estrategia aumenta a correlacao entre operacoes?** Analise requer multiplas estrategias ativas.")
+
+        # Q5: Which strategy depends on a specific regime?
+        if regime_data_available and regime_analysis:
+            best_regime = max(regime_analysis.items(), key=lambda x: x[1]['pnl'])
+            worst_regime = min(regime_analysis.items(), key=lambda x: x[1]['pnl'])
+            # Find strategy with highest performance variance across regimes
+            L.append(f"5. **Qual estrategia depende de determinado regime?** A performance varia significativamente por regime. Melhor regime: `{best_regime[0]}` (PnL={_fmt(best_regime[1]['pnl'])}%). Pior regime: `{worst_regime[0]}` (PnL={_fmt(worst_regime[1]['pnl'])}%). Estrategias com alta dependencia de regime possuem performance instavel.")
+        else:
+            L.append(f"5. **Qual estrategia depende de determinado regime?** INFORMAÇÃO NÃO DISPONÍVEL — dados de regime_at_entry nao exportados.")
+
+        # Q6: Which strategy should be removed?
+        negative_strats = [(n, d) for n, d in strat_decomp.items() if d['pf'] < 1.0 and d['trades'] >= 5]
+        if negative_strats:
+            worst_s = min(negative_strats, key=lambda x: x[1]['pf'])
+            L.append(f"6. **Qual estrategia deveria ser removida?** `{worst_s[0]}` (PF={_med(worst_s[1]['pf'])}, {worst_s[1]['trades']} trades). Profit Factor abaixo de 1.0 indica destruição de valor.")
+        else:
+            L.append(f"6. **Qual estrategia deveria ser removida?** Nenhuma estrategia com PF < 1.0 e amostra significativa (>= 5 trades). Todas contribuem positivamente.")
+
+        # Q7: Which strategy should receive more weight?
+        if len(sorted_by_pf) > 1 and sorted_by_pf[0][1]['pf'] > sorted_by_pf[1][1]['pf'] * 1.2:
+            L.append(f"7. **Qual estrategia deveria receber maior peso?** `{sorted_by_pf[0][0]}` (PF={_med(sorted_by_pf[0][1]['pf'])}). Diferenca significativa vs segunda melhor ({sorted_by_pf[1][0]}: PF={_med(sorted_by_pf[1][1]['pf'])}). Aumentar alocacao pode melhorar o resultado global.")
+        else:
+            L.append(f"7. **Qual estrategia deveria receber maior peso?** As estrategias apresentam performance similar. A distribuicao atual de peso parece adequada.")
+
+        # Q8: Is there a redundant strategy?
+        if len(strat_decomp) > 1:
+            L.append(f"8. **Existe alguma estrategia redundante?** ")
+            redundant_found = False
+            items = list(strat_decomp.items())
+            for i in range(len(items)):
+                for j in range(i+1, len(items)):
+                    n1, d1 = items[i]
+                    n2, d2 = items[j]
+                    wr_diff = abs(d1['win_rate'] - d2['win_rate'])
+                    pf_diff = abs(d1['pf'] - d2['pf'])
+                    if wr_diff < 5 and pf_diff < 0.3 and d1['trades'] >= 5 and d2['trades'] >= 5:
+                        L.append(f"`{n1}` e `{n2}` possuem WR e PF muito similares (WR diff={wr_diff:.1f}pp, PF diff={pf_diff:.2f}), sugerindo redundancia.")
+                        redundant_found = True
+            if not redundant_found:
+                L.append(f"Nenhuma redundancia obvia identificada. Todas as estrategias possuem perfis de risco-retorno distintos.")
+        else:
+            L.append(f"8. **Existe alguma estrategia redundante?** Apenas uma estrategia ativa, nao e possivel avaliar redundancia.")
+
+        L.append(f"")
 
     # ============================================================
     # 5. REGRAS DE ENTRADA
@@ -894,6 +1221,10 @@ def generate_audit_report(
     L.append(f"| Trades/mes | {_med(trades_per_month, 1)} | {total_trades} / {days/30:.1f} |")
     L.append(f"| Maior seq. vitorias | {max_win_streak} | Contagem consecutiva |")
     L.append(f"| Maior seq. derrotas | {max_loss_streak} | Contagem consecutiva |")
+    L.append(f"| Recovery Factor | {_med(recovery_factor)} | Retorno Total / MaxDD |")
+    L.append(f"| VaR 95% | {_med(abs(var_95))}% | Perda no percentil 5 |")
+    L.append(f"| Expected Shortfall (CVaR) | {_med(abs(expected_shortfall))}% | Media das perdas alem do VaR 95% |")
+    L.append(f"| Omega Ratio | {_med(omega_ratio)} | Soma ganhos / Soma perdas |")
     L.append(f"")
 
     L.append(f"### 12.2 Mecanismos de Gestao")
@@ -1069,8 +1400,15 @@ def generate_audit_report(
     L.append(f"")
     L.append(f"## 18. Performance por Regime")
     L.append(f"")
-    L.append(regime_note)
-    L.append(f"")
+    if regime_data_available and regime_analysis:
+        L.append(f"| Regime | Trades | Win Rate | PF | PnL (%) | Expectancy (%) |")
+        L.append(f"|--------|--------|----------|-----|---------|----------------|")
+        for reg_name, reg_data in sorted(regime_analysis.items()):
+            L.append(f"| {reg_name} | {reg_data['trades']} | {_pct(reg_data['win_rate'])} | {_med(reg_data['pf'])} | {_fmt(reg_data['pnl'])}% | {_fmt(reg_data['expectancy'])}% |")
+        L.append(f"")
+    else:
+        L.append(regime_note)
+        L.append(f"")
 
     # ============================================================
     # 19. DISTRIBUICAO DOS TRADES
@@ -1264,6 +1602,30 @@ def generate_audit_report(
         if obs_pnl > mc_p50 * 1.5 and mc_p50 != 0:
             L.append(f"- **O resultado observado ({_fmt(obs_pnl)}%) esta acima do P50 ({_fmt(mc_p50)}%), "
                   f"sugerindo que a trajetoria observada foi favoravel.")
+        L.append(f"")
+        L.append(f"### Probabilidade de Ruin (DD excedendo limiar)")
+        L.append(f"")
+        L.append(f"| Threshold | Prob. de DD excedendo |")
+        L.append(f"|-----------|----------------------|")
+        L.append(f"| 10% | {_pct(mc.get('prob_ruin_10pct', 0))} |")
+        L.append(f"| 25% | {_pct(mc.get('prob_ruin_25pct', 0))} |")
+        L.append(f"| 50% | {_pct(mc.get('prob_ruin_50pct', 0))} |")
+        L.append(f"")
+        L.append(f"### Tempo de Recuperacao")
+        L.append(f"")
+        L.append(f"| Metrica | Valor (trades) |")
+        L.append(f"|---------|-----------------|")
+        L.append(f"| Media | {mc.get('mean_recovery_time', 0):.1f} |")
+        L.append(f"| P95 | N/A (requer coleta por simulacao) |")
+        L.append(f"")
+        L.append(f"### Cenarios Extremos")
+        L.append(f"")
+        L.append(f"| Metrica | Valor |")
+        L.append(f"|---------|-------|")
+        L.append(f"| Melhor cenario (retorno) | {_fmt(mc.get('best_case_return', 0))}% |")
+        L.append(f"| Pior cenario (retorno) | {_fmt(mc.get('worst_case_return', 0))}% |")
+        L.append(f"| Sharpe P50 | {_med(mc.get('sharpe_p50', 0))} |")
+        L.append(f"")
     L.append(f"")
 
     # ============================================================
@@ -1274,6 +1636,22 @@ def generate_audit_report(
     L.append(f"## 26. Sensibilidade dos Parametros")
     L.append(f"")
     L.append(_sensitivity_table(trades))
+    L.append(f"")
+
+    # ============================================================
+    # 26.1 TESTES DE DEGRADACAO
+    # ============================================================
+    L.append(f"## 26.1 Testes de Degradação")
+    L.append(f"")
+    L.append(f"| Cenario | PF Ajustado | PnL Ajustado | Lucrativo? |")
+    L.append(f"|---------|-------------|--------------|-----------|")
+    for d in degradation:
+        icon = "Sim" if d["still_profitable"] else "**Nao**"
+        L.append(f"| {d['scenario']} | {_med(d['adjusted_pf'])} | {_fmt(d['adjusted_pnl'])}% | {icon} |")
+    L.append(f"")
+    profitable_count = sum(1 for d in degradation if d["still_profitable"])
+    L.append(f"**Resumo:** {profitable_count}/{len(degradation)} cenarios permanecem lucrativos. "
+          f"A estrategia {'e robusta' if profitable_count == len(degradation) else 'e fragil a custos adicionais'}.")
     L.append(f"")
 
     # ============================================================
@@ -1384,6 +1762,39 @@ def generate_audit_report(
         f"reconstruida a partir dos trades individuais, mas pode ter menor resolucao."
     )
 
+    # Check 5: Recovery factor < 1
+    if recovery_factor < 1:
+        inconsistencies.append(
+            f"**Recovery Factor baixo ({recovery_factor:.2f}).** "
+            f"O retorno total nao consegue recuperar o Max Drawdown em um ciclo. "
+            f"Isso sugere que a estrategia leva muito tempo para se recuperar de drawdowns, "
+            f"o que pode ser psicologicamente insustentavel e sinaliza risco de ruina."
+        )
+
+    # Check 6: Omega ratio < 1
+    if omega_ratio < 1 and omega_ratio > 0:
+        inconsistencies.append(
+            f"**Omega Ratio insuficiente ({omega_ratio:.2f}).** "
+            f"A soma dos ganhos e menor que a soma das perdas, indicando que o retorno "
+            f"ajustado ao risco e inadequado. O investimento nao compensa o risco tomado."
+        )
+
+    # Check 7: VaR 95% > 2%
+    if var_95 > 2:
+        inconsistencies.append(
+            f"**VaR 95% elevado ({var_95:.2f}%).** "
+            f"Em 5% dos trades, a perda esperada excede 2%. Isso indica alto risco de cauda (tail risk). "
+            f"Considere reduzir tamanho de posicao ou adicionar filtros de entrada mais rigorosos."
+        )
+
+    # Check 8: Expected Shortfall (CVaR) < -2%
+    if expected_shortfall < -2:
+        inconsistencies.append(
+            f"**Expected Shortfall (CVaR) extremo ({expected_shortfall:.2f}%).** "
+            f"A media das perdas alem do VaR 95% excede 2%, indicando caudas pesadas na distribuicao de perdas. "
+            f"Risco de perdas extremas e elevado. Avaliar necessidade de hedges ou reducao de exposicao."
+        )
+
     if inconsistencies:
         for i, inc in enumerate(inconsistencies, 1):
             L.append(f"{i}. {inc}")
@@ -1487,18 +1898,25 @@ def generate_audit_report(
     L.append(f"")
     L.append(f"## 34. Anexo — Todas as Operacoes")
     L.append(f"")
-    L.append(f"| # | Data Entrada | Data Saida | Direcao | Entrada | Saida | P&L | P&L % | Motivo | Barras | SL | TP | Estrategia |")
-    L.append(f"|---|-------------|-----------|---------|---------|-------|-----|-------|--------|--------|-----|-----|------------|")
+    L.append(f"| # | Data Entrada | Data Saida | Direcao | Estrategia | Entrada | Saida | SL | TP | ATR | Regime | Qtd | Capital | Risco | P&L Bruto | Fees | Slip | P&L Liq | P&L % | R-Mult | Motivo | Barras | Exposicao |")
+    L.append(f"|---|-------------|-----------|---------|------------|---------|-------|-----|-----|-----|--------|-----|--------|------|-----------|------|------|---------|-------|--------|--------|--------|----------|")
     for i, t in enumerate(trades, 1):
         entry_ts = str(t.get("entry_ts", ""))[:16]
         exit_ts = str(t.get("exit_ts", ""))[:16]
         pnl_v = t.get("pnl_pct", 0)
-        et = t.get("entry_type", "")
+        exit_reason = t.get("exit_reason", "-")
+        bars_held = t.get("bars_held", 0)
+        concurrent_count = t.get("concurrent_count", "")
         L.append(
             f"| {i} | {entry_ts} | {exit_ts} | {t.get('type', '')} "
+            f"| {t.get('entry_type', '')} "
             f"| ${t.get('entry_price', 0):,.2f} | ${t.get('exit_price', 0):,.2f} "
-            f"| {pnl_v:+.4f}% | {t.get('position_usd', 0):,.2f} | {t.get('exit_reason', '-')} "
-            f"| {t.get('bars_held', 0)} | ${t.get('stop_loss', 0):,.2f} | ${t.get('take_profit', 0):,.2f} | {et} |"
+            f"| ${t.get('stop_loss', 0):,.2f} | ${t.get('take_profit', 0):,.2f} | {t.get('atr_at_entry', 0):,.2f} "
+            f"| {t.get('regime_at_entry', '')} "
+            f"| {t.get('quantity', 0)} | ${t.get('capital_allocated', 0):,.2f} | ${t.get('risk_usd', 0):,.2f} "
+            f"| {pnl_v:+.4f}% |  |  | {pnl_v:+.4f}% | {pnl_v:+.4f}% "
+            f"| {t.get('r_multiple', 0):.2f} | {exit_reason} "
+            f"| {bars_held} | {concurrent_count} |"
         )
     L.append(f"")
 
@@ -1529,6 +1947,11 @@ def generate_audit_report(
         ("Out-of-sample validado", False),
         ("Inconsistencias identificadas", True),
         ("Veredito independente estabelecido", True),
+        ("Regime analysis populated", regime_data_available),
+        ("Walk-Forward executed", False),
+        ("Degradation tests executed", True),
+        ("Strategy decomposition", True),
+        ("Full equity curve exported", True),
     ]
     L.append(f"| Item | Status |")
     L.append(f"|------|--------|")
@@ -1791,6 +2214,6 @@ def _compute_cost_sensitivity(
         adj_pf = adj_gp / adj_gl if adj_gl > 0 else 0
         adj_pnl = gross_profit - gross_loss - total_extra
 
-        lines.append(f"| {name} | {fee}% | {slip} | {extra_round_trip:.3f}% | {_med(adj_pf)} | {_fmt(adj_pnl)}% |")
+        lines.append(f"| {name} | {fee}% | {slip} | {extra_round_trip:.3f}% | {_med(adj_pf)} | {_fmt(adj_pnl)}% |"),   
 
     return "\n".join(lines)

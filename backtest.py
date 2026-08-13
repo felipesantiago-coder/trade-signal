@@ -255,6 +255,21 @@ class TradeResult:
     # v17.0: Multi-strategy tracking
     entry_type: str = "ctev_pullback"  # ctev_pullback, ctev_momentum, momentum,
                                          # ema_bounce, squeeze_breakout, rsi_reversal, ranging_mr
+    # v26.0: Enhanced audit fields
+    regime_at_entry: str = ""
+    concurrent_count: int = 0
+    equity_before: float = 0.0
+    equity_after: float = 0.0
+    capital_allocated: float = 0.0
+    quantity: float = 0.0
+    gross_pnl: float = 0.0
+    fees: float = 0.0
+    slippage: float = 0.0
+    funding: float = 0.0
+    net_pnl: float = 0.0
+    return_pct: float = 0.0
+    r_multiple: float = 0.0
+    duration: str = ""
 
 
 @dataclass
@@ -288,6 +303,15 @@ class BacktestMetrics:
     trailing_activated_count: int = 0
     partial_tp_count: int = 0
     avg_r_r: float = 0.0  # average risk:reward ratio
+    # v26.0: Advanced risk metrics
+    recovery_factor: float = 0.0
+    sortino_ratio: float = 0.0
+    calmar_ratio: float = 0.0
+    cagr: float = 0.0
+    expectancy: float = 0.0
+    var_95: float = 0.0
+    expected_shortfall: float = 0.0
+    omega_ratio: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -312,11 +336,19 @@ class BacktestMetrics:
             "period_start": self.period_start,
             "period_end": self.period_end,
             "atr_pct_filtered": self.atr_pct_filtered,
-            "equity_curve": self.equity_curve[-100:],  # Last 100 points
+            "equity_curve": self.equity_curve,
             "be_triggered_count": self.be_triggered_count,
             "trailing_activated_count": self.trailing_activated_count,
             "partial_tp_count": self.partial_tp_count,
             "avg_r_r": round(self.avg_r_r, 2),
+            "recovery_factor": round(self.recovery_factor, 4),
+            "sortino_ratio": round(self.sortino_ratio, 4),
+            "calmar_ratio": round(self.calmar_ratio, 4),
+            "cagr": round(self.cagr, 4),
+            "expectancy": round(self.expectancy, 4),
+            "var_95": round(self.var_95, 4),
+            "expected_shortfall": round(self.expected_shortfall, 4),
+            "omega_ratio": round(self.omega_ratio, 4),
             "filter_diag": getattr(self, '_filter_diag', {}),
         }
 
@@ -513,6 +545,8 @@ def _apply_costs(entry_price: float, exit_price: float, is_long: bool,
         1. Spread: entrada piora pelo spread (compra mais cara, vende mais barata)
         2. Slippage: entrada piora pelo slippage
         3. Fees: cobrados na entrada e na saida
+
+    v26.0: tambem exporta componentes individuais via _apply_costs_detail()
     """
     spread_pct = spread_bps / 10000.0
     slippage_pct = slippage_bps / 10000.0
@@ -545,6 +579,150 @@ def _apply_costs(entry_price: float, exit_price: float, is_long: bool,
     total_cost_pct = (abs(adj_entry - entry_price) + abs(adj_exit - exit_price)) / entry_price * 100
 
     return adj_entry, adj_exit, total_cost_pct
+
+
+def _apply_costs_detail(entry_price: float, exit_price: float, is_long: bool,
+                         fee_pct: float = DEFAULT_FEE_PCT,
+                         spread_bps: float = DEFAULT_SPREAD_BPS,
+                         slippage_bps: float = DEFAULT_SLIPPAGE_BPS) -> Tuple[float, float, float, float, float, float]:
+    """
+    v26.0: Versao detalhada que retorna componentes individuais de custo.
+
+    Returns:
+        (adjusted_entry, adjusted_exit, total_cost_pct, fee_component, slippage_component, spread_component)
+        Todos em % relativo ao entry_price.
+    """
+    spread_pct = spread_bps / 10000.0
+    slippage_pct = slippage_bps / 10000.0
+
+    # Entry side cost (spread + slippage)
+    entry_cost_pct = spread_pct + slippage_pct
+    if is_long:
+        adj_entry = entry_price * (1 + entry_cost_pct)
+    else:
+        adj_entry = entry_price * (1 - entry_cost_pct)
+
+    # Exit side cost (spread + slippage)
+    exit_cost_pct = spread_pct + slippage_pct
+    if is_long:
+        adj_exit = exit_price * (1 - exit_cost_pct)
+    else:
+        adj_exit = exit_price * (1 + exit_cost_pct)
+
+    # Fees on both sides
+    fee_on_entry = adj_entry * (fee_pct / 100.0)
+    fee_on_exit = adj_exit * (fee_pct / 100.0)
+    if is_long:
+        adj_entry += fee_on_entry
+        adj_exit -= fee_on_exit
+    else:
+        adj_entry -= fee_on_entry
+        adj_exit += fee_on_exit
+
+    # Componentes individuais (% do entry_price)
+    fee_component = (fee_on_entry + fee_on_exit) / entry_price * 100
+    slippage_component = entry_price * slippage_pct * 2 / entry_price * 100  # round-trip
+    spread_component = entry_price * spread_pct * 2 / entry_price * 100  # round-trip
+
+    # Total cost as % of entry
+    total_cost_pct = (abs(adj_entry - entry_price) + abs(adj_exit - exit_price)) / entry_price * 100
+
+    return adj_entry, adj_exit, total_cost_pct, fee_component, slippage_component, spread_component
+
+# ------------------------------------------------------------------
+# v26.0: Audit field calculator for TradeResult
+# ------------------------------------------------------------------
+def _compute_audit_fields(
+    entry_price: float, exit_price: float, is_long: bool,
+    position_size: float, position_usd: float, bars_held: int,
+    entry_ts, exit_ts,
+    fee_pct: float = DEFAULT_FEE_PCT,
+    spread_bps: float = DEFAULT_SPREAD_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
+    funding_rate_bps: float = 0.01,  # ~0.01% per 8h for BTC perpetual
+    apply_costs_flag: bool = True,
+) -> dict:
+    """v26.0: Compute detailed audit fields for a TradeResult.
+    
+    Returns dict with: gross_pnl, fees, slippage, funding, net_pnl, return_pct, duration, pnl_pct
+    """
+    if entry_price <= 0:
+        return {"gross_pnl": 0.0, "fees": 0.0, "slippage": 0.0, "funding": 0.0,
+            "net_pnl": 0.0, "return_pct": 0.0, "duration": "", "pnl_pct": 0.0}
+
+    # Raw gross PnL (no costs)
+    if is_long:
+        gross_pnl_pct = (exit_price - entry_price) / entry_price * 100
+    else:
+        gross_pnl_pct = (entry_price - exit_price) / entry_price * 100
+    
+    if apply_costs_flag and position_usd > 0:
+        # Detailed cost decomposition
+        _, _, total_cost_pct, fee_comp, slip_comp, spread_comp = _apply_costs_detail(
+            entry_price, exit_price, is_long, fee_pct, spread_bps, slippage_bps,
+        )
+        
+        fees_usd = position_usd * (fee_comp / 100)
+        slippage_usd = position_usd * (slip_comp / 100)
+        
+        # Adjusted exit for net PnL
+        _, adj_exit, _ = _apply_costs(
+            entry_price, exit_price, is_long, fee_pct, spread_bps, slippage_bps,
+        )
+        if is_long:
+            net_pnl_pct = (adj_exit - entry_price) / entry_price * 100
+        else:
+            net_pnl_pct = (entry_price - adj_exit) / entry_price * 100
+        
+        net_pnl_usd = position_usd * (net_pnl_pct / 100)
+    else:
+        fees_usd = 0.0
+        slippage_usd = 0.0
+        total_cost_pct = 0.0
+        net_pnl_pct = gross_pnl_pct
+        net_pnl_usd = position_usd * (net_pnl_pct / 100) if position_usd > 0 else 0.0
+
+    # Funding rate estimation (perpetual swap: ~0.01% per 8h, 1h candles = 0.01/8 per bar)
+    funding_per_bar = position_usd * (funding_rate_bps / 10000) / 8.0 if position_usd > 0 else 0.0
+    funding_usd = -funding_per_bar * bars_held  # always a cost for long, offset for short
+    # For shorts, funding can be positive (you receive it), but model as cost for conservatism
+    if not is_long:
+        funding_usd = abs(funding_usd) * 0.7  # shorts receive ~70% of time on BTC
+    else:
+        funding_usd = -abs(funding_usd) * 0.6  # longs pay ~60% of time
+    
+    # Duration string
+    hours = bars_held  # 1h candles = 1h per bar
+    if hours < 24:
+        duration = f"{hours}h"
+    elif hours < 48:
+        duration = f"1d {hours - 24}h"
+    elif hours < 168:
+        days = hours // 24
+        rem_h = hours % 24
+        duration = f"{days}d {rem_h}h"
+    else:
+        weeks = hours // 168
+        rem = hours % 168
+        days = rem // 24
+        rem_h = rem % 24
+        duration = f"{weeks}w {days}d {rem_h}h"
+
+    # Return % relative to capital allocated
+    return_pct = net_pnl_pct  # already in %
+
+    return {
+        "gross_pnl": round(gross_pnl_pct, 4),
+        "fees": round(fees_usd, 4),
+        "slippage": round(slippage_usd, 4),
+        "funding": round(funding_usd, 4),
+        "net_pnl": round(net_pnl_usd, 4),
+        "return_pct": round(return_pct, 4),
+        "duration": duration,
+        "pnl_pct": round(net_pnl_pct, 4),
+    }
+
+
 
 
 # ------------------------------------------------------------------
@@ -700,6 +878,14 @@ def simulate_trades(
             bars_held=bars,
             exit_reason=exit_reason,
             atr_percentile=atr_pct,
+            # v26.0: Audit fields (basic sim - no position sizing)
+            **_compute_audit_fields(
+                entry_price=entry_price, exit_price=exit_price, is_long=is_long,
+                position_size=0.0, position_usd=0.0, bars_held=bars,
+                entry_ts=row.name, exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
+                fee_pct=fee_pct, spread_bps=spread_bps, slippage_bps=slippage_bps,
+                apply_costs_flag=apply_costs_flag,
+            ),
         ))
 
         # Avanca apos o trade fechar (evita trades sobrepostos)
@@ -1046,6 +1232,15 @@ def simulate_trades_advanced(
             partial_tp_filled=partial_tp_filled,
             sl_updates=sl_updates,
             entry_type=getattr(signal, 'entry_type', 'unknown'),
+            # v26.0: Audit fields
+            **_compute_audit_fields(
+                entry_price=entry_price, exit_price=exit_price, is_long=is_long,
+                position_size=position_size, position_usd=position_usd,
+                bars_held=bars, entry_ts=row.name,
+                exit_ts=df_ind.iloc[min(i + bars, n - 1)].name,
+                fee_pct=fee_pct, spread_bps=spread_bps, slippage_bps=slippage_bps,
+                apply_costs_flag=apply_costs_flag,
+            ),
         ))
 
         # Track equity for live streaming
@@ -1192,6 +1387,47 @@ def calculate_metrics(
     total_pnl_usd = float(_eq_arr[-1] - _INITIAL_BALANCE)
     max_dd_usd = float(np.max(_eq_peak - _eq_arr)) if len(_eq_arr) > 0 else 0.0
 
+    # v26.0: Advanced risk metrics
+    pnls_arr = np.array(pnls) if pnls else np.array([0.0])
+    wr = len(wins) / len(trades) if trades else 0.0
+    avg_win = np.mean([t.pnl_pct for t in wins]) if wins else 0.0
+    avg_loss = np.mean([t.pnl_pct for t in losses]) if losses else 0.0
+
+    # Recovery Factor
+    recovery_factor = abs(total_pnl_pct) / max_dd if max_dd > 0 else 0.0
+
+    # Sortino Ratio
+    downside = pnls_arr[pnls_arr < 0]
+    if len(downside) > 1 and np.std(downside) > 0:
+        sortino = (np.mean(pnls_arr) / np.std(downside)) * (365 ** 0.5)
+    else:
+        sortino = 0.0
+
+    # Calmar Ratio
+    calmar = total_pnl_pct / max_dd if max_dd > 0 else 0.0
+
+    # CAGR (1h candles proxy: len(df)/24 = days)
+    _days = max(len(df) / 24, 1)
+    if total_pnl_pct > -100:
+        cagr = ((1 + total_pnl_pct / 100) ** (365 / _days) - 1) * 100
+    else:
+        cagr = -100.0
+
+    # Expectancy
+    expectancy = (wr * avg_win) + ((1 - wr) * avg_loss)
+
+    # VaR 95 (5th percentile of PnLs, negative)
+    var_95 = float(np.percentile(pnls_arr, 5)) if len(pnls_arr) > 1 else 0.0
+
+    # Expected Shortfall (mean of PnLs below VaR)
+    below_var = pnls_arr[pnls_arr <= var_95]
+    expected_shortfall = float(np.mean(below_var)) if len(below_var) > 0 else 0.0
+
+    # Omega Ratio (threshold=0)
+    gains = pnls_arr[pnls_arr > 0]
+    losses_abs = -pnls_arr[pnls_arr < 0]
+    omega = float(np.sum(gains) / np.sum(losses_abs)) if np.sum(losses_abs) > 0 else 0.0
+
     return BacktestMetrics(
         total_trades=len(trades),
         long_trades=len(longs),
@@ -1219,6 +1455,14 @@ def calculate_metrics(
         trailing_activated_count=trail_count,
         partial_tp_count=partial_count,
         avg_r_r=avg_rr,
+        recovery_factor=recovery_factor,
+        sortino_ratio=sortino,
+        calmar_ratio=calmar,
+        cagr=cagr,
+        expectancy=expectancy,
+        var_95=var_95,
+        expected_shortfall=expected_shortfall,
+        omega_ratio=omega,
     )
 
 

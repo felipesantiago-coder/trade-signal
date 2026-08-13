@@ -78,7 +78,9 @@ _settings: Optional[Settings] = None
 _backtest_task: Optional[asyncio.Task] = None
 _backtest_result: Optional[dict] = None
 _backtest_running: bool = False
-_backtest_meta: dict = {"timeframe": "1h", "days": 730}
+_backtest_meta: dict = {"timeframe": "1h", "days": 730, "fee_pct": 0.016, "spread_bps": 2.0, "slippage_bps": 5.0}
+_wfo_running: bool = False
+_wfo_result: Optional[dict] = None
 
 
 def get_worker() -> CTEVWorker:
@@ -300,6 +302,18 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
                         "partial_tp_filled": t.partial_tp_filled,
                         "position_usd": t.position_usd,
                         "entry_type": getattr(t, 'entry_type', ''),
+                        "regime_at_entry": getattr(t, 'regime_at_entry', ''),
+                        "concurrent_count": getattr(t, 'concurrent_count', 0),
+                        "capital_allocated": getattr(t, 'capital_allocated', 0.0),
+                        "quantity": getattr(t, 'quantity', 0.0),
+                        "r_multiple": getattr(t, 'r_multiple', 0.0),
+                        "gross_pnl": getattr(t, 'gross_pnl', 0.0),
+                        "fees": getattr(t, 'fees', 0.0),
+                        "slippage": getattr(t, 'slippage', 0.0),
+                        "funding": getattr(t, 'funding', 0.0),
+                        "net_pnl": getattr(t, 'net_pnl', 0.0),
+                        "return_pct": getattr(t, 'return_pct', 0.0),
+                        "duration": getattr(t, 'duration', ''),
                     }
                     for t in trades
                 ],
@@ -408,18 +422,34 @@ async def api_backtest_export() -> Response:
         )
 
     from datetime import datetime as _dt
-    from report_auditor import generate_audit_report
+    from report_auditor_v2 import generate_audit_report_v2
+    from audit_framework import (
+        run_monte_carlo, decompose_strategies, analyze_portfolio_contribution,
+        analyze_long_short, audit_drawdown_management, compute_multi_objective_score,
+        compute_verdict, generate_19_point_recommendation,
+        assess_overfitting_risk, run_outlier_analysis, run_regime_analysis,
+        run_temporal_stability, build_full_equity_curve,
+        run_cost_sensitivity, run_degradation_suite,
+        classify_regime_performance, audit_concurrent_positions,
+        run_comprehensive_audit,
+    )
 
     m = _backtest_result.get("metrics", {})
+    # Adicionar metadados de custo ao metrics para o cost sensitivity
+    m["_fee_pct"] = _backtest_meta.get("fee_pct", 0.016)
+    m["_spread_bps"] = _backtest_meta.get("spread_bps", 2.0)
+    m["_slippage_bps"] = _backtest_meta.get("slippage_bps", 5.0)
+
     trades = _backtest_result.get("trades", [])
     tf = _backtest_meta.get("timeframe", "1h")
     days = _backtest_meta.get("days", 730)
 
-    md_content = generate_audit_report(
+    md_content = generate_audit_report_v2(
         metrics=m,
         trades=trades,
         timeframe=tf,
         days=days,
+        version_label=f"V1-BASELINE",
     )
 
     filename = f"audit_{tf}_{days}d_{_dt.now(timezone.utc).strftime('%Y%m%d_%H%M')}.md"
@@ -507,3 +537,135 @@ async def api_chart_data(bars: int = 100) -> dict:
 static_dir = BASE_DIR / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+@app.post("/api/wfo", summary="Walk-Forward OOS para V1-V5")
+async def api_wfo(
+    train_days: int = 180,
+    test_days: int = 60,
+    step_days: int = 60,
+    total_days: int = 730,
+) -> dict:
+    """Executa Walk-Forward OOS para todas as versoes V1-V5.
+
+    Retorna ranking ordenado por overfitting_score (menor = melhor).
+    """
+    global _wfo_running, _wfo_result
+
+    if _wfo_running:
+        return {"ok": False, "error": "WFO ja em andamento. Aguarde."}
+
+    _wfo_running = True
+    _wfo_result = None
+
+    async def _run_wfo():
+        global _wfo_running, _wfo_result
+        try:
+            from walk_forward_oos import run_all_versions_wfo
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: run_all_versions_wfo(
+                    total_days=total_days,
+                    train_days=train_days,
+                    test_days=test_days,
+                    step_days=step_days,
+                ),
+            )
+            _wfo_result = {
+                "ok": True,
+                "results": [
+                    {
+                        "version_id": r.version_id,
+                        "label": r.label,
+                        "n_windows": r.n_windows,
+                        "is_avg_wr": r.is_avg_wr,
+                        "is_avg_pf": r.is_avg_pf,
+                        "is_avg_sharpe": r.is_avg_sharpe,
+                        "oos_avg_wr": r.oos_avg_wr,
+                        "oos_avg_pf": r.oos_avg_pf,
+                        "oos_avg_sharpe": r.oos_avg_sharpe,
+                        "oos_avg_sortino": r.oos_avg_sortino,
+                        "oos_avg_calmar": r.oos_avg_calmar,
+                        "oos_avg_max_dd": r.oos_avg_max_dd,
+                        "oos_total_pnl": r.oos_total_pnl,
+                        "avg_degradation_wr": r.avg_degradation_wr,
+                        "avg_degradation_pf": r.avg_degradation_pf,
+                        "avg_degradation_pnl": r.avg_degradation_pnl,
+                        "overfitting_score": r.overfitting_score,
+                        "oos_consistency": r.oos_consistency,
+                        "verdict": r.verdict,
+                        "windows": [
+                            {
+                                "window_id": w.window_id,
+                                "test_start": w.test_start,
+                                "test_end": w.test_end,
+                                "is_wr": w.is_win_rate,
+                                "is_pf": w.is_pf,
+                                "oos_wr": w.oos_win_rate,
+                                "oos_pf": w.oos_pf,
+                                "oos_pnl": w.oos_total_pnl,
+                                "degradation_pnl": w.degradation_pnl,
+                            }
+                            for w in r.windows
+                        ],
+                    }
+                    for r in results
+                ],
+            }
+            insert_log(
+                "INFO",
+                f"WFO concluido: {len(results)} versoes testadas. "
+                f"Melhor: {results[0].version_id} (overfit={results[0].overfitting_score})",
+                "wfo",
+            )
+        except Exception as exc:
+            logger.exception("WFO falhou: %s", exc)
+            _wfo_result = {"ok": False, "error": str(exc)}
+            insert_log("ERROR", f"WFO falhou: {exc}", "wfo")
+        finally:
+            _wfo_running = False
+
+    asyncio.create_task(_run_wfo())
+    return {
+        "ok": True,
+        "message": f"WFO iniciado (train={train_days}d, test={test_days}d). Consulte /api/wfo/status.",
+    }
+
+
+@app.get("/api/wfo/status", summary="Status do WFO")
+async def api_wfo_status() -> dict:
+    """Retorna o status e resultado do WFO mais recente."""
+    global _wfo_running, _wfo_result
+    if _wfo_running:
+        return {"status": "running", "result": None}
+    if _wfo_result is not None:
+        return {"status": "done", "result": _wfo_result}
+    return {"status": "none", "result": None}
+
+
+@app.get("/api/versions", summary="Lista versoes V1-V5")
+async def api_versions() -> dict:
+    """Retorna todas as versoes disponiveis com parametros."""
+    from versions import list_versions
+    versions = list_versions()
+    return {
+        "versions": {
+            vid: {
+                "label": v.label,
+                "description": v.description,
+                "adx_min": v.adx_min,
+                "atr_filter": [v.atr_filter_min, v.atr_filter_max],
+                "max_concurrent": v.max_concurrent,
+                "fee_pct": v.fee_pct,
+                "spread_bps": v.spread_bps,
+                "slippage_bps": v.slippage_bps,
+                "strategies": {
+                    k: {"sl_mult": v2["sl_mult"], "tp_mult": v2["tp_mult"],
+                          "risk_pct": v2["risk_pct"], "enabled": v2.get("enabled", True)}
+                    for k, v2 in v.strategies.items()
+                },
+            }
+            for vid, v in versions.items()
+        }
+    }

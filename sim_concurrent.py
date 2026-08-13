@@ -37,7 +37,7 @@ logger = logging.getLogger("ctev.sim_concurrent")
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from backtest import (
-    TradeResult, BacktestMetrics, _apply_costs,
+    TradeResult, BacktestMetrics, _apply_costs, _compute_audit_fields,
     _update_progress, DEFAULT_FEE_PCT, DEFAULT_SPREAD_BPS, DEFAULT_SLIPPAGE_BPS,
 )
 
@@ -327,6 +327,9 @@ def simulate_trades_concurrent(
             balance += pnl_usd
 
             # Record trade
+            _regime_at_entry = str(df_ind.iloc[pos.entry_idx].get("regime", "")) if pos.entry_idx < len(df_ind) else ""
+            _sl_risk_pct = abs((entry_price - pos.signal.stop_loss) / entry_price * 100) if pos.signal.stop_loss != 0 and entry_price > 0 else 0.0
+            _r_mult = round(abs(pnl_pct) / max(_sl_risk_pct, 0.01), 2) if _sl_risk_pct > 0 else 0.0
             trades.append(TradeResult(
                 entry_ts=df_ind.index[pos.entry_idx],
                 exit_ts=df_ind.index[min(i, n - 1)],
@@ -350,6 +353,21 @@ def simulate_trades_concurrent(
                 partial_tp_filled=pos.partial_tp_filled,
                 sl_updates=pos.sl_updates,
                 entry_type=getattr(pos.signal, 'entry_type', 'unknown'),
+                regime_at_entry=_regime_at_entry,
+                concurrent_count=len(open_positions),
+                equity_before=0.0,
+                equity_after=0.0,
+                capital_allocated=round(pos.position_usd, 2),
+                quantity=round(pos.position_size, 8),
+                r_multiple=_r_mult,
+                # v26.0: Audit fields
+                **_compute_audit_fields(
+                    entry_price=entry_price, exit_price=exit_price, is_long=is_long,
+                    position_size=pos.position_size, position_usd=pos.position_usd,
+                    bars_held=pos.bars, entry_ts=df_ind.index[pos.entry_idx],
+                    exit_ts=df_ind.index[min(i, n - 1)],
+                    fee_pct=fee_pct, spread_bps=spread_bps, slippage_bps=slippage_bps,
+                ),
             ))
 
             # Equity tracking
@@ -467,6 +485,9 @@ def simulate_trades_concurrent(
             pnl_pct = 0.0
             pnl_usd = 0.0
         balance += pnl_usd
+        _regime_at_entry = str(df_ind.iloc[pos.entry_idx].get("regime", "")) if pos.entry_idx < len(df_ind) else ""
+        _sl_risk_pct = abs((pos.entry_price - pos.signal.stop_loss) / pos.entry_price * 100) if pos.signal.stop_loss != 0 and pos.entry_price > 0 else 0.0
+        _r_mult = round(abs(pnl_pct) / max(_sl_risk_pct, 0.01), 2) if _sl_risk_pct > 0 else 0.0
         trades.append(TradeResult(
             entry_ts=df_ind.index[pos.entry_idx],
             exit_ts=df_ind.index[n - 1],
@@ -486,6 +507,21 @@ def simulate_trades_concurrent(
             position_usd=round(pos.position_usd, 2),
             risk_usd=round(pos.risk_usd, 2),
             entry_type=getattr(pos.signal, 'entry_type', 'unknown'),
+            regime_at_entry=_regime_at_entry,
+            concurrent_count=len(open_positions),
+            equity_before=0.0,
+            equity_after=0.0,
+            capital_allocated=round(pos.position_usd, 2),
+            quantity=round(pos.position_size, 8),
+            r_multiple=_r_mult,
+                # v26.0: Audit fields
+                **_compute_audit_fields(
+                    entry_price=pos.entry_price, exit_price=last_close,
+                    is_long=pos.is_long, position_size=pos.position_size,
+                    position_usd=pos.position_usd, bars_held=n - 1 - pos.entry_idx,
+                    entry_ts=df_ind.index[pos.entry_idx], exit_ts=df_ind.index[n - 1],
+                    fee_pct=fee_pct, spread_bps=spread_bps, slippage_bps=slippage_bps,
+                ),
         ))
 
     logger.info(
