@@ -251,7 +251,7 @@ def run_all_versions_wfo(
     test_days: int = 60, step_days: int = 60,
 ) -> List[WFOVersionResult]:
     results = []
-    for vid in [f"V{i}" for i in range(1, 21)]:
+    for vid in [f"V{i}" for i in range(1, 31)]:
         try:
             r = run_walk_forward_oos(vid, symbol, timeframe, total_days, train_days, test_days, step_days)
             results.append(r)
