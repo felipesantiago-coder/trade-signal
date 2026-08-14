@@ -1,11 +1,11 @@
 """versions.py
 Registro de versoes do sistema BTC/USDT 1h Multi-Strategy.
 
-V1 = BASELINE (v25.0 current)
-V2 = CONSERVATIVE (tighter SL, wider R:R, lower leverage)
-V3 = MODERATE (slightly wider ATR filter, stricter ADX)
-V4 = AGGRESSIVE_RR (wider TP for trend strategies, reduced position sizes)
-V5 = LOW_FREQ_QUALITY (higher ADX, BBWP squeeze focus only)
+V1-V5 = Original (nenhuma ROBUSTA no WFO)
+V6-V10 = Squeeze-Centric (simplicidade = robustez)
+V11-V14 = Derivadas das melhores (V2/V4) com ajustes fino
+V15-V17 = Filtro ATR mais seletivo
+V18-V20 = Ultra-Conservadoras (fewer trades, higher quality)
 
 Walk-Forward OOS validation per version.
 Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO
@@ -137,6 +137,292 @@ VERSIONS = {
         max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=6,
         trailing_atr_mult=0.8, partial_tp_pct=0.50,
         atr_filter_min=0.15, atr_filter_max=0.85,
+    ),
+    # ═══════════════════════════════════════════════════════════════════
+    # V6-V10: SQUEEZE-CENTRIC — simplicidade = robustez
+    # Hipotese: remover CTEV (WR~22%, ruído) melhora Sharpe e consistência
+    # ═══════════════════════════════════════════════════════════════════
+    "V6": StrategyVersion(
+        version_id="V6", label="V6-SQUEEZE_PURE",
+        description=("V6 Squeeze Pure. Apenas Squeeze (WR~50%). CTEV desativado. "
+                      "ADX>26, ATR 0.08-0.92. Trailing 0.6. Max 3 conc."),
+        adx_min=26.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.08, atr_pct_max=0.92,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.080, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=3, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=3,
+        trailing_atr_mult=0.6, partial_tp_pct=0.50,
+        atr_filter_min=0.08, atr_filter_max=0.92,
+    ),
+    "V7": StrategyVersion(
+        version_id="V7", label="V7-SQUEEZE_ADX28",
+        description=("V7 Squeeze ADX28. Apenas Squeeze. ADX>28 (trends mais fortes). "
+                      "Trailing 0.5. ATR 0.10-0.90. Max 2 conc."),
+        adx_min=28.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.10, atr_pct_max=0.90,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.070, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.10, atr_filter_max=0.90,
+    ),
+    "V8": StrategyVersion(
+        version_id="V8", label="V8-SQUEEZE_ADX30",
+        description=("V8 Squeeze ADX30. Apenas Squeeze. ADX>30 (trends fortes). "
+                      "Trailing 0.5. ATR 0.12-0.88. Max 2 conc. Slip 3bps."),
+        adx_min=30.0, allow_transition=False,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.12, atr_pct_max=0.88,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 2.00, "tp_mult": 4.50, "max_bars": 120, "risk_pct": 0.070, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=3.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.12, atr_filter_max=0.88,
+    ),
+    "V9": StrategyVersion(
+        version_id="V9", label="V9-SQUEEZE_RSIR_ADX26",
+        description=("V9 Squeeze+RSIRev ADX26. Duas estrategias. Trailing 0.6. "
+                      "ATR 0.10-0.90. Max 3 conc. RSI Rev risk 2.5%."),
+        adx_min=26.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.10, atr_pct_max=0.90,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.070, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.025, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=3, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.6, partial_tp_pct=0.50,
+        atr_filter_min=0.10, atr_filter_max=0.90,
+    ),
+    "V10": StrategyVersion(
+        version_id="V10", label="V10-SQUEEZE_RSIR_ADX28",
+        description=("V10 Squeeze+RSIRev ADX28. Duas estrategias. Trailing 0.5. "
+                       "ATR 0.10-0.90. Max 2 conc. Slip 3bps."),
+        adx_min=28.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.10, atr_pct_max=0.90,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.060, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.025, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=3.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.10, atr_filter_max=0.90,
+    ),
+    # ═══════════════════════════════════════════════════════════════════
+    # V11-V14: DERIVADAS DAS MELHORES (V2/V4) com ajustes finos
+    # V2 = menor MaxDD (35%), V4 = menor overfitting (52.8)
+    # ═══════════════════════════════════════════════════════════════════
+    "V11": StrategyVersion(
+        version_id="V11", label="V11-V4_SQUEEZE_BOOST",
+        description=("V11 V4-derivative. CTEV desativado. Squeeze 10%. RSI Rev 2.5%. "
+                       "Trailing 0.6. Partial TP 55%."),
+        adx_min=24.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=68.0, rsi_short_min=32.0, rsi_short_max=56.0,
+        atr_pct_min=0.08, atr_pct_max=0.92,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 6.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.50, "tp_mult": 9.00, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 6.50, "max_bars": 144, "risk_pct": 0.100, "enabled": True},
+            "rsi_reversal": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 120, "risk_pct": 0.025, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=3, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=3,
+        trailing_atr_mult=0.6, partial_tp_pct=0.55,
+        atr_filter_min=0.08, atr_filter_max=0.92,
+    ),
+    "V12": StrategyVersion(
+        version_id="V12", label="V12-V2_TIGHT_TRAIL",
+        description=("V12 V2-derivative. Trailing 0.5, partial TP 60%. "
+                       "Maior protecao de lucro. ADX>28. Slip 3bps."),
+        adx_min=28.0, allow_transition=True,
+        rsi_long_min=42.0, rsi_long_max=64.0, rsi_short_min=36.0, rsi_short_max=58.0,
+        atr_pct_min=0.10, atr_pct_max=0.90,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.50, "tp_mult": 6.00, "max_bars": 168, "risk_pct": 0.0005, "enabled": True},
+            "ctev_momentum": {"sl_mult": 1.40, "tp_mult": 8.50, "max_bars": 120, "risk_pct": 0.0005, "enabled": True},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 120, "risk_pct": 0.050, "enabled": True},
+            "rsi_reversal": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 120, "risk_pct": 0.025, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=3.0,
+        max_concurrent=3, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=6,
+        trailing_atr_mult=0.5, partial_tp_pct=0.60,
+        atr_filter_min=0.10, atr_filter_max=0.90,
+    ),
+    "V13": StrategyVersion(
+        version_id="V13", label="V13-V4_HALF_RISK",
+        description=("V13 V4-derivative. Todas posicoes com 50% do risco. "
+                       "Menor MaxDD. Trailing 0.6. ADX>24."),
+        adx_min=24.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=68.0, rsi_short_min=32.0, rsi_short_max=56.0,
+        atr_pct_min=0.08, atr_pct_max=0.92,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 6.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.50, "tp_mult": 9.00, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 6.50, "max_bars": 144, "risk_pct": 0.030, "enabled": True},
+            "rsi_reversal": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 120, "risk_pct": 0.015, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=3, risk_per_trade=0.005, cooldown_trigger=2, cooldown_bars=3,
+        trailing_atr_mult=0.6, partial_tp_pct=0.50,
+        atr_filter_min=0.08, atr_filter_max=0.92,
+    ),
+    "V14": StrategyVersion(
+        version_id="V14", label="V14-V2_NO_CTEV",
+        description=("V14 V2-derivative. CTEV desativado. Squeeze+RSI Rev. "
+                       "Trailing 0.5. ADX>28. Slip 3bps. Max 2 conc."),
+        adx_min=28.0, allow_transition=True,
+        rsi_long_min=42.0, rsi_long_max=64.0, rsi_short_min=36.0, rsi_short_max=58.0,
+        atr_pct_min=0.10, atr_pct_max=0.90,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.50, "tp_mult": 6.00, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.40, "tp_mult": 8.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 120, "risk_pct": 0.050, "enabled": True},
+            "rsi_reversal": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 120, "risk_pct": 0.025, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=3.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=6,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.10, atr_filter_max=0.90,
+    ),
+    # ═══════════════════════════════════════════════════════════════════
+    # V15-V17: FILTRO ATR MAIS SELETIVO
+    # Hipotese: ATR mais estreito = menos sinais em volatilidade extrema = mais consistente
+    # ═══════════════════════════════════════════════════════════════════
+    "V15": StrategyVersion(
+        version_id="V15", label="V15-WIDE_ATR_SQUEEZE",
+        description=("V15 Wide ATR Squeeze. ATR 0.15-0.85. Squeeze only. "
+                       "ADX>28. Trailing 0.5. Max 2 conc."),
+        adx_min=28.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.15, atr_pct_max=0.85,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.070, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.15, atr_filter_max=0.85,
+    ),
+    "V16": StrategyVersion(
+        version_id="V16", label="V16-TIGHT_ATR_ADX30",
+        description=("V16 Tight ATR ADX30. ATR 0.15-0.85. Squeeze+RSI Rev. "
+                       "ADX>30. No transition. Trailing 0.5."),
+        adx_min=30.0, allow_transition=False,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.15, atr_pct_max=0.85,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 2.00, "tp_mult": 4.50, "max_bars": 120, "risk_pct": 0.060, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.025, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=3.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.15, atr_filter_max=0.85,
+    ),
+    "V17": StrategyVersion(
+        version_id="V17", label="V17-VERY_TIGHT_ATR",
+        description=("V17 Very Tight ATR. ATR 0.20-0.80. Squeeze only. "
+                       "ADX>28. Ultra-seletivo. Trailing 0.4."),
+        adx_min=28.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.20, atr_pct_max=0.80,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.80, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.070, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=4,
+        trailing_atr_mult=0.4, partial_tp_pct=0.50,
+        atr_filter_min=0.20, atr_filter_max=0.80,
+    ),
+    # ═══════════════════════════════════════════════════════════════════
+    # V18-V20: ULTRA-CONSERVADORAS
+    # Hipotese: trades raros mas de altissima qualidade = maxima consistencia
+    # ═══════════════════════════════════════════════════════════════════
+    "V18": StrategyVersion(
+        version_id="V18", label="V18-ULTRA_CONSERV",
+        description=("V18 Ultra Conservative. ADX>32. Squeeze+RSI Rev. "
+                       "Max 2 conc. Trailing 0.4. Partial TP 60%. ATR 0.12-0.88."),
+        adx_min=32.0, allow_transition=False,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.12, atr_pct_max=0.88,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 2.00, "tp_mult": 4.50, "max_bars": 120, "risk_pct": 0.050, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.020, "enabled": True},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=3.0,
+        max_concurrent=2, risk_per_trade=0.006, cooldown_trigger=2, cooldown_bars=6,
+        trailing_atr_mult=0.4, partial_tp_pct=0.60,
+        atr_filter_min=0.12, atr_filter_max=0.88,
+    ),
+    "V19": StrategyVersion(
+        version_id="V19", label="V19-TREND_ONLY",
+        description=("V19 Trend Only. ADX>30. No transition. Squeeze+Momentum (3%). "
+                       "Trailing 0.5. Max 2 conc. ATR 0.12-0.88."),
+        adx_min=30.0, allow_transition=False,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.12, atr_pct_max=0.88,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 2.20, "tp_mult": 8.00, "max_bars": 144, "risk_pct": 0.030, "enabled": True},
+            "squeeze_breakout": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 144, "risk_pct": 0.060, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=2, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=6,
+        trailing_atr_mult=0.5, partial_tp_pct=0.50,
+        atr_filter_min=0.12, atr_filter_max=0.88,
+    ),
+    "V20": StrategyVersion(
+        version_id="V20", label="V20-SQUEEZE_WIDE_TP",
+        description=("V20 Squeeze Wide TP. Apenas Squeeze. SL 1.5x / TP 7.0x (R:R=4.67). "
+                       "ADX>26. Trailing 0.6. Max 3 conc. Higher risk per squeeze."),
+        adx_min=26.0, allow_transition=True,
+        rsi_long_min=44.0, rsi_long_max=66.0, rsi_short_min=34.0, rsi_short_max=56.0,
+        atr_pct_min=0.08, atr_pct_max=0.92,
+        strategies={
+            "ctev_pullback": {"sl_mult": 1.80, "tp_mult": 5.50, "max_bars": 168, "risk_pct": 0.000, "enabled": False},
+            "ctev_momentum": {"sl_mult": 1.70, "tp_mult": 7.50, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+            "squeeze_breakout": {"sl_mult": 1.50, "tp_mult": 7.00, "max_bars": 168, "risk_pct": 0.100, "enabled": True},
+            "rsi_reversal": {"sl_mult": 2.00, "tp_mult": 5.00, "max_bars": 120, "risk_pct": 0.000, "enabled": False},
+        },
+        fee_pct=0.016, spread_bps=2.0, slippage_bps=5.0,
+        max_concurrent=3, risk_per_trade=0.008, cooldown_trigger=2, cooldown_bars=3,
+        trailing_atr_mult=0.6, partial_tp_pct=0.50,
+        atr_filter_min=0.08, atr_filter_max=0.92,
     ),
 }
 
