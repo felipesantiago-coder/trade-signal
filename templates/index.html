@@ -2075,14 +2075,14 @@ function renderWFOResults(result) {
             <td style="padding:8px 10px;color:#64748b">${i+1}</td>
             <td style="padding:8px 10px;color:#e2e8f0;font-weight:600">${v.version_id}</td>
             <td style="padding:8px 10px;text-align:center;color:#94a3b8">${v.n_windows}</td>
-            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${(v.is_avg_wr*100).toFixed(1)}%</td>
-            <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${(v.oos_avg_wr*100).toFixed(1)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${v.is_avg_wr.toFixed(1)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${v.oos_avg_wr.toFixed(1)}%</td>
             <td style="padding:8px 10px;text-align:right;color:#94a3b8">${v.is_avg_pf.toFixed(2)}</td>
             <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${v.oos_avg_pf.toFixed(2)}</td>
             <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${v.oos_avg_sharpe.toFixed(2)}</td>
-            <td style="padding:8px 10px;text-align:right;color:#f87171">${(v.oos_avg_max_dd*100).toFixed(1)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:#f87171">${v.oos_avg_max_dd.toFixed(1)}%</td>
             <td style="padding:8px 10px;text-align:right;color:${overfitColor};font-weight:600">${v.overfitting_score.toFixed(3)}</td>
-            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${(v.oos_consistency*100).toFixed(0)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${v.oos_consistency.toFixed(0)}%</td>
             <td style="padding:8px 10px;text-align:center"><span style="background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;color:${verdictColor}">${v.verdict}</span></td>
         </tr>`;
     });
@@ -2120,9 +2120,9 @@ function toggleWfoDetail(vid) {
         whtml += `<tr style="border-bottom:1px solid rgba(51,65,85,0.1)">
             <td style="padding:6px 8px;color:#94a3b8">${w.window_id}</td>
             <td style="padding:6px 8px;color:#e2e8f0">${w.test_start} ~ ${w.test_end}</td>
-            <td style="padding:6px 8px;text-align:right;color:#94a3b8">${(w.is_wr*100).toFixed(1)}%</td>
+            <td style="padding:6px 8px;text-align:right;color:#94a3b8">${w.is_wr.toFixed(1)}%</td>
             <td style="padding:6px 8px;text-align:right;color:#94a3b8">${w.is_pf.toFixed(2)}</td>
-            <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${(w.oos_wr*100).toFixed(1)}%</td>
+            <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${w.oos_wr.toFixed(1)}%</td>
             <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${w.oos_pf.toFixed(2)}</td>
             <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${w.oos_pnl.toFixed(2)}%</td>
             <td style="padding:6px 8px;text-align:right;color:${degColor}">${w.degradation_pnl.toFixed(1)}%</td>
