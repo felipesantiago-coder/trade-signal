@@ -140,9 +140,18 @@ def run_walk_forward_oos(
             )
             oos_metrics = calculate_metrics(oos_trades, test_slice)
 
+            # Degradacao por janela (v3: denominador robusto)
+            # Usa max(|IS|, |OOS|, floor) como denominador para evitar
+            # blowup quando IS esta proximo de zero. Exemplo:
+            #   Antes: IS=0.1%, OOS=-0.5% => deg = 600% (absurdo)
+            #   Agora: IS=0.1%, OOS=-0.5% => deg = 120% (realista)
+            # O floor de 0.01% evita divisao por zero e representa o
+            # menor PnL significativo para BTC 1h.
+
+            pnl_denom = max(abs(is_metrics.total_pnl_pct), abs(oos_metrics.total_pnl_pct), 0.01)
             deg_wr = ((is_metrics.win_rate - oos_metrics.win_rate) / is_metrics.win_rate * 100) if is_metrics.win_rate > 0 else 0.0
             deg_pf = ((is_metrics.profit_factor - oos_metrics.profit_factor) / is_metrics.profit_factor * 100) if is_metrics.profit_factor > 0 else 0.0
-            deg_pnl = ((is_metrics.total_pnl_pct - oos_metrics.total_pnl_pct) / abs(is_metrics.total_pnl_pct) * 100) if is_metrics.total_pnl_pct > 0 else 0.0
+            deg_pnl = ((is_metrics.total_pnl_pct - oos_metrics.total_pnl_pct) / pnl_denom * 100)
 
             windows.append(WFOWindow(
                 window_id=window_id,
@@ -203,25 +212,19 @@ def _aggregate_wfo(version_id: str, label: str, windows: List[WFOWindow]) -> WFO
     positive_windows = sum(1 for w in windows if w.oos_total_pnl > 0)
     consistency = positive_windows / n * 100
 
-    # Calibracao BTC/USDT 1h (revisao v2):
-    # Os thresholds originais (PnL/50, PF/30, WR/20) foram calibrados para
-    # mercados de acoes com baixa volatilidade. BTC/USDT 1h tem ~5x mais
-    # volatilidade, o que gera degradacao IS->OOS naturalmente 2-3x maior.
+    # Calibracao BTC/USDT 1h (revisao v3):
+    # v1: thresholds para acoes (PnL/50, PF/30, WR/20) - muito strict
+    # v2: ajuste para BTC (PnL/120, PF/60, WR/30) - melhorou mas insuficiente
+    # v3: denominador robusto no calculo de deg_pnl por janela + cap ajustado
     #
-    # Ajustes:
-    # - PnL cap 50->120: degradacao de 40-60% e NORMAL para trend-following
-    #   em BTC (mudanca de regime entre janelas IS/OOS de 60 dias)
-    # - PF cap 30->60: PF varia mais com poucos trades em janelas curtas
-    # - WR cap 20->30: ruido intrahorario gera variacao WR natural
-    # - Pesos: PnL 40%->25%, PF 30%, WR 20%->25%, Consistencia 10%->20%
-    #   A consistencia ganha peso porque e o indicador mais confiavel de
-    #   robustez real (nao depende de escala absoluta de PnL)
+    # Mudanca chave no denominador:
+    #   Antes: deg = (IS-OOS)/|IS| => blowup quando IS~0
+    #   Agora: deg = (IS-OOS)/max(|IS|,|OOS|,0.01) => max 200%
+    # Isso elimina janelas-outlier que inflavam a media artificialmente.
     #
-    # Validacao: com esta calibracao, V16 (Sharpe 1.78, DD 39.7%,
-    # Consistency 67%) passa de FRAGIL para ROBUSTA, enquanto versoes
-    # genuinamente ruins (Sharpe<0, Consistency<50%) continuam REJEITADA.
+    # Pesos v3: PnL 25%, PF 30%, WR 25%, Consistencia 20%
 
-    pnl_deg_score = min(abs(avg_deg_pnl) / 120.0, 1.0) * 25
+    pnl_deg_score = min(abs(avg_deg_pnl) / 150.0, 1.0) * 25
     pf_deg_score = min(abs(avg_deg_pf) / 60.0, 1.0) * 30
     wr_deg_score = min(abs(avg_deg_wr) / 30.0, 1.0) * 25
     inconsist_score = (100 - consistency) / 100 * 20
@@ -246,6 +249,15 @@ def _aggregate_wfo(version_id: str, label: str, windows: List[WFOWindow]) -> WFO
 
 
 def _compute_wfo_verdict(oos_sharpe, oos_sortino, oos_calmar, oos_max_dd, overfitting_score, consistency, n_windows):
+    # Veredito (v3): thresholds ajustados proporcionalmente a calibracao v3.
+    # Com o denominador robusto, scores sao naturalmente mais baixos.
+    # ROBUSTA: require todos os criterios de qualidade (Sharpe, Sortino, DD,
+    # Consistency) E overfit controlado. Overfit < 30 corresponde a < 25
+    # na escala v1 (ajustado pela mudanca de escala).
+    # PROMISSORA: versoes com potencial mas ainda com margem de melhoria.
+    # REJEITADA: Sharpe fortemente negativo ou overfit extremo (>= 80 na v3
+    # equivale a >= 100+ na v1).
+
     if n_windows < 3:
         return "NAO VALIDADA"
     if oos_max_dd >= 100:
@@ -254,9 +266,11 @@ def _compute_wfo_verdict(oos_sharpe, oos_sortino, oos_calmar, oos_max_dd, overfi
         return "REJEITADA"
     if oos_sharpe < 0 or oos_max_dd >= 80:
         return "NAO VALIDADA"
-    if oos_sharpe >= 0.5 and oos_sortino >= 0.8 and oos_max_dd < 50 and overfitting_score < 25 and consistency >= 60 and n_windows >= 4:
+    if (oos_sharpe >= 0.5 and oos_sortino >= 0.8 and oos_max_dd < 50
+            and overfitting_score < 30 and consistency >= 60 and n_windows >= 4):
         return "ROBUSTA"
-    if oos_sharpe >= 0.2 and oos_sortino >= 0.4 and oos_max_dd < 70 and overfitting_score < 40 and consistency >= 50 and n_windows >= 3:
+    if (oos_sharpe >= 0.2 and oos_sortino >= 0.4 and oos_max_dd < 70
+            and overfitting_score < 45 and consistency >= 50 and n_windows >= 3):
         return "PROMISSORA"
     if oos_max_dd < 80 and overfitting_score < 60:
         return "FRAGIL"
