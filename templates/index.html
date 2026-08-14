@@ -466,6 +466,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             Backtest
         </div>
+        <div class="tab-item" data-tab="wfo" onclick="switchTab('wfo')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            WFO
+        </div>
         <div class="tab-item" data-tab="risk" onclick="switchTab('risk')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             Risco
@@ -804,6 +808,88 @@
             </div>
             <div id="btPlaceholder" style="padding:60px;text-align:center;color:#64748b;font-size:12px">
                 Clique em <b style="color:#93c5fd">"Rodar Simulacao"</b> para ver o desempenho historico da estrategia.
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ TAB: WFO ═══════════════ -->
+    <div class="tab-panel" id="panel-wfo">
+        <div class="card">
+            <div class="card-header">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span style="font-size:13px;font-weight:600">Walk-Forward Out-of-Sample (WFO)</span>
+                </div>
+                <span style="font-size:10px;color:#64748b">Valida robustez das versoes V1-V5</span>
+            </div>
+
+            <!-- Parametros -->
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:0 18px 14px">
+                <label style="font-size:11px;color:#94a3b8">Treino (dias):
+                    <select id="wfoTrain" style="background:rgba(15,23,42,0.8);border:1px solid rgba(100,116,139,0.25);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+                        <option value="90">90</option>
+                        <option value="120">120</option>
+                        <option value="180" selected>180</option>
+                        <option value="365">365</option>
+                    </select>
+                </label>
+                <label style="font-size:11px;color:#94a3b8">Teste (dias):
+                    <select id="wfoTest" style="background:rgba(15,23,42,0.8);border:1px solid rgba(100,116,139,0.25);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+                        <option value="30">30</option>
+                        <option value="60" selected>60</option>
+                        <option value="90">90</option>
+                    </select>
+                </label>
+                <label style="font-size:11px;color:#94a3b8">Step (dias):
+                    <select id="wfoStep" style="background:rgba(15,23,42,0.8);border:1px solid rgba(100,116,139,0.25);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+                        <option value="30">30</option>
+                        <option value="60" selected>60</option>
+                    </select>
+                </label>
+                <label style="font-size:11px;color:#94a3b8">Total (dias):
+                    <select id="wfoTotal" style="background:rgba(15,23,42,0.8);border:1px solid rgba(100,116,139,0.25);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Inter',sans-serif;outline:none;cursor:pointer">
+                        <option value="365">1 ano</option>
+                        <option value="730" selected>2 anos</option>
+                    </select>
+                </label>
+                <div id="wfoBadge" class="badge" style="background:rgba(100,116,139,0.15);color:#94a3b8;font-size:10px">
+                    <span id="wfoDot" class="dot" style="width:6px;height:6px;background:#475569"></span>
+                    <span id="wfoText">idle</span>
+                </div>
+                <button id="wfoBtn" onclick="runWFO()" class="btn btn-primary" style="background:rgba(167,139,250,0.2);color:#a78bfa;border:1px solid rgba(167,139,250,0.3)">Rodar WFO</button>
+            </div>
+
+            <!-- Resultados -->
+            <div id="wfoResults" style="display:none;padding:0 18px 18px">
+                <div id="wfoError" style="display:none;padding:12px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;color:#fca5a5;font-size:12px;margin-bottom:12px"></div>
+                <div style="overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:'JetBrains Mono',monospace">
+                        <thead>
+                            <tr style="border-bottom:1px solid rgba(51,65,85,0.3)">
+                                <th style="text-align:left;padding:8px 10px;color:#94a3b8;font-weight:600">#</th>
+                                <th style="text-align:left;padding:8px 10px;color:#94a3b8;font-weight:600">Versao</th>
+                                <th style="text-align:center;padding:8px 10px;color:#94a3b8;font-weight:600">Windows</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">IS WR</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">OOS WR</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">IS PF</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">OOS PF</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">OOS Sharpe</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">OOS MaxDD</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">Overfit Score</th>
+                                <th style="text-align:right;padding:8px 10px;color:#94a3b8;font-weight:600">Consistencia</th>
+                                <th style="text-align:center;padding:8px 10px;color:#94a3b8;font-weight:600">Veredito</th>
+                            </tr>
+                        </thead>
+                        <tbody id="wfoTableBody">
+                            <tr><td colspan="12" style="text-align:center;color:#64748b;padding:30px">Aguardando execucao WFO.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Detalhes expandidos por versao -->
+                <div id="wfoDetails" style="margin-top:16px"></div>
+            </div>
+            <div id="wfoPlaceholder" style="padding:40px;text-align:center;color:#64748b;font-size:12px">
+                Clique em <b style="color:#a78bfa">"Rodar WFO"</b> para validar a robustez das versoes V1-V5 com Walk-Forward Out-of-Sample.
             </div>
         </div>
     </div>
@@ -1901,6 +1987,150 @@ function adjustKPIGrid() {
 }
 adjustKPIGrid();
 window.addEventListener('resize', adjustKPIGrid);
+
+// ═══════════════ WFO ═══════════════
+let wfoPoll = null;
+
+async function runWFO() {
+    const btn = document.getElementById('wfoBtn');
+    const dot = document.getElementById('wfoDot');
+    const txt = document.getElementById('wfoText');
+
+    btn.disabled = true; btn.style.opacity = '0.4';
+    dot.style.background = '#f59e0b'; dot.classList.add('pulse-dot');
+    txt.textContent = 'executando';
+    document.getElementById('wfoResults').style.display = 'none';
+    document.getElementById('wfoPlaceholder').style.display = 'none';
+    document.getElementById('wfoError').style.display = 'none';
+
+    const train = document.getElementById('wfoTrain').value;
+    const test = document.getElementById('wfoTest').value;
+    const step = document.getElementById('wfoStep').value;
+    const total = document.getElementById('wfoTotal').value;
+
+    try {
+        const res = await api('POST', `/api/wfo?train_days=${train}&test_days=${test}&step_days=${step}&total_days=${total}`);
+        if (res.ok === false) {
+            showToast(res.error || 'WFO falhou', 'error');
+            resetWFO(); return;
+        }
+        showToast(res.message || 'WFO iniciado', 'success');
+        // Poll for results
+        if (wfoPoll) clearInterval(wfoPoll);
+        wfoPoll = setInterval(checkWFO, 5000);
+        checkWFO();
+    } catch(e) {
+        showToast('Falha WFO: ' + e.message, 'error');
+        resetWFO();
+    }
+}
+
+async function checkWFO() {
+    try {
+        const s = await api('GET', '/api/wfo/status');
+        if (s.status === 'done') {
+            if (wfoPoll) { clearInterval(wfoPoll); wfoPoll = null; }
+            renderWFOResults(s.result);
+        } else if (s.status === 'running') {
+            document.getElementById('wfoText').textContent = 'executando...';
+        }
+    } catch(e) {}
+}
+
+function resetWFO() {
+    const btn = document.getElementById('wfoBtn');
+    const dot = document.getElementById('wfoDot');
+    const txt = document.getElementById('wfoText');
+    btn.disabled = false; btn.style.opacity = '1';
+    dot.style.background = '#475569'; dot.classList.remove('pulse-dot');
+    txt.textContent = 'idle';
+}
+
+function renderWFOResults(result) {
+    resetWFO();
+    const resultsDiv = document.getElementById('wfoResults');
+    const placeholder = document.getElementById('wfoPlaceholder');
+    const errDiv = document.getElementById('wfoError');
+    const tbody = document.getElementById('wfoTableBody');
+
+    if (!result || result.ok === false) {
+        errDiv.textContent = result?.error || 'WFO retornou erro desconhecido.';
+        errDiv.style.display = 'block';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+
+    const versions = result.results || [];
+    if (!versions.length) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#64748b;padding:30px">Nenhum resultado.</td></tr>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+
+    let html = '';
+    versions.forEach((v, i) => {
+        const overfitColor = v.overfitting_score < 0.3 ? '#4ade80' : v.overfitting_score < 0.6 ? '#fbbf24' : '#f87171';
+        const verdictColor = v.verdict === 'ROBUSTA' ? '#4ade80' : v.verdict === 'PROMISSORA' ? '#fbbf24' : v.verdict === 'FRAGIL' ? '#fb923c' : '#f87171';
+        html += `<tr style="border-bottom:1px solid rgba(51,65,85,0.15);cursor:pointer" onclick="toggleWfoDetail('${v.version_id}')">
+            <td style="padding:8px 10px;color:#64748b">${i+1}</td>
+            <td style="padding:8px 10px;color:#e2e8f0;font-weight:600">${v.version_id}</td>
+            <td style="padding:8px 10px;text-align:center;color:#94a3b8">${v.n_windows}</td>
+            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${(v.is_avg_wr*100).toFixed(1)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${(v.oos_avg_wr*100).toFixed(1)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${v.is_avg_pf.toFixed(2)}</td>
+            <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${v.oos_avg_pf.toFixed(2)}</td>
+            <td style="padding:8px 10px;text-align:right;color:#e2e8f0">${v.oos_avg_sharpe.toFixed(2)}</td>
+            <td style="padding:8px 10px;text-align:right;color:#f87171">${(v.oos_avg_max_dd*100).toFixed(1)}%</td>
+            <td style="padding:8px 10px;text-align:right;color:${overfitColor};font-weight:600">${v.overfitting_score.toFixed(3)}</td>
+            <td style="padding:8px 10px;text-align:right;color:#94a3b8">${(v.oos_consistency*100).toFixed(0)}%</td>
+            <td style="padding:8px 10px;text-align:center"><span style="background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;color:${verdictColor}">${v.verdict}</span></td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+    resultsDiv.style.display = 'block';
+
+    // Store for detail toggle
+    window._wfoVersions = versions;
+}
+
+function toggleWfoDetail(vid) {
+    const det = document.getElementById('wfoDetails');
+    const existing = document.getElementById('wfo-det-' + vid);
+    if (existing) { existing.remove(); return; }
+    // Remove any other open detail
+    det.querySelectorAll('[id^="wfo-det-"]').forEach(el => el.remove());
+    const v = (window._wfoVersions || []).find(x => x.version_id === vid);
+    if (!v) return;
+    const wins = v.windows || [];
+    let whtml = `<div id="wfo-det-${vid}" style="background:rgba(15,23,42,0.5);border:1px solid rgba(51,65,85,0.2);border-radius:8px;padding:14px;margin-top:8px">
+        <div style="font-size:11px;font-weight:600;color:#a78bfa;margin-bottom:10px">${vid} — ${wins.length} janelas Walk-Forward</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;font-family:'JetBrains Mono',monospace">
+            <tr style="border-bottom:1px solid rgba(51,65,85,0.3)">
+                <th style="text-align:left;padding:6px 8px;color:#94a3b8">Janela</th>
+                <th style="text-align:left;padding:6px 8px;color:#94a3b8">Periodo Teste</th>
+                <th style="text-align:right;padding:6px 8px;color:#94a3b8">IS WR</th>
+                <th style="text-align:right;padding:6px 8px;color:#94a3b8">IS PF</th>
+                <th style="text-align:right;padding:6px 8px;color:#94a3b8">OOS WR</th>
+                <th style="text-align:right;padding:6px 8px;color:#94a3b8">OOS PF</th>
+                <th style="text-align:right;padding:6px 8px;color:#94a3b8">OOS PnL</th>
+                <th style="text-align:right;padding:6px 8px;color:#94a3b8">Degr. PnL</th>
+            </tr>`;
+    wins.forEach(w => {
+        const degColor = w.degradation_pnl < -20 ? '#f87171' : w.degradation_pnl < 0 ? '#fbbf24' : '#4ade80';
+        whtml += `<tr style="border-bottom:1px solid rgba(51,65,85,0.1)">
+            <td style="padding:6px 8px;color:#94a3b8">${w.window_id}</td>
+            <td style="padding:6px 8px;color:#e2e8f0">${w.test_start} ~ ${w.test_end}</td>
+            <td style="padding:6px 8px;text-align:right;color:#94a3b8">${(w.is_wr*100).toFixed(1)}%</td>
+            <td style="padding:6px 8px;text-align:right;color:#94a3b8">${w.is_pf.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${(w.oos_wr*100).toFixed(1)}%</td>
+            <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${w.oos_pf.toFixed(2)}</td>
+            <td style="padding:6px 8px;text-align:right;color:#e2e8f0">${w.oos_pnl.toFixed(2)}%</td>
+            <td style="padding:6px 8px;text-align:right;color:${degColor}">${w.degradation_pnl.toFixed(1)}%</td>
+        </tr>`;
+    });
+    whtml += `</table></div>`;
+    det.insertAdjacentHTML('beforeend', whtml);
+}
 </script>
 </body>
 </html>
