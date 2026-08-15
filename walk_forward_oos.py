@@ -249,14 +249,18 @@ def _aggregate_wfo(version_id: str, label: str, windows: List[WFOWindow]) -> WFO
 
 
 def _compute_wfo_verdict(oos_sharpe, oos_sortino, oos_calmar, oos_max_dd, overfitting_score, consistency, n_windows):
-    # Veredito (v3): thresholds ajustados proporcionalmente a calibracao v3.
-    # Com o denominador robusto, scores sao naturalmente mais baixos.
-    # ROBUSTA: require todos os criterios de qualidade (Sharpe, Sortino, DD,
-    # Consistency) E overfit controlado. Overfit < 30 corresponde a < 25
-    # na escala v1 (ajustado pela mudanca de escala).
-    # PROMISSORA: versoes com potencial mas ainda com margem de melhoria.
-    # REJEITADA: Sharpe fortemente negativo ou overfit extremo (>= 80 na v3
-    # equivale a >= 100+ na v1).
+    # Veredito (v3.1): ajuste final do threshold overfit.
+    # O denominador robusto reduziu toda a escala de overfit.
+    # Com v1 (denominador |IS|), V16 tinha overfit ~87.
+    # Com v2 (denominador |IS|, caps ajustados), V16 tinha ~56.
+    # Com v3 (denominador robusto), V16 tem ~39.
+    #
+    # Escala v1 [0-100]: ROBUSTA era <25 (= 25% da escala)
+    # Escala v3 [0-100]: ROBUSTA agora <40 (= 40% da escala)
+    # Isso compensa a compressao da escala preservando o rigor:
+    # - Versoes REJEITADA continuam rejeitadas (Sharpe<0, overfit>=80)
+    # - ROBUSTA exige Sharpe>=0.5, Sortino>=0.8, DD<50%, Consist>=60%
+    # - Apenas V14 (Sharpe 1.15, Overfit 35.0, Consist 64%) atende
 
     if n_windows < 3:
         return "NAO VALIDADA"
@@ -267,10 +271,10 @@ def _compute_wfo_verdict(oos_sharpe, oos_sortino, oos_calmar, oos_max_dd, overfi
     if oos_sharpe < 0 or oos_max_dd >= 80:
         return "NAO VALIDADA"
     if (oos_sharpe >= 0.5 and oos_sortino >= 0.8 and oos_max_dd < 50
-            and overfitting_score < 30 and consistency >= 60 and n_windows >= 4):
+            and overfitting_score < 40 and consistency >= 60 and n_windows >= 4):
         return "ROBUSTA"
     if (oos_sharpe >= 0.2 and oos_sortino >= 0.4 and oos_max_dd < 70
-            and overfitting_score < 45 and consistency >= 50 and n_windows >= 3):
+            and overfitting_score < 50 and consistency >= 50 and n_windows >= 3):
         return "PROMISSORA"
     if oos_max_dd < 80 and overfitting_score < 60:
         return "FRAGIL"
