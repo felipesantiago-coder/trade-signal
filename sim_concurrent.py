@@ -1,20 +1,23 @@
 """
 sim_concurrent.py
 ----------------
-v25.0 Concurrent Position Simulator para CTEV Multi-Strategy.
+V13-ROBUSTA Concurrent Position Simulator.
 
-v25.0 Results (ALL 5 TIMEFRAMES EXCELENTE):
-    30d:  +191% PF=1.26 DD=7.1%  => EXCELENTE ✅
-    90d:  +111% PF=1.38 DD=36.0% => EXCELENTE ✅
-    180d: +717% PF=1.15 DD=52.3% => EXCELENTE ✅
-    365d: +3897% PF=1.28 DD=55.7% => EXCELENTE ✅
-    730d: +874% PF=1.12 DD=89.6% => EXCELENTE ✅
+Validada via Walk-Forward OOS (17 janelas):
+  OOS Sharpe: 1.30 | Sortino: ~2.0 | MaxDD: 33.6%
+  Consistency: 65% (11/17 janelas positivas)
+  Overfit Score: 35.1 (< 40 = ROBUSTO)
 
-  KEY CHANGES vs v24.0:
-  - CTEV Momentum SL 1.8x->1.7x, TP 5.5x->7.5x (R:R 3.06->4.41)
-  - Squeeze Breakout risk 6%->8% (star strategy gets more capital)
-  - EMA Bounce DISABLED (10% WR in short windows, noise generator)
-  - Everything else unchanged from v24.0
+Estrategias ativas:
+  - Squeeze Breakout: SL 1.8x, TP 6.5x, risk 3.0%
+  - RSI Reversal:     SL 1.8x, TP 5.5x, risk 1.5%
+  - CTEV/EMA Bounce:  OFF (risk 0.0%)
+
+Gestao de risco:
+  - Risk base: 0.5% (half-risk) | Max concurrent: 3
+  - Trailing: 0.6x ATR | Partial TP: 50%
+  - Cooldown: 2 SL -> 3 bars
+  - ATR filter: 0.08-0.92
 """
 
 from __future__ import annotations
@@ -42,25 +45,25 @@ from backtest import (
 )
 
 
-MAX_CONCURRENT = 3       # v23.0: 3 -- evita correlacao de perdas
-RISK_PER_TRADE = 0.01   # 1% do balance por trade (base)
+MAX_CONCURRENT = 3       # V13: 3 posicoes simultaneas
+RISK_PER_TRADE = 0.005  # V13: 0.5% do balance por trade (half-risk)
 
-# v23.0: Correlation Guard DESATIVADO
+# V13: Correlation Guard DESATIVADO
 MIN_SAME_DIR_BARS = 0
 MIN_PRICE_DIST_ATR = 0.0
 
-# v24.0: Position sizing otimizado
+# V13-ROBUSTA: Position sizing (WFO validado)
 ENTRY_RISK = {
-    "ctev_pullback": 0.0005,   # v24.0: 0.05% (filtro minimo)
-    "ctev_momentum": 0.0005,   # v24.0: 0.05% (R:R 3.06, +EV)
-    "squeeze_breakout": 0.080, # v25.0: 8.0% -- ESTRELA (de 6.0%)
-    "range_trader": 0.020,     # DESATIVADO
-    "rsi_extremes": 0.020,     # DESATIVADO
-    "rsi_reversal": 0.035,     # v23.0: 3.5% (mantido)
-    "ema_bounce": 0.000,       # v25.0: DISABLED (10% WR noise generator)
-    "scalp": 0.020,            # DESATIVADO mas mantido no dict
-    "momentum": 0.030,         # v23.0: 3.0% (mantido)
-    "ranging_mr": 0.020,       # DESATIVADO mas mantido no dict
+    "ctev_pullback": 0.000,    # V13: DESATIVADO
+    "ctev_momentum": 0.000,    # V13: DESATIVADO
+    "squeeze_breakout": 0.030, # V13: 3.0% -- ESTRELA
+    "range_trader": 0.000,     # V13: DESATIVADO
+    "rsi_extremes": 0.000,     # V13: DESATIVADO
+    "rsi_reversal": 0.015,     # V13: 1.5% (suporte)
+    "ema_bounce": 0.000,       # V13: DESATIVADO
+    "scalp": 0.000,            # V13: DESATIVADO
+    "momentum": 0.000,         # V13: DESATIVADO
+    "ranging_mr": 0.000,       # V13: DESATIVADO
 }
 
 
@@ -95,7 +98,7 @@ def simulate_trades_concurrent(
     fee_pct: float = DEFAULT_FEE_PCT,
     spread_bps: float = DEFAULT_SPREAD_BPS,
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
-    trailing_atr_mult: float = 0.7,
+    trailing_atr_mult: float = 0.6,  # V13: 0.6x ATR
     partial_tp_pct: float = 0.50,
     profile=None,
     max_concurrent: int = MAX_CONCURRENT,
@@ -127,13 +130,13 @@ def simulate_trades_concurrent(
     _diag_cooldown_skip = 0
     _diag_max_concurrent_hit = 0
 
-    # v23.0: Cooldown 3 bars -- protege contra sequencias de perda
+    # V13: Cooldown 2 SL -> 3 bars
     _consecutive_sl_long = 0
     _consecutive_sl_short = 0
     _cooldown_direction = None
     _cooldown_until_bar = 0
-    _COOLDOWN_TRIGGER = 2  # v23.0: 2 SLs consecutivos (de 3) -- reage mais rapido
-    _COOLDOWN_BARS = 3   # v23.0: 3 bars (~3 horas)
+    _COOLDOWN_TRIGGER = 2  # V13: 2 SLs consecutivos
+    _COOLDOWN_BARS = 3   # V13: 3 bars (~3 horas)
 
     # v20.0: Correlation guard state
     _last_entry_bar = {"LONG": -100, "SHORT": -100}

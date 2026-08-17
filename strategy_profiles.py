@@ -182,13 +182,16 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[v24.0] 4 estrategias. ADX>25. CTEV SL 1.8x/TP 5.5x (R:R=3.06). 3 concurrent."
+        "[V13-ROBUSTA] Squeeze Breakout + RSI Reversal. "
+        "WFO validado: Sharpe 1.30, MaxDD 33.6%, Consistency 65%. "
+        "Squeeze SL 1.8x/TP 6.5x. RSI Rev SL 1.8x/TP 5.5x. "
+        "CTEV/EMA Bounce DESATIVADOS. Half-risk 0.5%."
     ),
-    adx_min=25.0,
+    adx_min=24.0,
     allow_transition=True,
     rsi_long_min=44.0,
-    rsi_long_max=66.0,
-    rsi_short_min=34.0,
+    rsi_long_max=68.0,
+    rsi_short_min=32.0,
     rsi_short_max=56.0,
     fib_tolerance_pct=0.035,
     ema50_slope_min=-1.0,
@@ -197,13 +200,13 @@ PROFILE_STANDARD = StrategyProfile(
     volume_confirm=False,
     volume_sma_ratio=0.30,
 
-    # Volatilidade
+    # Volatilidade (V13: 0.08-0.92)
     atr_pct_min=0.08,
-    atr_pct_max=0.95,
+    atr_pct_max=0.92,
 
-    # Gestao de risco
-    sl_atr_mult=3.00,
-    tp_atr_mult=4.00,
+    # Gestao de risco (V13: Squeeze 1.8x/6.5x)
+    sl_atr_mult=1.80,
+    tp_atr_mult=6.50,
     max_bars_held=168,
 )
 

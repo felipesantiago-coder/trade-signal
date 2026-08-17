@@ -1,24 +1,27 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV v25.0 Multi-Strategy.
+Logica de validacao das condicoes de entrada CTEV V13-ROBUSTA.
 
-v25.0 -- ALL 5 TIMEFRAMES EXCELENTE: 30d, 90d, 180d, 365d, 730d
+V13-ROBUSTA -- Validada via Walk-Forward OOS (17 janelas):
+  OOS Sharpe: 1.30 | Sortino: ~2.0 | MaxDD: 33.6%
+  Consistency: 65% (11/17 janelas positivas)
+  Overfit Score: 35.1 (< 40 = ROBUSTO)
 
-  v24.0 Results: 30d=+61% ACEITAVEL, 90d=+70% MUITO BOM
-  v25.0 Results:
-    30d:  +191% PF=1.26 DD=7.1%  => EXCELENTE (tier2)  ✅
-    90d:  +111% PF=1.38 DD=36.0% => EXCELENTE (tier2)  ✅
-    180d: +717% PF=1.15 DD=52.3% => EXCELENTE (tier1)  ✅
-    365d: +3897% PF=1.28 DD=55.7% => EXCELENTE (tier1) ✅
-    730d: +874% PF=1.12 DD=89.6% => EXCELENTE (tier1)  ✅
+Estrategias ativas (2 de 4):
+  - Squeeze Breakout: SL 1.8x, TP 6.5x, max 144 bars, risk 3.0%
+  - RSI Reversal:     SL 1.8x, TP 5.5x, max 120 bars, risk 1.5%
 
-  KEY CHANGES vs v24.0:
-  1. CTEV Momentum SL: 1.8x -> 1.7x, TP: 5.5x -> 7.5x (R:R=4.41)
-     - Tighter SL + wider TP improves PF from 0.88 to 1.26 in 30d
-  2. Squeeze Breakout risk: 6% -> 8% (star strategy, more capital)
-  3. EMA Bounce: DISABLED (10% WR in short windows, noise generator)
-  4. Everything else unchanged from v24.0
+Estrategias DESATIVADAS:
+  - CTEV Pullback:  OFF (risk 0.0%)
+  - CTEV Momentum:  OFF (risk 0.0%)
+  - EMA Bounce:     OFF (noise generator)
+
+Gestao de risco:
+  - Risk per trade: 0.5% (half-risk)
+  - Trailing: 0.6x ATR | Partial TP: 50%
+  - Max concurrent: 3 | Cooldown: 2 SL -> 3 bars
+  - ATR filter: 0.08-0.92 | ADX min: 24
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ class SignalType(str, Enum):
 
 @dataclass(frozen=True)
 class Signal:
-    """Representa um sinal de trade gerado pela estrategia CTEV v22.0."""
+    """Representa um sinal de trade gerado pela estrategia CTEV V13-ROBUSTA."""
     type: SignalType
     entry_price: float
     stop_loss: float
@@ -116,14 +119,14 @@ class Signal:
 # Alvo: 40%/30d, 80%/90d, 120%/180d, 160%/365d, 230%/730d
 # ═══════════════════════════════════════════════════════════════════
 
-# REGIME FILTER
-ADX_MIN = 25.0
+# REGIME FILTER (V13: ADX>24)
+ADX_MIN = 24.0
 ALLOW_TRANSITION = True
 
-# RSI zonas (v23.0: seletivas -- pullbacks entram com RSI baixo)
+# RSI zonas (V13: long 44-68, short 32-56)
 RSI_LONG_MIN = 44.0
-RSI_LONG_MAX = 66.0
-RSI_SHORT_MIN = 34.0
+RSI_LONG_MAX = 68.0
+RSI_SHORT_MIN = 32.0
 RSI_SHORT_MAX = 56.0
 
 # RSI Delta (desabilitado)
@@ -137,9 +140,9 @@ VOLUME_SMA_RATIO = 0.30
 # Fibonacci tolerancia (v23.0: DESATIVADO -- pullback era ruído)
 FIB_TOLERANCE_PCT = 0.0
 
-# ATR Percentile filter
+# ATR Percentile filter (V13: 0.08-0.92)
 ATR_PCT_MIN = 0.08
-ATR_PCT_MAX = 0.95
+ATR_PCT_MAX = 0.92
 
 # Bollinger Bandwidth
 BB_WIDTH_MIN = 0.0
@@ -168,26 +171,26 @@ BBWP_SQUEEZE_BONUS = True
 # BB TOUCH (v23.0: DESATIVADO -- pullback era ruído)
 BB_TOUCH_PCT = 0.0
 
-# Momentum (v25.0: SL 1.7x, TP 7.5x -- R:R=4.41, +EV at 21% WR)
+# Momentum (V13: DESATIVADO -- CTEV Pullback/Momentum OFF)
 MOMENTUM_ADX_MIN = 25.0
-MOMENTUM_SL_ATR_MULT = 1.70
-MOMENTUM_TP_ATR_MULT = 7.50
-MOMENTUM_MAX_BARS = 120
+MOMENTUM_SL_ATR_MULT = 1.50
+MOMENTUM_TP_ATR_MULT = 9.00
+MOMENTUM_MAX_BARS = 168
 
-# EMA Bounce (v25.0: DISABLED -- 10% WR in short windows, noise generator)
+# EMA Bounce (V13: DISABLED -- noise generator)
 EMA_BOUNCE_SL_ATR_MULT = 2.00
 EMA_BOUNCE_TP_ATR_MULT = 5.00
 EMA_BOUNCE_MAX_BARS = 96
 
-# Squeeze Breakout (v23.0: SL 2.0x, TP 5.0x, BBWP<40)
-SQUEEZE_SL_ATR_MULT = 2.00
-SQUEEZE_TP_ATR_MULT = 5.00
-SQUEEZE_MAX_BARS = 120
+# Squeeze Breakout (V13: SL 1.8x, TP 6.5x, max 144 bars, BBWP<40)
+SQUEEZE_SL_ATR_MULT = 1.80
+SQUEEZE_TP_ATR_MULT = 6.50
+SQUEEZE_MAX_BARS = 144
 SQUEEZE_BBWP_THRESHOLD = 40.0
 
-# RSI Reversal (v23.0: SL 2.0x, TP 5.0x, RSI < 48)
-RSI_REV_SL_ATR_MULT = 2.00
-RSI_REV_TP_ATR_MULT = 5.00
+# RSI Reversal (V13: SL 1.8x, TP 5.5x, max 120 bars)
+RSI_REV_SL_ATR_MULT = 1.80
+RSI_REV_TP_ATR_MULT = 5.50
 RSI_REV_MAX_BARS = 120
 RSI_REV_RSI_LONG = 48.0
 RSI_REV_RSI_SHORT = 52.0
@@ -553,21 +556,23 @@ def evaluate_signal(
 def evaluate_row_signals(
     row: pd.Series, profile: Optional[StrategyProfile] = None
 ) -> Optional[Signal]:
-    """v23.0: Multi-strategy chain -- Squeeze-led with CTEV as filter.
+    """V13-ROBUSTA: Multi-strategy chain -- apenas Squeeze + RSI Reversal.
 
-    CTEV ativo apenas como filtro natural (consome sinais ruins).
-    Position sizing minimo para CTEV (0.5%) para limitar perdas.
-    ESTRELA: Squeeze Breakout (BBWP<40, WR 50%+).
+    CTEV Pullback/Momentum: DESATIVADOS (risk=0.0% no WFO).
+    EMA Bounce: DESATIVADO (noise generator).
+    ESTRELA: Squeeze Breakout (BBWP<40, SL 1.8x, TP 6.5x).
+    SUPORTE: RSI Reversal (SL 1.8x, TP 5.5x).
     """
-    # 1. CTEV (filtro natural — consome sinais, position sizing minimo)
-    signal = evaluate_long(row, profile=profile)
-    if signal is not None:
-        return signal
-    signal = evaluate_short(row, profile=profile)
-    if signal is not None:
-        return signal
+    # V13: CTEV Pullback/Momentum DESATIVADOS
+    # (Habilitados apenas para compatibilidade do WFO via versions.py)
+    # signal = evaluate_long(row, profile=profile)
+    # if signal is not None:
+    #     return signal
+    # signal = evaluate_short(row, profile=profile)
+    # if signal is not None:
+    #     return signal
 
-    # 2. Squeeze Breakout (ESTRELA: WR 50-64%, PnL positivo)
+    # 1. Squeeze Breakout (ESTRELA: SL 1.8x, TP 6.5x, max 144 bars)
     signal = evaluate_squeeze_breakout_long(row)
     if signal is not None:
         return signal
@@ -575,7 +580,7 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # 3. RSI Reversal
+    # 2. RSI Reversal (SL 1.8x, TP 5.5x, max 120 bars)
     signal = evaluate_rsi_reversal_long(row)
     if signal is not None:
         return signal
@@ -583,20 +588,9 @@ def evaluate_row_signals(
     if signal is not None:
         return signal
 
-    # 4. EMA Bounce
-    signal = evaluate_ema_bounce_long(row)
-    if signal is not None:
-        return signal
-    signal = evaluate_ema_bounce_short(row)
-    if signal is not None:
-        return signal
-
-    # v23.0: Range Trader, RSI Extremes, Scalp DESATIVADOS (noise generators)
-    # These strategies had catastrophic WR in v22.0 backtests.
-    # Kept as functions for potential future re-enablement with better logic.
-    # signal = evaluate_range_long(row)
-    # signal = evaluate_rsi_extremes_long(row)
-    # signal = evaluate_scalp_long(row)
+    # V13: EMA Bounce, Range Trader, RSI Extremes, Scalp DESATIVADOS
+    # signal = evaluate_ema_bounce_long(row)
+    # signal = evaluate_ema_bounce_short(row)
 
     return None
 
@@ -618,7 +612,7 @@ def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
         return None
     if rsi <= 40.0:
         return None
-    if not (0.08 <= atr_pct <= 0.95):
+    if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
         return None
     if atr <= 0:
         return None
@@ -638,7 +632,7 @@ def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout SHORT -- BBWP squeeze + breakout inferior.
-    v23.0: BBWP < 40, SL 2.5x, TP 4.0x, max 120 bars.
+    V13: BBWP < 40, SL 1.8x, TP 6.5x, max 144 bars.
     """
     close = float(row["close"])
     bb_lower = float(row["bb_lower"])
@@ -653,7 +647,7 @@ def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
         return None
     if rsi >= 60.0:
         return None
-    if not (0.08 <= atr_pct <= 0.95):
+    if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
         return None
     if atr <= 0:
         return None
@@ -671,7 +665,7 @@ def evaluate_squeeze_breakout_short(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
     """RSI Reversal LONG -- RSI sobrevendido em tendencia de alta.
-    v23.0: RSI < 48, SL 2.0x, TP 5.0x, max 120 bars.
+    V13: RSI < 48, SL 1.8x, TP 5.5x, max 120 bars.
     """
     close = float(row["close"])
     ema50 = float(row["ema50"])
@@ -689,7 +683,7 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
         return None
     if close <= ema50:
         return None
-    if not (0.08 <= atr_pct <= 0.95):
+    if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
         return None
     if atr <= 0:
         return None
@@ -709,7 +703,7 @@ def evaluate_rsi_reversal_long(row: pd.Series) -> Optional[Signal]:
 
 def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
     """RSI Reversal SHORT -- RSI sobrecomprado em tendencia de baixa.
-    v23.0: RSI > 52, SL 2.0x, TP 5.0x, max 120 bars.
+    V13: RSI > 52, SL 1.8x, TP 5.5x, max 120 bars.
     """
     close = float(row["close"])
     ema50 = float(row["ema50"])
@@ -727,7 +721,7 @@ def evaluate_rsi_reversal_short(row: pd.Series) -> Optional[Signal]:
         return None
     if close >= ema50:
         return None
-    if not (0.08 <= atr_pct <= 0.95):
+    if not (ATR_PCT_MIN <= atr_pct <= ATR_PCT_MAX):
         return None
     if atr <= 0:
         return None

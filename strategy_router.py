@@ -3,29 +3,20 @@ strategy_router.py
 ------------------
 Router inteligente que seleciona a estrategia correta para cada timeframe.
 
-Este e o cerebro do sistema de multi-estrategia. Em vez de usar a mesma
-logica (CTEV trend-following) para todos os timeframes, o router escolhe
-a estrategia otimizada para cada escala temporal:
+V13-ROBUSTA: 1h agora usa Squeeze Breakout + RSI Reversal (WFO validado).
 
-  Timeframe  |  Estrategia         |  Engine              |  Validacao
-  -----------+---------------------+---------------------+--------------
-  15m, 30m   |  ATF v2              |  strategy_atf_v2     |  StochRSI+BBWP
-  1h          |  BBWP Squeeze v2    |  strategy_bbwp_squeeze| squeeze+breakout
-  2h, 4h     |  CTEV (wider)        |  regime-switching    |  NAO validado
-  1d          |  CTEV (position)     |  regime-switching    |  NAO validado
-  1m,3m,5m   |  DESATIVADO          |  N/A                 |  Sem edge
+  Timeframe  |  Estrategia              |  Engine              |  Validacao
+  -----------+-------------------------+---------------------+------------------
+  15m, 30m   |  ATF v2                  |  strategy_atf_v2     |  StochRSI+BBWP
+  1h          |  V13 Multi-Strategy      |  strategy.py         |  WFO ROBUSTA ✅
+  2h, 4h     |  CTEV (wider)            |  regime-switching    |  NAO validado
+  1d          |  CTEV (position)         |  regime-switching    |  NAO validado
+  1m,3m,5m   |  DESATIVADO              |  N/A                 |  Sem edge
 
-Principio de design:
-  1. Cada timeframe tem uma estrategia DIFERENTE, nao apenas parametros
-     diferentes. A logica de entrada muda completamente.
-  2. O router e transparente: bot_worker e backtest nao precisam saber
-     qual estrategia esta rodando. Apenas chamam evaluate_signal().
-  3. MTF filter se adapta ao timeframe ativo (timeframes menores usam
-     TFs de confirmacao mais proximos).
-
-Integration:
-  - bot_worker.py: substitui evaluate_signal_regime_aware direto
-  - backtest.py: substitui _simulate_regime_switching para INTRADAY
+V13 1h estrategias ativas:
+  - Squeeze Breakout: SL 1.8x, TP 6.5x, max 144 bars, risk 3.0%
+  - RSI Reversal:     SL 1.8x, TP 5.5x, max 120 bars, risk 1.5%
+  - CTEV/EMA Bounce:  DESATIVADAS
 """
 from __future__ import annotations
 
@@ -49,10 +40,10 @@ logger = logging.getLogger(__name__)
 # Timeframes que usam ATF v2 (intraday momentum)
 ATF_TIMEFRAMES = {"15m", "30m"}
 
-# Timeframes que usam BBWP Squeeze v2 (squeeze + breakout)
-CONFLUENCE_V15_TIMEFRAMES = {"1h"}
-BBWP_SQUEEZE_TIMEFRAMES = set()  # desativado em favor de Confluence v15
-ADAPTIVE_MOM_TIMEFRAMES = set()    # desativado em favor de Confluence v15
+# Timeframes que usam V13 Multi-Strategy (Squeeze + RSI Reversal)
+CONFLUENCE_V15_TIMEFRAMES = set()  # V13: desativado, agora usa STANDARD -> sim_concurrent
+BBWP_SQUEEZE_TIMEFRAMES = set()
+ADAPTIVE_MOM_TIMEFRAMES = set()
 
 # Timeframes que usam CTEV Regime-Switching (trend-following + mean-reversion)
 REGIME_SWITCHING_TIMEFRAMES = {"2h", "4h", "1d"}
@@ -67,7 +58,7 @@ def get_strategy_type(timeframe: str) -> str:
 
     Returns:
         "atf" — Para 15m/30m (ATF v2 StochRSI + BBWP)
-        "bbwp_squeeze" — Para 1h (BBWP Squeeze v2)
+        "confluence_v15" — NAO USADO (1h agora via STANDARD -> sim_concurrent)
         "regime_switching" — Para 2h/4h/1d (CTEV v7.1)
         "disabled" — Para 1m/3m/5m (sem edge)
     """
@@ -75,11 +66,15 @@ def get_strategy_type(timeframe: str) -> str:
         return "atf"
     elif timeframe in CONFLUENCE_V15_TIMEFRAMES:
         return "confluence_v15"
-    elif timeframe in BBWP_SQUEEZE_TIMEFRAMES:
-        return "bbwp_squeeze"
     elif timeframe in DISABLED_TIMEFRAMES:
         return "disabled"
+    elif timeframe in BBWP_SQUEEZE_TIMEFRAMES:
+        return "bbwp_squeeze"
+    elif timeframe in ADAPTIVE_MOM_TIMEFRAMES:
+        return "adaptive_momentum"
     else:
+        # V13: 1h, 2h, 4h, 1d caem aqui. 2h/4h/1d = regime_switching.
+        # 1h e tratado via get_profile() -> STANDARD -> sim_concurrent.
         return "regime_switching"
 
 
@@ -88,7 +83,7 @@ def get_strategy_label(timeframe: str) -> str:
     st = get_strategy_type(timeframe)
     labels = {
         "atf": "ATF v2 StochRSI + BBWP",
-        "confluence_v15": "Confluence v15 Multi-Signal",
+        "confluence_v15": "Confluence v15 (DESATIVADO)",
         "bbwp_squeeze": "BBWP Squeeze v14",
         "adaptive_momentum": "Adaptive Momentum v1",
         "regime_switching": "CTEV v7.1 Regime-Switching",
