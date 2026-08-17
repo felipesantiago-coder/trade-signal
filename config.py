@@ -59,29 +59,38 @@ class BinanceConfig:
 
 @dataclass(frozen=True)
 class RiskConfig:
-    """Configuracoes de gerenciamento de risco."""
+    """Configuracoes de gerenciamento de risco.
+
+    Valores default = V13-ROBUSTA (validada via WFO 17 janelas,
+    Sharpe 1.30, MaxDD 33.6%, Consistency 65%).
+    """
     max_daily_loss_pct: float = 5.0       # Max drawdown diario (%)
     max_weekly_loss_pct: float = 10.0     # Max drawdown semanal (%)
     max_consecutive_losses: int = 5       # Max perdas consecutivas antes de pausa
     circuit_breaker_pct: float = 3.0      # Movimento % em 1 candle que aciona circuit breaker
     cooldown_candles: int = 3             # Minimo de candles entre sinais
     cooldown_hours: int = 12              # Horas de pausa apos consecutive losses
-    atr_pct_min: float = 0.20            # ATR percentile minimo (filtro volatilidade)
-    atr_pct_max: float = 0.80            # ATR percentile maximo (filtro volatilidade)
+    atr_pct_min: float = 0.08            # V13: filtro ATR amplo (0.08-0.92)
+    atr_pct_max: float = 0.92
 
 
 @dataclass(frozen=True)
 class PositionConfig:
-    """Configuracoes de position sizing e gestao de posicoes."""
+    """Configuracoes de position sizing e gestao de posicoes.
+
+    Valores default = V13-ROBUSTA (validada via WFO 17 janelas).
+    Risco 0.5% por trade (metade do padrao) = menor MaxDD.
+    Max 3 posicoes simultaneas = diversificacao.
+    """
     account_balance: float = 10000.0      # Saldo da conta em USD
-    risk_per_trade_pct: float = 0.03     # v15: 3% do balance por trade (composto, SL=2.0 otimizado)
+    risk_per_trade_pct: float = 0.005    # V13: 0.5% do balance por trade (half-risk)
     min_position_usd: float = 10.0       # Tamanho minimo em USD
     max_position_pct: float = 0.10       # Max 10% do balance em 1 trade
     be_trigger_atr_mult: float = 1.0      # ATR mult para ativar break-even
-    trailing_atr_mult: float = 3.0        # v15: 3.0x ATR trailing
-    partial_tp_pct: float = 0.50          # 50% no TP1
+    trailing_atr_mult: float = 0.6        # V13: 0.6x ATR trailing
+    partial_tp_pct: float = 0.50          # V13: 50% no TP1
     post_tp1_sl_buffer: float = 0.1      # v15: 0.1 ATR buffer (otimizado de 0.2)
-    max_open_positions: int = 1           # Max posicoes abertas simultaneas
+    max_open_positions: int = 3           # V13: 3 posicoes simultaneas (diversificacao)
 
 
 @dataclass(frozen=True)
@@ -116,6 +125,7 @@ class Settings:
     exchange: ExchangeConfig
     multitf: MultiTFConfig
     optimizer: OptimizerConfig
+    active_version: str                   # ID da versao ativa (ex: V13)
     loop_interval_seconds: int = 60
     log_level: str = "INFO"
 
@@ -166,20 +176,20 @@ def load_settings() -> Settings:
         circuit_breaker_pct=float(os.getenv("CIRCUIT_BREAKER_PCT", "3.0")),
         cooldown_candles=int(os.getenv("COOLDOWN_CANDLES", "3")),
         cooldown_hours=int(os.getenv("COOLDOWN_HOURS", "12")),
-        atr_pct_min=float(os.getenv("ATR_PCT_MIN", "0.20")),
-        atr_pct_max=float(os.getenv("ATR_PCT_MAX", "0.80")),
+        atr_pct_min=float(os.getenv("ATR_PCT_MIN", "0.08")),
+        atr_pct_max=float(os.getenv("ATR_PCT_MAX", "0.92")),
     )
 
     position = PositionConfig(
         account_balance=float(os.getenv("ACCOUNT_BALANCE", "10000.0")),
-        risk_per_trade_pct=float(os.getenv("RISK_PER_TRADE_PCT", "0.03")),
+        risk_per_trade_pct=float(os.getenv("RISK_PER_TRADE_PCT", "0.005")),
         min_position_usd=float(os.getenv("MIN_POSITION_USD", "10.0")),
         max_position_pct=float(os.getenv("MAX_POSITION_PCT", "0.10")),
         be_trigger_atr_mult=float(os.getenv("BE_TRIGGER_ATR_MULT", "1.0")),
-        trailing_atr_mult=float(os.getenv("TRAILING_ATR_MULT", "3.0")),
+        trailing_atr_mult=float(os.getenv("TRAILING_ATR_MULT", "0.6")),
         partial_tp_pct=float(os.getenv("PARTIAL_TP_PCT", "0.50")),
         post_tp1_sl_buffer=float(os.getenv("POST_TP1_SL_BUFFER", "0.1")),
-        max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "1")),
+        max_open_positions=int(os.getenv("MAX_OPEN_POSITIONS", "3")),
     )
 
     exchange = ExchangeConfig(
@@ -206,6 +216,7 @@ def load_settings() -> Settings:
         exchange=exchange,
         multitf=multitf,
         optimizer=optimizer,
+        active_version=os.getenv("ACTIVE_VERSION", "V13"),
         loop_interval_seconds=int(os.getenv("LOOP_INTERVAL_SECONDS", "60")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )

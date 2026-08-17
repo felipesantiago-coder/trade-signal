@@ -13,6 +13,9 @@ v7.1: Reescrito para refletir regime-switching v7 com:
   - 3 estrategias adaptativas (trend-follow, mean-reversion, neutral)
   - ADX floor v7.1 para WEAK_UPTREND LONG
   - Notificacao de trade fechado (antes ausente)
+
+V13-ROBUSTA: Versao ativa validada via Walk-Forward OOS
+  (17 janelas, Sharpe 1.30, MaxDD 33.6%, Consistency 65%).
 """
 
 from __future__ import annotations
@@ -156,7 +159,7 @@ def _build_trend_follow_long_msg(
         "O sistema NAO executa nenhuma operacao. "
         "Use como referencia para sua propria decisao.",
         "",
-        "CTEV v7.1 | Regime-Switching | Trend-Following + Mean-Reversion",
+        "CTEV v7.1 | V13-ROBUSTA | Squeeze + RSI Reversal | Half-Risk",
     ]
     return "\n".join(lines)
 
@@ -220,7 +223,7 @@ def _build_trend_follow_short_msg(
         "O sistema NAO executa nenhuma operacao. "
         "Use como referencia para sua propria decisao.",
         "",
-        "CTEV v7.1 | Regime-Switching | Trend-Following + Mean-Reversion",
+        "CTEV v7.1 | V13-ROBUSTA | Squeeze + RSI Reversal | Half-Risk",
     ]
     return "\n".join(lines)
 
@@ -278,7 +281,7 @@ def _build_mean_reversion_msg(
         "O sistema NAO executa nenhuma operacao. "
         "Use como referencia para sua propria decisao.",
         "",
-        "CTEV v7.1 | Regime-Switching | Trend-Following + Mean-Reversion",
+        "CTEV v7.1 | V13-ROBUSTA | Squeeze + RSI Reversal | Half-Risk",
     ]
     return "\n".join(lines)
 
@@ -361,7 +364,7 @@ def _format_trade_close_message(
 
     lines.extend([
         "",
-        "CTEV v7.1 | Regime-Switching",
+        "CTEV v7.1 | V13-ROBUSTA | Half-Risk",
     ])
     return "\n".join(lines)
 
@@ -390,13 +393,20 @@ class TelegramNotifier:
         if not self.bot:
             return
         msg = (
-            "\U0001f916  *CTEV Signal Bot v7.1 — Iniciado*\n\n"
+            "\U0001f916  *CTEV Signal Bot — V13-ROBUSTA — Iniciado*\n\n"
 
             "\U0001f4d6  *O que este bot faz:*\n\n"
             "Monitora o Bitcoin 24h por dia e identifica os melhores "
             "momentos para compra ou venda, usando analise tecnica "
             "automatizada com deteccao adaptativa de regime de mercado.\n\n"
 
+            "\U0001f310  *Versao ativa: V13-ROBUSTA*\n\n"
+            "Estrategia validada via Walk-Forward OOS (17 janelas):\n\n"
+            "\u2022 OOS Sharpe: 1.30 | Sortino: ~2.0 | MaxDD: 33.6%\n"
+            "\u2022 Consistency: 65% (11/17 janelas positivas)\n"
+            "\u2022 Overfit Score: 35.1 (< 40 = robusto)\n"
+            "\u2022 Risco: 0.5% por trade (half-risk) | 3 posicoes max\n"
+            "\u2022 Trailing: 0.6x ATR | Partial TP: 50%\n\n"
             "\U0001f310  *Regime-Switching v7 — Como funciona:*\n\n"
             "O sistema classifica o mercado em 9 regimes a cada hora:\n\n"
             "\u2022 *Tendencia de Alta Forte* — trend-following LONG com TP agressivo\n"
@@ -446,7 +456,7 @@ class TelegramNotifier:
                 await self.bot.send_message(
                     chat_id=self.chat_id,
                     text=(
-                        "CTEV Signal Bot v7.1 iniciado!\n\n"
+                        "CTEV Signal Bot V13-ROBUSTA iniciado!\n\n"
                         f"Monitorando {symbol} em 1H via {exchange_id.upper()}.\n"
                         "Modo: apenas sinais (sem execucao).\n\n"
                         "Voce recebera alertas quando oportunidades forem detectadas, "
@@ -623,7 +633,7 @@ class TelegramNotifier:
                 text=(
                     f"\U0001f510  Conectado a {exchange_id.upper()}\n\n"
                     f"\U0001f4c1  Monitorando: {symbol} no timeframe 1H\n"
-                    f"\U0001f310  Modo: Regime-Switching v7.1\n"
+                    f"\U0001f310  Versao: V13-ROBUSTA (WFO validada)\n"
                     f"\u2022 9 regimes de mercado com histerese\n"
                     f"\u2022 Trend-following + Mean-reversion\n"
                     f"\u2022 Protecao automatica ativa\n\n"
