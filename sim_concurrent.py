@@ -91,10 +91,10 @@ class _OpenPosition:
 
 def simulate_trades_concurrent(
     df_ind: pd.DataFrame,
-    atr_pct_min: float = 0.10,
-    atr_pct_max: float = 0.90,
+    atr_pct_min: float = 0.08,  # V13: 0.08
+    atr_pct_max: float = 0.92,  # V13: 0.92
     initial_balance: float = 10000.0,
-    risk_per_trade_pct: float = 0.01,
+    risk_per_trade_pct: float = 0.005,  # V13: 0.5% half-risk
     fee_pct: float = DEFAULT_FEE_PCT,
     spread_bps: float = DEFAULT_SPREAD_BPS,
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,

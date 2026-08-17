@@ -1,6 +1,6 @@
 """audit_framework.py
 -------------------
-Framework de Auditoria Avancada para Backtest CTEV v25.0.
+Framework de Auditoria Avancada para Backtest CTEV V13-ROBUSTA.
 
 Funcoes de analise importadas por report_auditor_v2.py:
   - Monte Carlo (5000+ paths) com percentis P5/P25/P50/P75/P95
@@ -2522,7 +2522,7 @@ class ComprehensiveAuditResult:
 def run_comprehensive_audit(
     metrics: Dict[str, Any],
     trades: List[Dict[str, Any]],
-    version_label: str = "V1-BASELINE",
+    version_label: str = "V13-ROBUSTA",
     mc_simulations: int = 5000,
     has_oos: bool = False,
     wf_results: Optional[list] = None,

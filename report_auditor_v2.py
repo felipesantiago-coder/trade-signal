@@ -29,7 +29,7 @@ def generate_audit_report_v2(
     trades: List[Dict[str, Any]],
     timeframe: str = "1h",
     days: int = 730,
-    version_label: str = "V1-BASELINE",
+    version_label: str = "V13-ROBUSTA",
 ) -> str:
     """"
     Gera relatorio auditavel v2 com 31+ secoes integrando audit_framework.py.
@@ -130,7 +130,7 @@ def generate_audit_report_v2(
     L.append(f"> Gerado em {now_str} | Versao: {version_label}")
     L.append(f"> Timeframe: {tf_label} | Periodo: {days} dias")
     L.append(f"> Periodo de dados: `{period_start[:19]}` a `{period_end[:19]}`")
-    L.append(f"> Motor: sim_concurrent.py v25.0 | Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO")
+    L.append(f"> Motor: sim_concurrent.py V13-ROBUSTA | Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO")
     L.append(f">")
     L.append(f"---")
 
@@ -194,7 +194,7 @@ def generate_audit_report_v2(
 
     # 4. DESCRICAO COMPLETA DA ESTRATEGIA
     L.append(f"\n---\n\n## 4. Descricao Completa da Estrategia\n")
-    L.append(f"**Sistema:** CTEV Multi-Strategy v25.0 — Concurrent Position Simulator\n")
+    L.append(f"**Sistema:** CTEV Multi-Strategy V13-ROBUSTA — Concurrent Position Simulator\n")
     active = [(k, v) for k, v in ENTRY_RISK_ALLOCATION.items() if v["risk_pct"] > 0]
     L.append(f"O sistema utiliza **{len(active)} estrategias ativas** (maximo {CONCURRENT_PARAMS['max_concurrent']} posicoes):\n")
     L.append(f"| # | Estrategia | Risco/trade | Status |")
@@ -258,7 +258,7 @@ def generate_audit_report_v2(
 
     # 10. METODOLOGIA DO BACKTEST
     L.append(f"\n---\n\n## 10. Metodologia do Backtest\n")
-    L.append(f"**Motor:** sim_concurrent.py v25.0\n")
+    L.append(f"**Motor:** sim_concurrent.py V13-ROBUSTA\n")
     L.append(f"**Fluxo:** Download OHLCV -> Indicadores -> Simulacao bar-a-bar -> Metricas\n")
     L.append(f"**Ordem saida:** RSI Exhaustion > SL > TP > Timeout > EOD\n")
 

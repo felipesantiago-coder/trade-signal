@@ -45,28 +45,28 @@ COST_MODEL = {
 
 CONCURRENT_PARAMS = {
     "max_concurrent": 3,
-    "risk_per_trade_base": "1% do balance",
+    "risk_per_trade_base": "0.5% do balance (half-risk)",
     "cooldown_trigger": 2,
     "cooldown_bars": 3,
-    "trailing_atr_mult_post_tp": 0.7,
+    "trailing_atr_mult_post_tp": 0.6,
     "partial_tp_pct": 0.50,
     "post_tp1_sl_buffer_atr": 1.5,
-    "be_trigger": "DESATIVADO (v23.0)",
-    "anti_martingale": "DESATIVADO (v18.1)",
-    "correlation_guard": "DESATIVADO (v23.0)",
+    "be_trigger": "DESATIVADO (V13)",
+    "anti_martingale": "DESATIVADO (V13)",
+    "correlation_guard": "DESATIVADO (V13)",
 }
 
 ENTRY_RISK_ALLOCATION = {
-    "ctev_pullback": {"risk_pct": 0.05, "status": "Filtro minimo"},
-    "ctev_momentum": {"risk_pct": 0.05, "status": "Filtro minimo"},
-    "squeeze_breakout": {"risk_pct": 8.0, "status": "ESTRELA — principal gerador de retorno"},
-    "rsi_reversal": {"risk_pct": 3.5, "status": "Ativo"},
-    "momentum": {"risk_pct": 3.0, "status": "Ativo"},
-    "ema_bounce": {"risk_pct": 0.0, "status": "DESATIVADO (v25.0) — WR 10%, gerador de ruido"},
-    "range_trader": {"risk_pct": 2.0, "status": "DESATIVADO"},
-    "rsi_extremes": {"risk_pct": 2.0, "status": "DESATIVADO"},
-    "scalp": {"risk_pct": 2.0, "status": "DESATIVADO"},
-    "ranging_mr": {"risk_pct": 2.0, "status": "DESATIVADO"},
+    "ctev_pullback": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "ctev_momentum": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "squeeze_breakout": {"risk_pct": 3.0, "status": "ESTRELA — WFO validado (SL 1.8x, TP 6.5x)"},
+    "rsi_reversal": {"risk_pct": 1.5, "status": "WFO validado (SL 1.8x, TP 5.5x)"},
+    "momentum": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "ema_bounce": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "range_trader": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "rsi_extremes": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "scalp": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "ranging_mr": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
 }
 
 ATR_FILTER = {
@@ -166,7 +166,7 @@ STRATEGY_RULES = {
     "Range Trader": {"type": "DESATIVADO"},
     "RSI Extremes": {"type": "DESATIVADO"},
     "Scalp": {"type": "DESATIVADO"},
-    "EMA Bounce": {"type": "DESATIVADO (v25.0) — WR 10% em janelas curtas, gerador de ruido"},
+    "EMA Bounce": {"type": "DESATIVADO (V13-ROBUSTA)"},
 }
 
 EXIT_MECHANISMS = {
@@ -756,8 +756,8 @@ def generate_audit_report(
     L.append(f"> Gerado em {now_str}")
     L.append(f"> Timeframe: {tf_label} | Periodo: {days} dias")
     L.append(f"> Período de dados: `{period_start[:19]}` a `{period_end[:19]}`")
-    L.append(f"> Motor de simulacao: sim_concurrent.py v25.0 (posicoes concorrentes)")
-    L.append(f"> Estrategias ativas: Squeeze Breakout, CTEV Momentum, RSI Reversal, CTEV Trend (filtro minimo)")
+    L.append(f"> Motor de simulacao: sim_concurrent.py V13-ROBUSTA (posicoes concorrentes)")
+    L.append(f"> Estrategias ativas: Squeeze Breakout, RSI Reversal (V13-ROBUSTA WFO validado)")
     L.append(f">")
     L.append(f"---")
     L.append(f"")
@@ -831,7 +831,7 @@ def generate_audit_report(
     L.append(f"| Parametro | Valor |")
     L.append(f"|-----------|-------|")
     L.append(f"| Versao do codigo | CTEV Bot v4.0 |")
-    L.append(f"| Versao da estrategia | v25.0 |")
+    L.append(f"| Versao da estrategia | V13-ROBUSTA |")
     L.append(f"| Timeframe | {tf_label} |")
     L.append(f"| Capital inicial | $10,000 |")
     L.append(f"| Fees | 0.016% maker |")
@@ -851,7 +851,7 @@ def generate_audit_report(
     L.append(f"")
     L.append(f"## 4. Descricao Completa da Estrategia")
     L.append(f"")
-    L.append(f"**Sistema:** CTEV Multi-Strategy v25.0 — Concurrent Position Simulator")
+    L.append(f"**Sistema:** CTEV Multi-Strategy V13-ROBUSTA — Concurrent Position Simulator")
     L.append(f"")
     L.append(f"O sistema utiliza **{len([k for k,v in ENTRY_RISK_ALLOCATION.items() if v['risk_pct'] > 0])} estrategias ativas** operando simultaneamente "
           f"(maximo {CONCURRENT_PARAMS['max_concurrent']} posicoes abertas):")
@@ -1068,7 +1068,7 @@ def generate_audit_report(
     L.append(f"- Tamanho da posicao = (balance x risk_pct) / (SL_distance_pct x entry_price)")
     L.append(f"- Posicoes simultaneas dividem o capital disponivel")
     L.append(f"")
-    L.append(f"**Alocacao por estrategia (v25.0):**")
+    L.append(f"**Alocacao por estrategia (V13-ROBUSTA):**")
     L.append(f"| Estrategia | Risco/trade | Justificativa |")
     L.append(f"|------------|-------------|---------------|")
     for name, info in ENTRY_RISK_ALLOCATION.items():
@@ -1125,7 +1125,7 @@ def generate_audit_report(
     L.append(f"")
     L.append(f"## 10. Metodologia do Backtest")
     L.append(f"")
-    L.append(f"**Motor:** `sim_concurrent.py` v25.0")
+    L.append(f"**Motor:** `sim_concurrent.py` V13-ROBUSTA")
     L.append(f"")
     L.append(f"**Fluxo de execucao:**")
     L.append(f"1. Download de dados OHLCV via ccxt (geo-fallback: bybit > okx > gate > bitget > binance > coinbase)")
