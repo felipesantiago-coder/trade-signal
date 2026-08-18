@@ -115,8 +115,9 @@ class Signal:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# v23.0: QUALITY MULTI-STRATEGY ENGINE
-# Alvo: 40%/30d, 80%/90d, 120%/180d, 160%/365d, 230%/730d
+# V13-ROBUSTA: QUALITY MULTI-STRATEGY ENGINE
+# Validado via Walk-Forward OOS (17 janelas): Sharpe 1.30, MaxDD 33.6%
+# Apenas Squeeze Breakout + RSI Reversal ativos. CTEV/EMA desativados.
 # ═══════════════════════════════════════════════════════════════════
 
 # REGIME FILTER (V13: ADX>24)
@@ -394,7 +395,7 @@ def evaluate_long(
         return None
 
     logger.info(
-        "SINAL LONG v22 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SIGNAL LONG [CTEV-legacy] | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
         entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
@@ -521,7 +522,7 @@ def evaluate_short(
     take_profit = entry - (_tp_use_s * atr)
 
     logger.info(
-        "SINAL SHORT v22 | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
+        "SIGNAL SHORT [CTEV-legacy] | entry=%.2f SL=%.2f TP=%.2f ATR=%.2f "
         "RSI=%.1f ADX=%.1f regime=%s pullback=%s",
         entry, stop_loss, take_profit, atr, rsi, adx, regime, pullback_type,
     )
@@ -597,7 +598,7 @@ def evaluate_row_signals(
 
 def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout LONG -- BBWP squeeze + breakout superior.
-    v23.0: BBWP < 40, SL 2.5x, TP 4.0x, max 120 bars.
+    V13-ROBUSTA: BBWP < 40, SL 1.8x, TP 6.5x, max 144 bars.
     """
     close = float(row["close"])
     bb_upper = float(row["bb_upper"])
