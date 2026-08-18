@@ -71,101 +71,60 @@ ENTRY_RISK_ALLOCATION = {
 
 ATR_FILTER = {
     "percentile_min": 0.08,
-    "percentile_max": 0.95,
+    "percentile_max": 0.92,
     "desc": "ATR Percentile — media movel do rank percentil do ATR(14) vs 100 barras anteriores",
 }
 
 STRATEGY_RULES = {
-    "CTEV Trend": {
-        "type": "Trend-Following (Pullback)",
-        "long_conditions": [
-            "Regime: trending_up ou transition",
-            "ADX >= 25",
-            "EMA20 > EMA50 (slope positivo)",
-            "RSI entre 44 e 66",
-            "MACD Histogram > 0 (ou cross positivo)",
-            "Preco em faixa de tolerancia Fibonacci (3.5%)",
-            "Touch em EMA20 ou EMA50",
-        ],
-        "short_conditions": [
-            "Regime: trending_down ou transition",
-            "ADX >= 25",
-            "EMA20 < EMA50 (slope negativo)",
-            "RSI entre 34 e 56",
-            "MACD Histogram < 0 (ou cross negativo)",
-            "Preco em faixa de tolerancia Fibonacci (3.5%)",
-            "Touch em EMA20 ou EMA50",
-        ],
-        "sl": "1.8x ATR(14) abaixo/acima da entrada",
-        "tp": "5.5x ATR(14) acima/abaixo da entrada",
-        "rr_ratio": "5.5 / 1.8 = 3.06 : 1",
-        "max_bars": 168,
-    },
+    "CTEV Trend": {"type": "DESATIVADO (V13-ROBUSTA)"},
     "Squeeze Breakout": {
         "type": "Volatility Breakout",
         "long_conditions": [
-            "BBWP < 10 (Bollinger Band Width Percentile — squeeze extremo)",
-            "ADX >= 20 (tendencia fraca aceitavel em squeeze)",
-            "RSI entre 40 e 75",
-            "Stoch RSI K > D (momentum ascendente)",
-            "Volume > 0.35x Volume SMA(20)",
+            "BBWP < 40 (Bollinger Band Width Percentile — squeeze)",
+            "Preco > Bollinger Upper Band (breakout superior)",
+            "RSI > 40",
+            "ATR Percentile entre 8% e 92% (V13: 0.08-0.92)",
+            "ATR(14) > 0",
         ],
         "short_conditions": [
-            "BBWP < 10 (squeeze extremo)",
-            "ADX >= 20",
-            "RSI entre 25 e 60",
-            "Stoch RSI K < D (momento descendente)",
-            "Volume > 0.35x Volume SMA(20)",
+            "BBWP < 40 (squeeze)",
+            "Preco < Bollinger Lower Band (breakout inferior)",
+            "RSI < 60",
+            "ATR Percentile entre 8% e 92% (V13: 0.08-0.92)",
+            "ATR(14) > 0",
         ],
-        "sl": "2.0x ATR(14)",
-        "tp": "8.0x ATR(14) (TP1 — partial 50%)",
-        "rr_ratio": "8.0 / 2.0 = 4.00 : 1",
-        "max_bars": 96,
+        "sl": "1.8x ATR(14)",
+        "tp": "6.5x ATR(14) (TP1 — partial 50%)",
+        "rr_ratio": "6.5 / 1.8 = 3.61 : 1",
+        "max_bars": 144,
     },
     "RSI Reversal": {
-        "type": "Mean-Reversion (Extremos RSI)",
+        "type": "Mean-Reversion (Pullback em Tendencia)",
         "long_conditions": [
-            "RSI < 25 (sobrevenda extrema)",
+            "EMA50 > EMA200 (contexto de alta)",
+            "RSI < 48 (sobrevenda relativa)",
             "RSI_delta > 0 (RSI subindo — reversao confirmada)",
-            "Regime: trending_down (contrarian)",
+            "Preco > EMA50 (pullback respeitando tendencia)",
+            "ATR Percentile entre 8% e 92%",
+            "ATR(14) > 0",
         ],
         "short_conditions": [
-            "RSI > 75 (sobrecompra extrema)",
+            "EMA50 < EMA200 (contexto de baixa)",
+            "RSI > 52 (sobrecompra relativa)",
             "RSI_delta < 0 (RSI descendo)",
-            "Regime: trending_up (contrarian)",
+            "Preco < EMA50 (pullback respeitando tendencia)",
+            "ATR Percentile entre 8% e 92%",
+            "ATR(14) > 0",
         ],
-        "sl": "1.5x ATR(14)",
-        "tp": "3.0x ATR(14)",
-        "rr_ratio": "3.0 / 1.5 = 2.00 : 1",
-        "max_bars": 72,
+        "sl": "1.8x ATR(14)",
+        "tp": "5.5x ATR(14)",
+        "rr_ratio": "5.5 / 1.8 = 3.06 : 1",
+        "max_bars": 120,
     },
-    "CTEV Momentum": {
-        "type": "Trend-Following (Momentum)",
-        "long_conditions": [
-            "Regime: trending_up",
-            "ADX >= 25",
-            "EMA20 > EMA50 > EMA200 (alinhamento completo)",
-            "RSI entre 44 e 66",
-            "MACD Histogram > 0",
-            "Plus DI > Minus DI (direcao confirmada)",
-            "SEM requisito de pullback/touch — entra a mercado",
-        ],
-        "short_conditions": [
-            "Regime: trending_down",
-            "ADX >= 25",
-            "EMA20 < EMA50 < EMA200 (alinhamento completo)",
-            "RSI entre 34 e 56",
-            "MACD Histogram < 0",
-            "Minus DI > Plus DI (direcao confirmada)",
-        ],
-        "sl": "1.7x ATR(14)",
-        "tp": "7.5x ATR(14)",
-        "rr_ratio": "7.5 / 1.7 = 4.41 : 1",
-        "max_bars": 168,
-    },
-    "Range Trader": {"type": "DESATIVADO"},
-    "RSI Extremes": {"type": "DESATIVADO"},
-    "Scalp": {"type": "DESATIVADO"},
+    "CTEV Momentum": {"type": "DESATIVADO (V13-ROBUSTA)"},
+    "Range Trader": {"type": "DESATIVADO (V13-ROBUSTA)"},
+    "RSI Extremes": {"type": "DESATIVADO (V13-ROBUSTA)"},
+    "Scalp": {"type": "DESATIVADO (V13-ROBUSTA)"},
     "EMA Bounce": {"type": "DESATIVADO (V13-ROBUSTA)"},
 }
 
@@ -1101,7 +1060,7 @@ def generate_audit_report(
     L.append(f"|-----------|-------|")
     L.append(f"| Max posicoes abertas | {CONCURRENT_PARAMS['max_concurrent']} |")
     L.append(f"| Estrategias ativas | {len([k for k,v in ENTRY_RISK_ALLOCATION.items() if v['risk_pct'] > 0])} |")
-    L.append(f"| Correlation Guard | DESATIVADO (v23.0) |")
+    L.append(f"| Correlation Guard | DESATIVADO (V13) |")
     L.append(f"")
     L.append(f"**Como funciona:** o simulador avanca 1 bar por iteracao. Em cada bar:")
     L.append(f"1. Verifica SL/TP de todas as posicoes abertas")

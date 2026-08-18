@@ -207,6 +207,8 @@ def generate_audit_report_v2(
     for strat_name, strat_rules in STRATEGY_RULES.items():
         if "type" not in strat_rules:
             continue
+        if "DESATIVADO" in str(strat_rules.get("type", "")):
+            continue
         L.append(f"### {strat_name}\n")
         L.append(f"**Tipo:** {strat_rules['type']}\n")
         if "long_conditions" in strat_rules:
