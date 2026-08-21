@@ -1,14 +1,9 @@
 """versions.py
 Registro de versoes do sistema BTC/USDT 1h Multi-Strategy.
 
-V1-V5 = Original (nenhuma ROBUSTA no WFO)
-V6-V10 = Squeeze-Centric (simplicidade = robustez)
-V11-V14 = Derivadas das melhores (V2/V4) com ajustes fino
-V15-V17 = Filtro ATR mais seletivo
-V18-V20 = Ultra-Conservadoras (fewer trades, higher quality)
+V1-V35 = Historico de versoes Multi-Strategy (Squeeze + RSI Reversal).
+Estrategia ativa: LIGA_CRYPTO (analise hierarquica multi-timeframe).
 
-V21-V30 = Minimalistas (maxima simplicidade = minimo overfit - HIPOTESE REFUTADA)
-V31-V35 = Otimizacoes finais de V16 (melhor Sharpe+Consistencia)
 Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO
 """
 from __future__ import annotations

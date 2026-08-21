@@ -182,8 +182,8 @@ PROFILE_STANDARD = StrategyProfile(
     name="STANDARD",
     timeframes=("1h",),
     description=(
-        "[V13-ROBUSTA] Squeeze Breakout + RSI Reversal. "
-        "WFO validado: Sharpe 1.30, MaxDD 33.6%, Consistency 65%. "
+        "[LEGADO] Squeeze Breakout + RSI Reversal. "
+        "Perfil mantido para compatibilidade. A estrategia ativa e LIGA_CRYPTO. "
         "Squeeze SL 1.8x/TP 6.5x. RSI Rev SL 1.8x/TP 5.5x. "
         "CTEV/EMA Bounce DESATIVADOS. Half-risk 0.5%."
     ),

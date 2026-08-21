@@ -7,8 +7,8 @@ MODO: Signal-Only (apenas analise, sem execucao de ordens).
 Mensagens projetadas para serem intuitivas, educativas e acionaveis,
 com guia passo a passo DETALHADO para montar operacoes na Binance (BTC/USDT).
 
-V13-ROBUSTA: Versao ativa validada via Walk-Forward OOS
-  (17 janelas, Sharpe 1.30, MaxDD 33.6%, Consistency 65%).
+Liga Crypto: Analise hierarquica multi-timeframe (1W->1D->4H->1H->15M).
+  Metodologia profissional com MA200 'regra de ferro' e TP parcial 50/30/20.
 """
 
 from __future__ import annotations
@@ -606,7 +606,7 @@ def _format_signal_message(
         "  *Nunca invista mais do que pode se permitir perder.*",
         "  *Cripto e um ativo de alto risco.*",
         "",
-        "  V13-ROBUSTA  |  Squeeze + RSI Reversal  |  Half-Risk 0.5%",
+        "  Liga Crypto  |  Multi-TF 1W->1D->4H->1H->15M  |  Risco 2.0%",
     ]
 
     return "\n".join(header + [analysis, binance] + footer)
@@ -712,7 +712,7 @@ def _format_trade_close_message(
         "  *App:*  Trade  >  Futuros  >  Posicoes  (ou Historico)",
         "  *Site:*  Ordens  >  Historico de Ordens  >  Futuros",
         "",
-        "V13-ROBUSTA  |  Half-Risk 0.5%",
+        "Liga Crypto  |  Risco 2.0%",
     ])
     return "\n".join(lines)
 
@@ -810,88 +810,75 @@ class TelegramNotifier:
         if not self.bot:
             return
         msg = (
-            "🤖  *CTEV Signal Bot — V13-ROBUSTA — Iniciado*\n"
-
+            "🤖  *CTEV Signal Bot — Liga Crypto — Iniciado*\n\n"
             "📖  *O que este bot faz:*\n"
             "Monitora o Bitcoin (BTC/USDT) 24 horas por dia, 7 dias por "
-            "semana. Ele analisa o mercado a cada 1 hora usando indicadores "
-            "tecnicos avancados (Bollinger Bands, RSI, ADX, ATR, MACD) e "
+            "semana. Ele analisa o mercado a cada 1 hora usando analise "
+            "hierarquica multi-timeframe (1W->1D->4H->1H->15M) com indicadores "
+            "tecnicos avancados (EMA, RSI, Stochastic, ADX, ATR, MACD, Bollinger) e "
             "identifica os melhores momentos para entrar em operacoes de "
             "compra ou venda.\n"
             "Quando uma oportunidade e detectada, voce recebe uma mensagem "
             "com TODOS os dados da operacao (preco de entrada, stop loss, "
             "take profit) e um *guia passo a passo* de como configurar "
             "cada parametro na Binance — mesmo que voce nunca tenha operado "
-            "antes.\n"
-
-            "🌐  *Versao ativa: V13-ROBUSTA*\n"
-            "Esta e a unica versao que passou no teste de robustez "
-            "(Walk-Forward OOS com 17 janelas de validacao):\n"
-            "• Sharpe Ratio: 1.30 (bom risco-retorno)"
-            "• Sortino Ratio: ~2.0 (excelente na queda)"
-            "• Drawdown Maximo: 33.6% (perda maxima historica)"
-            "• Consistencia: 65% (11 de 17 janelas positivas)"
-            "• Overfit Score: 35.1 (< 40 = modelo robusto)\n"
-
-            "🏈  *Estrategias ativas (validadas):*\n"
-            "• *Squeeze Breakout*"
-            "  Detecta quando o Bitcoin esta 'comprimido' (Bandas de Bollinger "
-            "muito juntas) e entra no inicio da expansao. E como comprar "
-            "uma mola sendo pressionada antes de ela saltar."
-            "  Risco:Retorno de 1:3.6 | Stop: 1.8x ATR | Alvo: 6.5x ATR\n"
-            "• *RSI Reversal*"
-            "  Detecta reversoes de curto prazo quando o RSI atinge extremos "
-            "dentro de uma tendencia. E como comprar na 'promoção' dentro "
-            "de uma tendencia de alta."
-            "  Risco:Retorno de 1:3.1 | Stop: 1.8x ATR | Alvo: 5.5x ATR\n"
-
-            "🛡  *Protecoes automaticas do sistema:*\n"
-            "• *Circuit Breaker:* pausa automaticamente em movimentos extremos"
-            "• *Drawdown Diario:* se perder mais de 5% no dia, pausa ate as 00:00 UTC"
-            "• *Drawdown Semanal:* se perder mais de 10% na semana, pausa ate segunda"
-            "• *Cooldown:* 2 stops consecutivos = pausa de 3 horas"
-            "• *Filtro ATR:* so opera quando a volatilidade esta entre 8% e 92%"
-            "• *Max 3 posicoes:* nunca mais de 3 operacoes ao mesmo tempo"
-
-
+            "antes.\n\n"
+            "🌐  *Versao ativa: Liga Crypto*\n"
+            "Sistema de analise hierarquica multi-timeframe profissional:\n"
+            "• Hierarquia: 1W (macro) -> 1D (filtro MA200) -> 4H (setup) -> 1H (execucao) -> 15M (timing)\n"
+            "• Regra de ferro: preco acima/abaixo da SMA200 diaria para direcao\n"
+            "• R:R minimo 2:1 com TP parcial 50/30/20\n"
+            "• Filtros: sazonalidade, fim de semana, eventos macro (FOMC/CPI/NFP)\n\n"
+            "🏈  *Metodologia Liga Crypto:*\n"
+            "• *Analise Hierarquica*: 5 timeframes em cascata para confirmacao\n"
+            "  Cada TF superior filtra o inferior — so entra quando todos alinham\n"
+            "• *MA200 'Regra de Ferro'*."
+            "  A media movel de 200 periodos no diario "
+            "  define a tendencia macro. Acima = apenas LONG, Abaixo = apenas SHORT\n"
+            "• *Stochastic (14,3,3)*: Detecta zonas de sobrevenda/sobrecompra no 4H\n"
+            "• *RSI Divergencias*: Confirma reversoes de curto prazo\n"
+            "• *Filtros quantitativos*: Bloqueia sinais em fim de semana, sazonalidade "
+            "  desfavoravel e janelas de eventos macro (FOMC, CPI, NFP)\n\n"
+            "🛡️  *Protecoes automaticas do sistema:*\n"
+            "• *Single position*: apenas 1 operacao por vez (seletividade maxima)\n"
+            "• *SL 1.8x ATR*: protecao baseada na volatilidade do 4H\n"
+            "• *TP Parcial 50/30/20*: saida escalonada em 3 niveis (Fibonacci)\n"
+            "• *Trailing Stop*: 1.0x ATR apos TP1 (protege lucros)\n"
+            "• *Timeout*: 7 dias maximo por operacao\n"
+            "• *Cooldown*: pausa apos 2 stops consecutivos (6h)\n"
+            "• *Filtro de eventos macro*: bloqueia FOMC, CPI, NFP\n\n"
             "📱  *Como funciona cada sinal que voce recebera:*\n"
-            "• *Cabecalho* — dados da operacao (entrada, SL, TP, risco)"
-            "• *Analise* — explicacao simples do que esta acontecendo no mercado"
-            "• *Guia Binance* — 7 passos detalhados para montar na plataforma,"
-            "  incluindo onde clicar e o que cada campo significa"
-            "• *Tabela de Capital* — quanto colocar conforme seu saldo"
-            "• *Glossario* — explicacao de cada termo tecnico"
-            "• *FAQ* — perguntas frequentes respondidas\n"
-
-            f"📁  *Configuracao atual:*"
-            f"  Exchange: {exchange_id.upper()}"
-            f"  Par: {symbol}"
-            f"  Timeframe: 1H (analise a cada 1 hora)"
-            f"  Risco por operacao: 0.5% do capital\n"
-
+            "• *Cabecalho* — dados da operacao (entrada, SL, TP, risco)\n"
+            "• *Analise* — explicacao simples do que esta acontecendo no mercado\n"
+            "• *Guia Binance* — 7 passos detalhados para montar na plataforma,\n"
+            "  incluindo onde clicar e o que cada campo significa\n"
+            "• *Tabela de Capital* — quanto colocar conforme seu saldo\n"
+            "• *Glossario* — explicacao de cada termo tecnico\n"
+            "• *FAQ* — perguntas frequentes respondidas\n\n"
+            f"📁  *Configuracao atual:*\n"
+            f"  Exchange: {exchange_id.upper()}\n"
+            f"  Par: {symbol}\n"
+            f"  Timeframe: 1H (analise a cada 1 hora)\n"
+            f"  Risco por operacao: 2.0% do capital\n\n"
             "⚠️  *MODO: APENAS ANALISE*\n"
             "Este bot NAO executa nenhuma operacao automaticamente. "
             "Ele apenas analisa e envia sinais com instrucoes para voce "
             "configurar manualmente na Binance. Voce tem controle total.\n"
-            "*Nunca invista mais do que pode se permitir perder.*\n"
-
-            "🖥  Acesse o painel web para acompanhar em tempo real."
+            "🖥️  Acesse o painel web para acompanhar em tempo real.\n"
         )
+
         try:
-            await self._send_chunked(msg, ParseMode.MARKDOWN)
-        except Exception:
-            try:
-                await self.bot.send_message(
-                    chat_id=self.chat_id,
-                    text=(
-                        "CTEV Signal Bot V13-ROBUSTA iniciado!\n\n"
-                        f"Monitorando {symbol} em 1H via {exchange_id.upper()}.\n"
-                        "Modo: apenas sinais (sem execucao).\n\n"
-                        "Voce recebera alertas com guia passo a passo "
-                        "detalhado para montar cada operacao na Binance."
-                    ),
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text=(
+                    "CTEV Signal Bot Liga Crypto iniciado!\n\n"
+                    f"Monitorando {symbol} em 1H via {exchange_id.upper()}.\n"
+                    "Modo: apenas sinais (sem execucao).\n\n"
+                    "Voce recebera alertas com guia passo a passo "
+                    "detalhado para montar cada operacao na Binance."
+                ),
                 )
-            except Exception:
+        except Exception:
                 pass
 
     # ------------------------------------------------------------------
@@ -1077,6 +1064,9 @@ class TelegramNotifier:
     # ------------------------------------------------------------------
     # Alerta de exchange conectada
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Alerta de exchange conectada
+    # ------------------------------------------------------------------
     async def send_exchange_connected(self, exchange_id: str, symbol: str) -> None:
         """Notifica qual exchange foi conectada."""
         if not self.bot:
@@ -1085,26 +1075,20 @@ class TelegramNotifier:
             await self.bot.send_message(
                 chat_id=self.chat_id,
                 text=(
-                    f"🔐  *Conectado a {exchange_id.upper()}*\n"
-                    f"📁  *Monitorando:* {symbol}"
-                    f"📅  *Timeframe:* 1H (analise a cada 1 hora)"
-                    f"🌐  *Versao:* V13-ROBUSTA (WFO validada)\n"
-                    f"📈  *Estrategias ativas:*"
-                    f"• Squeeze Breakout (SL 1.8x ATR, TP 6.5x ATR)"
-                    f"• RSI Reversal (SL 1.8x ATR, TP 5.5x ATR)\n"
-                    f"🛡  *Protecoes:*"
-                    f"• Half-risk: 0.5% por operacao"
-                    f"• Max 3 posicoes simultaneas"
-                    f"• Trailing stop: 0.6x ATR"
-                    f"• Circuit breaker + Drawdown filter\n"
-                    f"✅  O bot esta ativo e analisando o mercado."
-                    f"Voce recebera sinais com *guia passo a passo detalhado*"
+                    f"\U0001f510  *Conectado a {exchange_id.upper()}*\n"
+                    f"\U0001f4c1  *Monitorando:* {symbol}\n"
+                    f"\U0001f4c5  *Timeframe:* 1H (analise a cada 1 hora)\n"
+                    f"\U0001f310  *Versao:* Liga Crypto (Multi-TF)\n"
+                    f"\U0001f4c8  *Metodologia:* Analise hierarquica 1W->1D->4H->1H->15M\n"
+                    f"\U0001f6e1\ufe0f  *Protecoes:*\n"
+                    f"\u2022 Single position (1 operacao por vez)\n"
+                    f"\u2022 SL 1.8x ATR (4H) | TP parcial 50/30/20\n"
+                    f"\u2022 Trailing 1.0x ATR apos TP1\n"
+                    f"\u2022 Filtros: macro, sazonalidade, weekend\n"
+                    f"\u2705  O bot esta ativo e analisando o mercado.\n"
+                    f"Voce recebera sinais com *guia passo a passo detalhado* "
                     f"para montar cada operacao na Binance.\n"
-                    f"ℹ  *Primeiro sinal?* Nao se preocupe — cada mensagem"
-                    f"vem com todas as instrucoes, incluindo o que cada"
-                    f"campo significa e onde clicar na plataforma."
                 ),
-                parse_mode=ParseMode.MARKDOWN,
             )
         except Exception:
             pass

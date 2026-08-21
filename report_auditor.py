@@ -57,16 +57,16 @@ CONCURRENT_PARAMS = {
 }
 
 ENTRY_RISK_ALLOCATION = {
-    "ctev_pullback": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
-    "ctev_momentum": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "ctev_pullback": {"risk_pct": 0.0, "status": "DESATIVADO"},
+    "ctev_momentum": {"risk_pct": 0.0, "status": "DESATIVADO"},
     "squeeze_breakout": {"risk_pct": 3.0, "status": "ESTRELA — WFO validado (SL 1.8x, TP 6.5x)"},
     "rsi_reversal": {"risk_pct": 1.5, "status": "WFO validado (SL 1.8x, TP 5.5x)"},
-    "momentum": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
-    "ema_bounce": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
-    "range_trader": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
-    "rsi_extremes": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
-    "scalp": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
-    "ranging_mr": {"risk_pct": 0.0, "status": "DESATIVADO (V13-ROBUSTA)"},
+    "momentum": {"risk_pct": 0.0, "status": "DESATIVADO"},
+    "ema_bounce": {"risk_pct": 0.0, "status": "DESATIVADO"},
+    "range_trader": {"risk_pct": 0.0, "status": "DESATIVADO"},
+    "rsi_extremes": {"risk_pct": 0.0, "status": "DESATIVADO"},
+    "scalp": {"risk_pct": 0.0, "status": "DESATIVADO"},
+    "ranging_mr": {"risk_pct": 0.0, "status": "DESATIVADO"},
 }
 
 ATR_FILTER = {
@@ -76,7 +76,7 @@ ATR_FILTER = {
 }
 
 STRATEGY_RULES = {
-    "CTEV Trend": {"type": "DESATIVADO (V13-ROBUSTA)"},
+    "CTEV Trend": {"type": "DESATIVADO"},
     "Squeeze Breakout": {
         "type": "Volatility Breakout",
         "long_conditions": [
@@ -121,11 +121,11 @@ STRATEGY_RULES = {
         "rr_ratio": "5.5 / 1.8 = 3.06 : 1",
         "max_bars": 120,
     },
-    "CTEV Momentum": {"type": "DESATIVADO (V13-ROBUSTA)"},
-    "Range Trader": {"type": "DESATIVADO (V13-ROBUSTA)"},
-    "RSI Extremes": {"type": "DESATIVADO (V13-ROBUSTA)"},
-    "Scalp": {"type": "DESATIVADO (V13-ROBUSTA)"},
-    "EMA Bounce": {"type": "DESATIVADO (V13-ROBUSTA)"},
+    "CTEV Momentum": {"type": "DESATIVADO"},
+    "Range Trader": {"type": "DESATIVADO"},
+    "RSI Extremes": {"type": "DESATIVADO"},
+    "Scalp": {"type": "DESATIVADO"},
+    "EMA Bounce": {"type": "DESATIVADO"},
 }
 
 EXIT_MECHANISMS = {
@@ -715,8 +715,8 @@ def generate_audit_report(
     L.append(f"> Gerado em {now_str}")
     L.append(f"> Timeframe: {tf_label} | Periodo: {days} dias")
     L.append(f"> Período de dados: `{period_start[:19]}` a `{period_end[:19]}`")
-    L.append(f"> Motor de simulacao: sim_concurrent.py V13-ROBUSTA (posicoes concorrentes)")
-    L.append(f"> Estrategias ativas: Squeeze Breakout, RSI Reversal (V13-ROBUSTA WFO validado)")
+    L.append(f"> Motor de simulacao: sim_liga_crypto.py Liga Crypto (single-position)")
+    L.append(f"> Estrategias ativas: Squeeze Breakout, RSI Reversal (Liga Crypto)")
     L.append(f">")
     L.append(f"---")
     L.append(f"")
@@ -790,7 +790,7 @@ def generate_audit_report(
     L.append(f"| Parametro | Valor |")
     L.append(f"|-----------|-------|")
     L.append(f"| Versao do codigo | CTEV Bot v4.0 |")
-    L.append(f"| Versao da estrategia | V13-ROBUSTA |")
+    L.append(f"| Versao da estrategia | LIGA_CRYPTO |")
     L.append(f"| Timeframe | {tf_label} |")
     L.append(f"| Capital inicial | $10,000 |")
     L.append(f"| Fees | 0.016% maker |")
@@ -810,7 +810,7 @@ def generate_audit_report(
     L.append(f"")
     L.append(f"## 4. Descricao Completa da Estrategia")
     L.append(f"")
-    L.append(f"**Sistema:** CTEV Multi-Strategy V13-ROBUSTA — Concurrent Position Simulator")
+    L.append(f"**Sistema:** Liga Crypto Multi-TF — Concurrent Position Simulator")
     L.append(f"")
     L.append(f"O sistema utiliza **{len([k for k,v in ENTRY_RISK_ALLOCATION.items() if v['risk_pct'] > 0])} estrategias ativas** operando simultaneamente "
           f"(maximo {CONCURRENT_PARAMS['max_concurrent']} posicoes abertas):")
@@ -1027,7 +1027,7 @@ def generate_audit_report(
     L.append(f"- Tamanho da posicao = (balance x risk_pct) / (SL_distance_pct x entry_price)")
     L.append(f"- Posicoes simultaneas dividem o capital disponivel")
     L.append(f"")
-    L.append(f"**Alocacao por estrategia (V13-ROBUSTA):**")
+    L.append(f"**Alocacao por estrategia:**")
     L.append(f"| Estrategia | Risco/trade | Justificativa |")
     L.append(f"|------------|-------------|---------------|")
     for name, info in ENTRY_RISK_ALLOCATION.items():
@@ -1084,7 +1084,7 @@ def generate_audit_report(
     L.append(f"")
     L.append(f"## 10. Metodologia do Backtest")
     L.append(f"")
-    L.append(f"**Motor:** `sim_concurrent.py` V13-ROBUSTA")
+    L.append(f"**Motor:** `sim_liga_crypto.py` Liga Crypto")
     L.append(f"")
     L.append(f"**Fluxo de execucao:**")
     L.append(f"1. Download de dados OHLCV via ccxt (geo-fallback: bybit > okx > gate > bitget > binance > coinbase)")

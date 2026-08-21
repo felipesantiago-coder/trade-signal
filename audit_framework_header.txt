@@ -1,0 +1,20 @@
+"""audit_framework.py
+-------------------
+Framework de Auditoria Avancada para Backtest CTEV v25.0.
+
+Funcoes de analise importadas por report_auditor_v2.py:
+  - Monte Carlo (5000+ paths) com percentis P5/P25/P50/P75/P95
+  - Decomposicao por estrategia (contribution, WR, PnL por tipo)
+  - Analise LONG vs SHORT (assimetria, edge direcional)
+  - Auditoria de drawdown (timeline, recovery time, severity)
+  - Score multi-objetivo (Edge, Risco, Robustez, Validacao, Overfitting, Amostra, MC)
+  - Veredito 5 niveis do sistema de scoring
+  - Analise de overfitting (parametro count, MC robustez, temporal decay)
+  - Outlier analysis (top trades impacto, tail risk)
+  - Regime analysis (performance por regime de mercado)
+  - Estabilidade temporal (rolling window performance)
+  - Equity curve completa (por trade e por timestamp)
+  - 19 recomendacoes automaticas
+
+Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO
+"""

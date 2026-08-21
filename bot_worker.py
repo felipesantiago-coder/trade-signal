@@ -191,7 +191,7 @@ class CTEVWorker:
                 pass
         insert_log(
             "INFO",
-            f"Worker CTEV V13-ROBUSTA iniciado | exchange={ex_id} "
+            f"Worker CTEV Liga Crypto iniciado | exchange={ex_id} "
             f"symbol={ex_sym} "
             f"balance=${self.settings.position.account_balance:,.0f} "
             f"risk={self.settings.position.risk_per_trade_pct*100:.1f}%/trade "

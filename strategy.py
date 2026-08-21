@@ -1,27 +1,18 @@
 """
 strategy.py
 -----------
-Logica de validacao das condicoes de entrada CTEV V13-ROBUSTA.
+Logica de validacao das condicoes de entrada CTEV Multi-Strategy.
 
-V13-ROBUSTA -- Validada via Walk-Forward OOS (17 janelas):
-  OOS Sharpe: 1.30 | Sortino: ~2.0 | MaxDD: 33.6%
-  Consistency: 65% (11/17 janelas positivas)
-  Overfit Score: 35.1 (< 40 = ROBUSTO)
+NOTA: Este modulo contem a engine Multi-Strategy original (Squeeze Breakout + RSI Reversal).
+Atualmente a unica estrategia ativa no sistema e a Liga Crypto (strategy_liga_crypto.py).
+Este modulo e mantido para compatibilidade e pode ser reativado futuramente.
 
-Estrategias ativas (2 de 4):
+Estrategias neste modulo:
   - Squeeze Breakout: SL 1.8x, TP 6.5x, max 144 bars, risk 3.0%
   - RSI Reversal:     SL 1.8x, TP 5.5x, max 120 bars, risk 1.5%
-
-Estrategias DESATIVADAS:
   - CTEV Pullback:  OFF (risk 0.0%)
   - CTEV Momentum:  OFF (risk 0.0%)
   - EMA Bounce:     OFF (noise generator)
-
-Gestao de risco:
-  - Risk per trade: 0.5% (half-risk)
-  - Trailing: 0.6x ATR | Partial TP: 50%
-  - Max concurrent: 3 | Cooldown: 2 SL -> 3 bars
-  - ATR filter: 0.08-0.92 | ADX min: 24
 """
 
 from __future__ import annotations
@@ -46,7 +37,7 @@ class SignalType(str, Enum):
 
 @dataclass(frozen=True)
 class Signal:
-    """Representa um sinal de trade gerado pela estrategia CTEV V13-ROBUSTA."""
+    """Representa um sinal de trade gerado pela estrategia."""
     type: SignalType
     entry_price: float
     stop_loss: float
@@ -115,16 +106,16 @@ class Signal:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# V13-ROBUSTA: QUALITY MULTI-STRATEGY ENGINE
-# Validado via Walk-Forward OOS (17 janelas): Sharpe 1.30, MaxDD 33.6%
-# Apenas Squeeze Breakout + RSI Reversal ativos. CTEV/EMA desativados.
+# MULTI-STRATEGY ENGINE
+# Squeeze Breakout + RSI Reversal. CTEV/EMA desativados.
+# NOTA: Liga Crypto (strategy_liga_crypto.py) e a estrategia ativa.
 # ═══════════════════════════════════════════════════════════════════
 
-# REGIME FILTER (V13: ADX>24)
+# REGIME FILTER (ADX>24)
 ADX_MIN = 24.0
 ALLOW_TRANSITION = True
 
-# RSI zonas (V13: long 44-68, short 32-56)
+# RSI zonas (long 44-68, short 32-56)
 RSI_LONG_MIN = 44.0
 RSI_LONG_MAX = 68.0
 RSI_SHORT_MIN = 32.0
@@ -141,7 +132,7 @@ VOLUME_SMA_RATIO = 0.30
 # Fibonacci tolerancia (v23.0: DESATIVADO -- pullback era ruído)
 FIB_TOLERANCE_PCT = 0.0
 
-# ATR Percentile filter (V13: 0.08-0.92)
+# ATR Percentile filter (0.08-0.92)
 ATR_PCT_MIN = 0.08
 ATR_PCT_MAX = 0.92
 
@@ -557,7 +548,7 @@ def evaluate_signal(
 def evaluate_row_signals(
     row: pd.Series, profile: Optional[StrategyProfile] = None
 ) -> Optional[Signal]:
-    """V13-ROBUSTA: Multi-strategy chain -- apenas Squeeze + RSI Reversal.
+    """Multi-strategy chain -- apenas Squeeze + RSI Reversal.
 
     CTEV Pullback/Momentum: DESATIVADOS (risk=0.0% no WFO).
     EMA Bounce: DESATIVADO (noise generator).
@@ -598,7 +589,7 @@ def evaluate_row_signals(
 
 def evaluate_squeeze_breakout_long(row: pd.Series) -> Optional[Signal]:
     """Squeeze Breakout LONG -- BBWP squeeze + breakout superior.
-    V13-ROBUSTA: BBWP < 40, SL 1.8x, TP 6.5x, max 144 bars.
+    BBWP < 40, SL 1.8x, TP 6.5x, max 144 bars.
     """
     close = float(row["close"])
     bb_upper = float(row["bb_upper"])

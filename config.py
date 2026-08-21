@@ -61,8 +61,7 @@ class BinanceConfig:
 class RiskConfig:
     """Configuracoes de gerenciamento de risco.
 
-    Valores default = V13-ROBUSTA (validada via WFO 17 janelas,
-    Sharpe 1.30, MaxDD 33.6%, Consistency 65%).
+    Valores default para a estrategia Liga Crypto.
     """
     max_daily_loss_pct: float = 5.0       # Max drawdown diario (%)
     max_weekly_loss_pct: float = 10.0     # Max drawdown semanal (%)
@@ -78,9 +77,9 @@ class RiskConfig:
 class PositionConfig:
     """Configuracoes de position sizing e gestao de posicoes.
 
-    Valores default = V13-ROBUSTA (validada via WFO 17 janelas).
-    Risco 0.5% por trade (metade do padrao) = menor MaxDD.
-    Max 3 posicoes simultaneas = diversificacao.
+    Valores default para a estrategia Liga Crypto.
+    Risco 2.0% por trade (Liga Crypto single-position).
+    Max 1 posicao (single-position methodology).
     """
     account_balance: float = 10000.0      # Saldo da conta em USD
     risk_per_trade_pct: float = 0.005    # V13: 0.5% do balance por trade (half-risk)

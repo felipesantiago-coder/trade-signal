@@ -1,6 +1,6 @@
 """audit_framework.py
 -------------------
-Framework de Auditoria Avancada para Backtest CTEV V13-ROBUSTA.
+Framework de Auditoria Avancada para Backtest.
 
 Funcoes de analise importadas por report_auditor_v2.py:
   - Monte Carlo (5000+ paths) com percentis P5/P25/P50/P75/P95
@@ -632,7 +632,7 @@ def compute_verdict(
 ) -> Tuple[str, str, Dict[str, Any]]:
     """
     Classifica a estrategia em 5 niveis:
-    - ROBUSTA: Edge consistente, risco controlado, validacao forte
+    - ROBUSTA: Edge consistente, risco controlado, validacao forte (veredito do sistema de scoring)
     - PROMISSORA: Edge presente mas com gaps de validacao
     - FRAGIL: Edge fraco ou dependente de poucos trades
     - NAO VALIDADA: Dados insuficientes
@@ -2522,7 +2522,7 @@ class ComprehensiveAuditResult:
 def run_comprehensive_audit(
     metrics: Dict[str, Any],
     trades: List[Dict[str, Any]],
-    version_label: str = "V13-ROBUSTA",
+    version_label: str = "LIGA_CRYPTO",
     mc_simulations: int = 5000,
     has_oos: bool = False,
     wf_results: Optional[list] = None,

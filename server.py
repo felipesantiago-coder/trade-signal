@@ -418,7 +418,7 @@ async def api_backtest_export() -> Response:
 
     Utiliza o modulo report_auditor.py que implementa:
     - 34 secoes com formula transparency (DADO->FORMULA->CALCULO->RESULTADO->INTERPRETACAO)
-    - Veredito 5 niveis (ROBUSTA/PROMISSORA/FRAGIL/NAO VALIDADA/REJEITADA)
+    - Veredito 5 niveis do sistema de scoring
     - Monte Carlo, outlier analysis, cost sensitivity, overfitting audit
     - Principio: AUDITABILIDADE > APARENCIA > MARKETING
     """
