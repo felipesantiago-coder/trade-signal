@@ -51,7 +51,7 @@ def _get_timeframe_multiplier(timeframe: str) -> float:
     _tf_minutes = {
         "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
         "1h": 60, "2h": 120, "4h": 240, "6h": 360,
-        "8h": 480, "12h": 720, "1d": 1440,
+        "8h": 480, "12h": 720, "1d": 1440, "1W": 10080,
     }
     if timeframe not in _tf_minutes:
         raise ValueError(
@@ -380,10 +380,11 @@ def compute_indicators(df: pd.DataFrame, timeframe: str = "1h") -> pd.DataFrame:
     # These represent ~10h, ~5 days, ~4 days respectively
     _tf_multiplier = _get_timeframe_multiplier(timeframe)
 
-    _swing_lookback = int(10 * _tf_multiplier)    # 10h em candles
-    _fib_lookback = int(120 * _tf_multiplier)     # 5 dias em candles
-    _atr_lookback = int(100 * _tf_multiplier)      # ~4 dias em candles
-    _bb_width_lookback = int(100 * _tf_multiplier) # ~4 dias em candles
+    # Minimum lookbacks para evitar erros com TFs grandes (semanal)
+    _swing_lookback = max(3, int(10 * _tf_multiplier))    # 10h em candles
+    _fib_lookback = max(10, int(120 * _tf_multiplier))     # 5 dias em candles
+    _atr_lookback = max(10, int(100 * _tf_multiplier))      # ~4 dias em candles
+    _bb_width_lookback = max(10, int(100 * _tf_multiplier)) # ~4 dias em candles
 
     required = {"open", "high", "low", "close", "volume"}
     missing = required - set(df.columns)
@@ -398,14 +399,23 @@ def compute_indicators(df: pd.DataFrame, timeframe: str = "1h") -> pd.DataFrame:
 
     out = df.copy()
 
+    # ── EMA 9 (primeiro contato de rejeição — Liga Crypto) ──
+    out["ema9"] = _ema(out["close"], span=9)
+
     # ── EMA 20 (pullback reference — recomendado pelo PDF estudo) ──
     out["ema20"] = _ema(out["close"], span=20)
 
     # ── EMA 50 (filtro medio de tendencia) ──
     out["ema50"] = _ema(out["close"], span=50)
 
+    # ── SMA 50 (zona de término de pullback — Liga Crypto) ──
+    out["sma50"] = _sma(out["close"], window=50)
+
     # ── EMA 200 (filtro lento de tendencia) ──
     out["ema200"] = _ema(out["close"], span=200)
+
+    # ── SMA 200 (regra de ferro diaria — Liga Crypto) ──
+    out["sma200"] = _sma(out["close"], window=200)
 
     # ── EMA 50 Slope (regime detection — baseado no PDF) ──
     out["ema50_slope"] = _ema_slope(out["close"], slope_period=20)
@@ -490,6 +500,22 @@ def compute_indicators(df: pd.DataFrame, timeframe: str = "1h") -> pd.DataFrame:
     out["ema50_touched"] = out["low"] <= out["ema50"]
     # Para SHORT: high tocou EMA50 (pullback de baixa)
     out["ema50_touched_up"] = out["high"] >= out["ema50"]
+
+    # ── Slow Stochastic (14, 3, 3) — Liga Crypto methodology ──
+    # %K = Stochastic RSI, %D = 3-period SMA of %K, Slow = 3-period SMA
+    _stoch_period = 14
+    _stoch_k_smooth = 3
+    _stoch_d_smooth = 3
+    _lowest_low = out["low"].rolling(window=_stoch_period).min()
+    _highest_high = out["high"].rolling(window=_stoch_period).max()
+    _stoch_range = _highest_high - _lowest_low
+    _raw_stoch_k = pd.Series(0.0, index=out.index)
+    _mask_stoch = _stoch_range > 0
+    _raw_stoch_k[_mask_stoch] = (
+        (out["close"][_mask_stoch] - _lowest_low[_mask_stoch]) / _stoch_range[_mask_stoch] * 100.0
+    )
+    out["stoch_k"] = _raw_stoch_k.rolling(window=_stoch_k_smooth).mean()
+    out["stoch_d"] = out["stoch_k"].rolling(window=_stoch_d_smooth).mean()
 
     # ── Stochastic RSI (v5: usado na estrategia SBS/ATF v2) ──
     _srsi_period = max(14, int(14 * _tf_multiplier))  # timeframe-adaptive

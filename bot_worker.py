@@ -52,6 +52,13 @@ logger = logging.getLogger("ctev.worker")
 
 CANDLE_LIMIT = 300
 
+
+def _liga_crypto_to_signal_compat(liga_result):
+    """Converte resultado Liga Crypto para Signal do pipeline (compat)."""
+    from strategy_liga_crypto import liga_crypto_to_signal
+    return liga_crypto_to_signal(liga_result)
+
+
 # Mapa de timeframe para milissegundos (dinamico)
 _TF_MS_MAP = {
     "1m": 60 * 1000,
@@ -366,9 +373,26 @@ class CTEVWorker:
             _strategy_type = get_strategy_type(active_tf)
             _strategy_label = get_strategy_label(active_tf)
 
-            # Router: seleciona estrategia automaticamente por timeframe
-            # 15m/30m -> EMA Cross v8 | 1h+ -> CTEV v7.1 Regime-Switching
-            signal = router_evaluate_signal(df_ind, timeframe=active_tf, profile=_profile)
+            # Liga Crypto: requer dados multi-timeframe
+            liga_crypto_result = None
+            if _strategy_type == "liga_crypto":
+                try:
+                    liga_dfs = await self._fetch_liga_crypto_dfs()
+                    if liga_dfs and len(liga_dfs) >= 4:
+                        from strategy_liga_crypto import analyze_liga_crypto
+                        liga_crypto_result = analyze_liga_crypto(liga_dfs)
+                        signal = liga_crypto_to_signal_compat(liga_crypto_result)
+                        # Log do report
+                        report = liga_crypto_result.to_report()
+                        logger.info("Liga Crypto Report:\n%s", report)
+                    else:
+                        logger.warning("Liga Crypto: dados insuficientes (%d/5 TFs)", len(liga_dfs))
+                except Exception as exc:
+                    logger.exception("Liga Crypto analysis falhou: %s", exc)
+                    signal = None
+            else:
+                # Router padrão: seleciona estrategia por timeframe
+                signal = router_evaluate_signal(df_ind, timeframe=active_tf, profile=_profile)
 
             # Expose regime/strategy info in status
             last_row = df_ind.iloc[-1]
@@ -430,12 +454,20 @@ class CTEVWorker:
         # Telegram: envia sinal detalhado com analise e regime
         if self.notifier is not None:
             try:
-                await self.notifier.send_signal(
-                    signal, self.settings.binance.symbol,
-                    regime=_regime_v2,
-                    strategy=_regime_strat,
-                    confidence=_regime_conf,
-                )
+                # Liga Crypto: envia relatorio completo (formato Bloco 8)
+                if liga_crypto_result is not None:
+                    report = liga_crypto_result.to_report()
+                    # Telegram tem limite de 4096 chars por mensagem
+                    chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
+                    for chunk in chunks:
+                        await self.notifier.send_text(chunk)
+                else:
+                    await self.notifier.send_signal(
+                        signal, self.settings.binance.symbol,
+                        regime=_regime_v2,
+                        strategy=_regime_strat,
+                        confidence=_regime_conf,
+                    )
                 signal_dict["notified"] = 1
             except Exception as exc:
                 logger.exception("Erro ao enviar Telegram: %s", exc)
@@ -650,3 +682,31 @@ class CTEVWorker:
         df.set_index("datetime", inplace=True)
         df.drop(columns=["timestamp"], inplace=True)
         return df
+
+    async def _fetch_liga_crypto_dfs(self) -> dict:
+        """Busca candles para os 5 timeframes da metodologia Liga Crypto.
+        Returns dict[timeframe, DataFrame] com OHLCV para 1W, 1D, 4H, 1H, 15M.
+        """
+        if self.exchange is None:
+            return {}
+        symbol = self.exchange_info.symbol if self.exchange_info else self.settings.binance.symbol
+        dfs = {}
+        # Limites por timeframe: semanal precisa de mais historico
+        tf_limits = {"1W": 104, "1D": 300, "4H": 300, "1H": 300, "15M": 300}
+        for tf, limit in tf_limits.items():
+            try:
+                ohlcv = await self.exchange.fetch_ohlcv(
+                    symbol=symbol, timeframe=tf, limit=limit,
+                )
+                if ohlcv:
+                    df = pd.DataFrame(
+                        ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
+                    )
+                    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+                    df.set_index("datetime", inplace=True)
+                    df.drop(columns=["timestamp"], inplace=True)
+                    dfs[tf] = df
+                    logger.debug("Liga Crypto: %d candles de %s", len(df), tf)
+            except Exception as exc:
+                logger.warning("Liga Crypto: falha ao buscar %s: %s", tf, exc)
+        return dfs

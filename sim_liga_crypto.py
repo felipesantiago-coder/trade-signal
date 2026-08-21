@@ -23,6 +23,11 @@ Gestao de risco:
   - Cooldown: 2 SL -> 6 bars
   - Max bars: 168 (7 dias)
   - Risk: 2% por trade (Liga Crypto = maior confianca)
+
+Filtros quantitativos:
+  - Weekend (Saturday/Sunday UTC): bloqueia entrada
+  - Sazonalidade: score <= -2 bloqueia (ciclo BTC + mes + dow)
+  - Macro eventos: FOMC/CPI/NFP (janelas de 1h) bloqueiam entrada
 """
 from __future__ import annotations
 
@@ -171,7 +176,7 @@ def simulate_liga_crypto(
     """
     from strategy_liga_crypto import (
         analyze_liga_crypto, liga_crypto_to_signal,
-        _get_seasonal_context_quant, Decision,
+        _get_seasonal_context_quant, _is_macro_event_window, Decision,
     )
 
     trades: List[TradeResult] = []
@@ -189,6 +194,7 @@ def simulate_liga_crypto(
     _diag_rr_rejected = 0
     _diag_weekend_filtered = 0
     _diag_seasonal_filtered = 0
+    _diag_macro_filtered = 0
     _diag_cooldown_skip = 0
 
     # Position state
@@ -397,6 +403,11 @@ def simulate_liga_crypto(
             _diag_seasonal_filtered += 1
             continue
 
+        # Macro event filter (FOMC, CPI, NFP windows)
+        if _is_macro_event_window(ts):
+            _diag_macro_filtered += 1
+            continue
+
         # Re-analyze only every REANALYZE_INTERVAL bars
         if i - _last_analysis_bar >= _REANALYZE_INTERVAL or _cached_signal is None:
             sliced = slice_dfs_at_timestamp(dfs_ind, ts)
@@ -489,9 +500,9 @@ def simulate_liga_crypto(
         _close_position(n - 1, last_close, "timeout_eod")
 
     logger.info(
-        "Liga Crypto simulacao completa: %d trades | balance=$%.2f | no_signal=%d blocked=%d rr_rej=%d weekend=%d seasonal=%d cooldown=%d",
+        "Liga Crypto simulacao completa: %d trades | balance=$%.2f | no_signal=%d blocked=%d rr_rej=%d weekend=%d seasonal=%d macro=%d cooldown=%d",
         len(trades), balance, _diag_no_signal, _diag_blocked, _diag_rr_rejected,
-        _diag_weekend_filtered, _diag_seasonal_filtered, _diag_cooldown_skip,
+        _diag_weekend_filtered, _diag_seasonal_filtered, _diag_macro_filtered, _diag_cooldown_skip,
     )
 
     _diag = {
@@ -500,6 +511,7 @@ def simulate_liga_crypto(
         "rr_rejected": _diag_rr_rejected,
         "weekend_filtered": _diag_weekend_filtered,
         "seasonal_filtered": _diag_seasonal_filtered,
+        "macro_filtered": _diag_macro_filtered,
         "cooldown_skip": _diag_cooldown_skip,
         "strategy": "liga_crypto",
     }

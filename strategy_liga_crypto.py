@@ -33,7 +33,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -786,14 +786,111 @@ def _is_weekend() -> bool:
     return dow >= 5
 
 
+# ── Macro event calendar (hardcoded FOMC/CPI/NFP dates) ──
+# Formato: (mes, dia) — quando o evento exato nao e conhecido,
+# marcamos a janela do mes. Para datas fixas conhecidas, usamos dia exato.
+# FOMC: 8 reunioes/ano (jan, mar, may, jun, jul, sep, oct, dec)
+# NFP: primeiro sexta do mes
+# CPI: segunda terca do mes (BLS release)
+_MACRO_EVENTS: Dict[int, List[Tuple[int, int, str]]] = {
+    # 2024
+    2024: [
+        (1, 31, "FOMC"), (3, 20, "FOMC"), (5, 1, "FOMC"), (6, 12, "FOMC"),
+        (7, 31, "FOMC"), (9, 18, "FOMC"), (11, 7, "FOMC"), (12, 18, "FOMC"),
+        (1, 12, "CPI"), (2, 13, "CPI"), (3, 12, "CPI"), (4, 10, "CPI"),
+        (5, 15, "CPI"), (6, 12, "CPI"), (7, 11, "CPI"), (8, 14, "CPI"),
+        (9, 11, "CPI"), (10, 10, "CPI"), (11, 13, "CPI"), (12, 11, "CPI"),
+    ],
+    # 2025
+    2025: [
+        (1, 29, "FOMC"), (3, 19, "FOMC"), (5, 7, "FOMC"), (6, 18, "FOMC"),
+        (7, 30, "FOMC"), (9, 17, "FOMC"), (11, 5, "FOMC"), (12, 17, "FOMC"),
+        (1, 15, "CPI"), (2, 12, "CPI"), (3, 12, "CPI"), (4, 9, "CPI"),
+        (5, 13, "CPI"), (6, 11, "CPI"), (7, 11, "CPI"), (8, 13, "CPI"),
+        (9, 10, "CPI"), (10, 15, "CPI"), (11, 12, "CPI"), (12, 10, "CPI"),
+    ],
+    # 2026
+    2026: [
+        (1, 28, "FOMC"), (3, 18, "FOMC"), (5, 6, "FOMC"), (6, 17, "FOMC"),
+        (7, 29, "FOMC"), (9, 16, "FOMC"), (11, 4, "FOMC"), (12, 16, "FOMC"),
+        (1, 14, "CPI"), (2, 11, "CPI"), (3, 11, "CPI"), (4, 8, "CPI"),
+        (5, 13, "CPI"), (6, 10, "CPI"), (7, 8, "CPI"), (8, 12, "CPI"),
+        (9, 9, "CPI"), (10, 14, "CPI"), (11, 11, "CPI"), (12, 9, "CPI"),
+    ],
+}
+
+# Cache de NFP calculado por mes/ano
+_nfp_cache: Dict[Tuple[int, int], int] = {}
+
+
+def _get_nfp_day(year: int, month: int) -> int:
+    """Retorna o dia do NFP (primeira sexta do mes).
+    Nao disponivel para meses passados — usa calendario.
+    """
+    cache_key = (year, month)
+    if cache_key in _nfp_cache:
+        return _nfp_cache[cache_key]
+
+    # Primeira sexta do mes: encontrar o primeiro dia que e sexta (weekday=4)
+    try:
+        first_day = datetime(year, month, 1, tzinfo=timezone.utc)
+        # Dias ate a primeira sexta
+        days_until_friday = (4 - first_day.weekday()) % 7
+        nfp_day = 1 + days_until_friday
+        _nfp_cache[cache_key] = nfp_day
+        return nfp_day
+    except ValueError:
+        return 8  # fallback seguro
+
+
 def _is_macro_event_window(dt=None) -> bool:
-    """Verifica se estamos em janela de eventos macro (aproximação).
-    Sem API de calendario: retorna False.
-    Em producao, integrar com API de calendario economico.
-    
+    """Verifica se estamos em janela de eventos macro (30min antes/depois).
+
+    Implementacao quantitativa com calendario hardcoded de:
+      - FOMC (Federal Reserve): 8 reunioes/ano
+      - CPI (Consumer Price Index): mensal
+      - NFP (Non-Farm Payrolls): primeira sexta do mes
+
+    Para datas fora do calendario hardcoded, retorna False.
+    Para datas futuras nao mapeadas, retorna False (conservador).
+
     Parameters:
         dt: datetime para backtest. Se None, usa agora.
     """
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+
+    year = dt.year
+    month = dt.month
+    day = dt.day
+    hour = dt.hour if hasattr(dt, 'hour') else 12
+
+    events = _MACRO_EVENTS.get(year, [])
+    if not events:
+        return False
+
+    # Verificar se estamos em janela de +-30min de algum evento
+    # Eventos FOMC/CPI sao as 13:30 UTC (8:30 ET)
+    # NFP as 12:30 UTC (7:30 ET)
+    for evt_month, evt_day, evt_type in events:
+        if evt_month == month and abs(day - evt_day) <= 0:
+            if evt_type == "FOMC":
+                # FOMC decision: 13:30 UTC (8:30 ET), janela 13:00-14:00 UTC
+                if 13 <= hour <= 14:
+                    logger.debug("Macro: FOMC window at %s", dt)
+                    return True
+            elif evt_type == "CPI":
+                # CPI release: 13:30 UTC (8:30 ET), janela 13:00-14:00 UTC
+                if 13 <= hour <= 14:
+                    logger.debug("Macro: CPI window at %s", dt)
+                    return True
+
+    # NFP: primeira sexta do mes, 12:30 UTC
+    nfp_day = _get_nfp_day(year, month)
+    if day == nfp_day and 12 <= hour <= 13:
+        logger.debug("Macro: NFP window at %s", dt)
+        return True
+
     return False
 
 
@@ -842,10 +939,10 @@ def _get_seasonal_context_quant(dt=None) -> int:
         score -= 1
     
     # ── Dia da semana ──
-    if dow >= 5:  # Weekend
-        score -= 2  # BLOQUEAR
-    elif dow == 6:  # Sunday
-        score -= 1  # Virada semanal
+    if dow >= 5:  # Saturday=5, Sunday=6
+        score -= 2  # BLOQUEAR: volume baixo, spreads largos
+    # Nota: dow==6 (Sunday) e coberto por dow>=5 acima.
+    # Nao ha segunda condicao para dow==6 pois seria codigo morto.
     
     return score
 

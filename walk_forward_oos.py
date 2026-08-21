@@ -1,5 +1,9 @@
 """walk_forward_oos.py
-Walk-Forward Optimization com Out-of-Sample (OOS) validation para V1-V5.
+Walk-Forward Optimization com Out-of-Sample (OOS) validation.
+
+Suporta dois pipelines:
+  - V1-V35: estrategias single-TF (Squeeze/RSI Reversal) via sim_concurrent
+  - Liga Crypto: metodologia multi-TF (1W->1D->4H->1H->15M) via sim_liga_crypto
 
 Principio: OOS performance > IS performance.
 AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO
@@ -427,7 +431,15 @@ def run_all_versions_wfo(
     symbol: str = "BTC/USDT", timeframe: str = "1h",
     total_days: int = 730, train_days: int = 180,
     test_days: int = 60, step_days: int = 60,
+    include_liga_crypto: bool = True,
 ) -> List[WFOVersionResult]:
+    """WFO para V1-V35 + (opcional) Liga Crypto.
+
+    Parameters:
+        include_liga_crypto: Se True, inclui Liga Crypto no batch WFO.
+            Liga Crypto usa pipeline dedicado (multi-TF) separado das
+            versoes V1-V35 (single-TF).
+    """
     results = []
     for vid in [f"V{i}" for i in range(1, 36)]:
         try:
@@ -436,5 +448,22 @@ def run_all_versions_wfo(
         except Exception as exc:
             logger.error("WFO %s falhou: %s", vid, exc)
             results.append(WFOVersionResult(version_id=vid, label=f"{vid}-ERROR", n_windows=0, verdict="NAO VALIDADA"))
+
+    # Liga Crypto WFO (dedicated multi-TF pipeline)
+    if include_liga_crypto:
+        try:
+            r_lc = run_walk_forward_oos_liga_crypto(
+                symbol, total_days, train_days, test_days, step_days,
+            )
+            results.append(r_lc)
+            logger.info("WFO all-versions: Liga Crypto concluido — %d windows, verdict=%s",
+                        r_lc.n_windows, r_lc.verdict)
+        except Exception as exc:
+            logger.error("WFO Liga Crypto falhou: %s", exc)
+            results.append(WFOVersionResult(
+                version_id="LIGA_CRYPTO", label="Liga Crypto-ERROR",
+                n_windows=0, verdict="NAO VALIDADA",
+            ))
+
     results.sort(key=lambda r: r.overfitting_score)
     return results
