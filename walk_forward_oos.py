@@ -281,6 +281,148 @@ def _compute_wfo_verdict(oos_sharpe, oos_sortino, oos_calmar, oos_max_dd, overfi
     return "NAO VALIDADA"
 
 
+def run_walk_forward_oos_liga_crypto(
+    symbol: str = "BTC/USDT",
+    total_days: int = 730,
+    train_days: int = 180,
+    test_days: int = 60,
+    step_days: int = 60,
+) -> WFOVersionResult:
+    """Walk-Forward OOS para a metodologia Liga Crypto.
+    
+    Busca todos os 5 TFs uma vez, computa indicadores, e para cada
+    janela de teste corta os DataFrames ate o timestamp da barra atual.
+    """
+    from sim_liga_crypto import (
+        fetch_liga_crypto_data, prepare_liga_crypto_dfs,
+        simulate_liga_crypto, slice_dfs_at_timestamp,
+    )
+    from backtest import calculate_metrics, _update_progress
+    from indicators import compute_indicators
+
+    logger.info(
+        "WFO Liga Crypto: train=%dd test=%dd step=%dd total=%dd",
+        train_days, test_days, step_days, total_days,
+    )
+
+    _update_progress(
+        phase="WFO LC Download", phase_num=1, pct=5,
+        message="WFO Liga Crypto: baixando 5 timeframes...",
+        running=True,
+    )
+
+    # Fetch all multi-TF data
+    try:
+        raw_dfs = fetch_liga_crypto_data(symbol, total_days + train_days)
+    except Exception as exc:
+        logger.error("WFO Liga Crypto: download falhou: %s", exc)
+        return WFOVersionResult(
+            version_id="LIGA_CRYPTO", label="Liga Crypto",
+            n_windows=0, verdict="NAO VALIDADA",
+        )
+
+    _update_progress(
+        phase="WFO LC Indicators", phase_num=1, pct=8,
+        message="WFO Liga Crypto: calculando indicadores...",
+    )
+
+    dfs_ind = prepare_liga_crypto_dfs(raw_dfs)
+    df_1h = dfs_ind["1H"]
+    cpd = 24  # 1h
+    total_candles_train = int(train_days * cpd)
+    total_candles_test = int(test_days * cpd)
+    step_candles = int(step_days * cpd)
+    n = len(df_1h)
+
+    windows: List[WFOWindow] = []
+    window_id = 0
+    start = 0
+
+    while start + total_candles_train + total_candles_test <= n:
+        # Get timestamps for window boundaries
+        train_end_idx = start + total_candles_train
+        test_end_idx = train_end_idx + total_candles_test
+        train_end_ts = df_1h.index[train_end_idx - 1]
+        test_end_ts = df_1h.index[test_end_idx - 1]
+        test_start_ts = df_1h.index[train_end_idx]
+
+        # Train window: slice all TFs up to train_end
+        train_dfs = {}
+        for tf_key, df in dfs_ind.items():
+            mask = df.index <= train_end_ts
+            train_dfs[tf_key] = df.loc[mask]
+
+        # Test window: slice all TFs up to test_end
+        # The sim needs full context (upper TFs) for analysis
+        test_dfs = {}
+        for tf_key, df in dfs_ind.items():
+            mask = df.index <= test_end_ts
+            test_dfs[tf_key] = df.loc[mask]
+
+        n_train_1h = len(train_dfs["1H"])
+        n_test_1h = len(test_dfs["1H"]) - n_train_1h
+
+        if n_train_1h < 100 or n_test_1h < 20:
+            break
+
+        pct = 10 + (window_id / max(1, (n - total_candles_train) // step_candles)) * 80
+        _update_progress(
+            phase=f"WFO LC W{window_id}", phase_num=2, pct=round(pct, 1),
+            message=f"IS: {len(train_dfs['1H']):,} | OOS: {len(test_dfs['1H']):,}",
+        )
+
+        # IS
+        is_trades, _, _ = simulate_liga_crypto(train_dfs, skip_15m=True)
+        is_metrics = calculate_metrics(is_trades, train_dfs["1H"])
+
+        # OOS
+        oos_trades, _, _ = simulate_liga_crypto(test_dfs, skip_15m=True)
+        oos_metrics = calculate_metrics(oos_trades, test_dfs["1H"])
+
+        # Degradation
+        pnl_denom = max(abs(is_metrics.total_pnl_pct), abs(oos_metrics.total_pnl_pct), 0.01)
+        deg_wr = ((is_metrics.win_rate - oos_metrics.win_rate) / is_metrics.win_rate * 100) if is_metrics.win_rate > 0 else 0.0
+        deg_pf = ((is_metrics.profit_factor - oos_metrics.profit_factor) / is_metrics.profit_factor * 100) if is_metrics.profit_factor > 0 else 0.0
+        deg_pnl = ((is_metrics.total_pnl_pct - oos_metrics.total_pnl_pct) / pnl_denom * 100)
+
+        windows.append(WFOWindow(
+            window_id=window_id,
+            train_start=str(train_dfs["1H"].index[0]),
+            train_end=str(train_end_ts),
+            test_start=str(test_start_ts),
+            test_end=str(test_end_ts),
+            is_trades=is_metrics.total_trades, is_win_rate=is_metrics.win_rate,
+            is_pf=is_metrics.profit_factor, is_total_pnl=is_metrics.total_pnl_pct,
+            is_max_dd=is_metrics.max_drawdown_pct, is_sharpe=is_metrics.sharpe_ratio,
+            is_sortino=is_metrics.sortino_ratio,
+            oos_trades=oos_metrics.total_trades, oos_win_rate=oos_metrics.win_rate,
+            oos_pf=oos_metrics.profit_factor, oos_total_pnl=oos_metrics.total_pnl_pct,
+            oos_max_dd=oos_metrics.max_drawdown_pct, oos_sharpe=oos_metrics.sharpe_ratio,
+            oos_sortino=oos_metrics.sortino_ratio,
+            degradation_wr=round(deg_wr, 2), degradation_pf=round(deg_pf, 2),
+            degradation_pnl=round(deg_pnl, 2),
+        ))
+
+        logger.info(
+            "WFO LC W%d: IS WR=%.1f%% PF=%.2f | OOS WR=%.1f%% PF=%.2f | deg=%.1f%%",
+            window_id, is_metrics.win_rate, is_metrics.profit_factor,
+            oos_metrics.win_rate, oos_metrics.profit_factor, deg_pnl,
+        )
+
+        window_id += 1
+        start += step_candles
+
+    _update_progress(running=False)
+
+    if not windows:
+        return WFOVersionResult(
+            version_id="LIGA_CRYPTO", label="Liga Crypto",
+            n_windows=0, verdict="NAO VALIDADA",
+        )
+
+    return _aggregate_wfo("LIGA_CRYPTO", "Liga Crypto", windows)
+
+
 def run_all_versions_wfo(
     symbol: str = "BTC/USDT", timeframe: str = "1h",
     total_days: int = 730, train_days: int = 180,

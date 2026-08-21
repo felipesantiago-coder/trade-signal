@@ -2923,24 +2923,32 @@ def run_backtest(
     atr_pct_max: float = None,  # v6: None = usa profile
     advanced: bool = False,
     regime_switching: bool = False,  # v7: regime-aware strategy routing
+    liga_crypto: bool = False,  # Liga Crypto multi-TF methodology
 ) -> Tuple[BacktestMetrics, List[TradeResult]]:
     """
     Executa backtest completo da estrategia CTEV.
 
     v6: Resolve automaticamente o StrategyProfile pelo timeframe.
     v7: Adicionado regime-switching (mean-reversion em ranging, filtro avancado).
+    Liga Crypto: Analise hierarquica multi-timeframe (1W->1D->4H->1H->15M).
 
     Parameters:
         advanced: se True, usa simulate_trades_advanced com sizing/trailing
         regime_switching: se True, usa regime_engine para rotear estrategia
             por regime (trend_follow para tendencias, mean_reversion para lateral).
             Validado: +5.24pp vs baseline em BTC/USDT 1h 730d.
+        liga_crypto: se True, usa metodologia Liga Crypto (multi-TF).
+            Requer busca de dados 5 timeframes.
 
     Returns:
         (BacktestMetrics, List[TradeResult])
     """
     # Resolve profile pelo timeframe
-    profile = get_profile(timeframe)
+    if liga_crypto:
+        from strategy_profiles import PROFILE_LIGA_CRYPTO
+        profile = PROFILE_LIGA_CRYPTO
+    else:
+        profile = get_profile(timeframe)
 
     # Resolve ATR pct limits: arg > profile > hardcoded fallback
     _atr_min = atr_pct_min if atr_pct_min is not None else profile.atr_pct_min
@@ -3045,6 +3053,23 @@ def run_backtest(
             df_clean, _atr_min, _atr_max,
             profile=profile,
         )
+    elif profile.name == "LIGA_CRYPTO":
+        # Liga Crypto: analise hierarquica multi-timeframe (1W->1D->4H->1H->15M)
+        from sim_liga_crypto import (
+            fetch_liga_crypto_data, prepare_liga_crypto_dfs,
+            simulate_liga_crypto,
+        )
+        _update_progress(
+            phase="Baixando MTF data", phase_num=2, pct=8,
+            message="Liga Crypto: baixando 5 timeframes (1W,1D,4H,1H,15M)...",
+        )
+        raw_dfs = fetch_liga_crypto_data(symbol, days)
+        _update_progress(
+            phase="Calculando indicadores MTF", phase_num=3, pct=14,
+            message="Liga Crypto: calculando indicadores para 5 timeframes...",
+        )
+        dfs_ind = prepare_liga_crypto_dfs(raw_dfs)
+        trades, atr_filtered, _diag = simulate_liga_crypto(dfs_ind)
     elif profile.name == "STANDARD":
         # v17.0: Multi-Strategy Concurrent Positions (DEFAULT para 1h)
         from sim_concurrent import simulate_trades_concurrent

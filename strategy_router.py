@@ -4,24 +4,34 @@ strategy_router.py
 Router inteligente que seleciona a estrategia correta para cada timeframe.
 
 V13-ROBUSTA: 1h usa Squeeze Breakout + RSI Reversal (WFO validado, 17 janelas).
+LIGA CRYPTO: 1h usa analise hierarquica multi-timeframe (1W->1D->4H->1H->15M).
 
   Timeframe  |  Estrategia              |  Engine              |  Validacao
   -----------+-------------------------+---------------------+------------------
   15m, 30m   |  ATF v2                  |  strategy_atf_v2     |  StochRSI+BBWP
-  1h          |  V13 Multi-Strategy      |  strategy.py         |  WFO ROBUSTA ✅
+  1h (LIGA)  |  Liga Crypto             |  strategy_liga_crypto |  Backtest/WFO ✅
   2h, 4h     |  CTEV (wider)            |  regime-switching    |  NAO validado
   1d          |  CTEV (position)         |  regime-switching    |  NAO validado
   1m,3m,5m   |  DESATIVADO              |  N/A                 |  Sem edge
 
-V13 1h estrategias ativas:
+Liga Crypto backtest/WFO:
+  - backtest.py: run_backtest(liga_crypto=True) ou profile.name=="LIGA_CRYPTO"
+  - sim_liga_crypto.py: simulate_liga_crypto() — simulador dedicado MTF
+  - walk_forward_oos.py: run_walk_forward_oos_liga_crypto() — WFO dedicado
+  - Busca 5 TFs (1W,1D,4H,1H,15M), computa indicadores, slice por timestamp
+  - Filtro sazonal quantitativo (_get_seasonal_context_quant)
+
+V13 1h estrategias ativas (quando LIGA_CRYPTO desativado):
   - Squeeze Breakout: SL 1.8x, TP 6.5x, max 144 bars, risk 3.0%
   - RSI Reversal:     SL 1.8x, TP 5.5x, max 120 bars, risk 1.5%
   - CTEV/EMA Bounce:  DESATIVADAS
 
-V13 WFO metrics (17 janelas OOS):
-  OOS Sharpe: 1.30 | Sortino: ~2.0 | MaxDD: 33.6%
-  Consistency: 65% (11/17 janelas positivas)
-  Overfit Score: 35.1 (< 40 = ROBUSTO)
+Liga Crypto metodologia:
+  - Hierarquia: 1W -> 1D -> 4H -> 1H -> 15M
+  - Regra de ferro: MA200 diaria
+  - Estocastico (14,3,3) + RSI divergencias + BBWP
+  - R:R minimo 1:2, TP parcial 50/30/20
+  - Relatorio formato Bloco 8
 """
 from __future__ import annotations
 
@@ -46,7 +56,10 @@ logger = logging.getLogger(__name__)
 ATF_TIMEFRAMES = {"15m", "30m"}
 
 # Timeframes que usam V13 Multi-Strategy (Squeeze + RSI Reversal)
-V13_MULTI_STRATEGY_TIMEFRAMES = {"1h"}
+V13_MULTI_STRATEGY_TIMEFRAMES = set()  # Vazio quando LIGA_CRYPTO ativo
+
+# Timeframes que usam Liga Crypto (analise hierarquica multi-TF)
+LIGA_CRYPTO_TIMEFRAMES = {"1h"}
 
 # DESATIVADOS
 CONFLUENCE_V15_TIMEFRAMES = set()
@@ -72,6 +85,8 @@ def get_strategy_type(timeframe: str) -> str:
     """
     if timeframe in ATF_TIMEFRAMES:
         return "atf"
+    elif timeframe in LIGA_CRYPTO_TIMEFRAMES:
+        return "liga_crypto"
     elif timeframe in V13_MULTI_STRATEGY_TIMEFRAMES:
         return "v13_multi_strategy"
     elif timeframe in DISABLED_TIMEFRAMES:
@@ -92,6 +107,7 @@ def get_strategy_label(timeframe: str) -> str:
     st = get_strategy_type(timeframe)
     labels = {
         "atf": "ATF v2 StochRSI + BBWP",
+        "liga_crypto": "Liga Crypto Multi-TF (1W→1D→4H→1H→15M)",
         "v13_multi_strategy": "V13-ROBUSTA Squeeze + RSI Reversal (WFO ✅)",
         "confluence_v15": "Confluence v15 (DESATIVADO)",
         "bbwp_squeeze": "BBWP Squeeze v14 (DESATIVADO)",
@@ -165,6 +181,13 @@ def evaluate_signal(
         logger.debug("Router [%s] -> ATF v2 StochRSI + BBWP", timeframe)
         return evaluate_atf_v2(df, profile=profile)
 
+    # ---- LIGA CRYPTO (1h) ----
+    if strategy_type == "liga_crypto":
+        from strategy_liga_crypto import evaluate_liga_crypto_signal
+        logger.debug("Router [%s] -> Liga Crypto Multi-TF (1W->1D->4H->1H->15M)", timeframe)
+        # Liga Crypto requer dados multi-timeframe passados pelo bot_worker
+        return evaluate_liga_crypto_signal(df, timeframe=timeframe)
+
     # ---- V13 MULTI-STRATEGY (1h) ----
     if strategy_type == "v13_multi_strategy":
         from strategy import evaluate_signal as evaluate_v13_signal
@@ -227,6 +250,12 @@ def evaluate_signal_row(
 
     if strategy_type == "disabled":
         return None
+
+    # ---- LIGA CRYPTO (1h) ----
+    if strategy_type == "liga_crypto":
+        from strategy_liga_crypto import evaluate_liga_crypto_signal_row
+        logger.debug("Router [%s] -> Liga Crypto Multi-TF (1W->1D->4H->1H->15M)", timeframe)
+        return evaluate_liga_crypto_signal_row(row, prev_row, bar_index, timeframe=timeframe)
 
     # ---- V13 MULTI-STRATEGY (1h) ----
     if strategy_type == "v13_multi_strategy":

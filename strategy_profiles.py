@@ -301,6 +301,36 @@ PROFILE_POSITION = StrategyProfile(
     max_bars_held=30,        # 30 dias
 )
 
+PROFILE_LIGA_CRYPTO = StrategyProfile(
+    name="LIGA_CRYPTO",
+    timeframes=(),  # Vazio: ativado via liga_crypto=True, NAO via get_profile()
+    description=(
+        "[LIGA CRYPTO] Analise hierarquica multi-timeframe (1W->1D->4H->1H->15M). "
+        "Metodologia profissional: MA200 'regra de ferro', Stochastic (14,3,3), "
+        "RSI divergencias, BBWP, Fibonacci. R:R minimo 1:2. "
+        "TP parcial 50/30/20. Trailing apos TP1. SL 1.8x ATR (4H)."
+    ),
+    adx_min=20.0,
+    allow_transition=True,
+    rsi_long_min=30.0,
+    rsi_long_max=70.0,
+    rsi_short_min=30.0,
+    rsi_short_max=70.0,
+    fib_tolerance_pct=0.050,  # Liga Crypto usa Fib mais amplo
+    ema50_slope_min=-1.0,
+    volume_confirm=False,
+    volume_sma_ratio=0.30,
+
+    # Volatilidade — faixa mais aberta (Liga Crypto tem filtros proprios)
+    atr_pct_min=0.05,
+    atr_pct_max=0.95,
+
+    # Gestao de risco
+    sl_atr_mult=1.80,
+    tp_atr_mult=5.40,  # R:R 3:1
+    max_bars_held=168,   # 7 dias
+)
+
 
 # ==================================================================
 # REGISTRO GLOBAL
@@ -314,6 +344,7 @@ _ALL_PROFILES: Dict[str, StrategyProfile] = {
         PROFILE_BBWP_SQUEEZE,
         PROFILE_SWING,
         PROFILE_POSITION,
+        PROFILE_LIGA_CRYPTO,
     ]
 }
 
