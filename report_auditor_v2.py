@@ -30,6 +30,8 @@ def generate_audit_report_v2(
     timeframe: str = "1h",
     days: int = 730,
     version_label: str = "V13-ROBUSTA",
+    diagnostics: Dict[str, Any] = None,
+    is_liga_crypto: bool = False,
 ) -> str:
     """"
     Gera relatorio auditavel v2 com 31+ secoes integrando audit_framework.py.
@@ -130,7 +132,7 @@ def generate_audit_report_v2(
     L.append(f"> Gerado em {now_str} | Versao: {version_label}")
     L.append(f"> Timeframe: {tf_label} | Periodo: {days} dias")
     L.append(f"> Periodo de dados: `{period_start[:19]}` a `{period_end[:19]}`")
-    L.append(f"> Motor: sim_concurrent.py V13-ROBUSTA | Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO")
+    L.append(f"> Motor: {'sim_liga_crypto.py LIGA_CRYPTO' if is_liga_crypto else 'sim_concurrent.py V13-ROBUSTA'} | Principio: AUDITABILIDADE > ROBUSTEZ > RISCO > CONSISTENCIA > RETORNO")
     L.append(f">")
     L.append(f"---")
 
@@ -192,77 +194,182 @@ def generate_audit_report_v2(
     L.append(f"| Capital inicial | $10,000.00 |")
     L.append(f"| Versao | {version_label} |")
 
-    # 4. DESCRICAO COMPLETA DA ESTRATEGIA
-    L.append(f"\n---\n\n## 4. Descricao Completa da Estrategia\n")
-    L.append(f"**Sistema:** CTEV Multi-Strategy V13-ROBUSTA — Concurrent Position Simulator\n")
-    active = [(k, v) for k, v in ENTRY_RISK_ALLOCATION.items() if v["risk_pct"] > 0]
-    L.append(f"O sistema utiliza **{len(active)} estrategias ativas** (maximo {CONCURRENT_PARAMS['max_concurrent']} posicoes):\n")
-    L.append(f"| # | Estrategia | Risco/trade | Status |")
-    L.append(f"|---|------------|-------------|--------|")
-    for i, (name, info) in enumerate(active, 1):
-        L.append(f"| {i} | {name} | {info['risk_pct']}% | {info['status']} |")
+    # ======================================================================
+    # SECOES 4-9: Estrategia — condicional Liga Crypto vs V13-ROBUSTA
+    # ======================================================================
+    if is_liga_crypto:
+        _diag_data = diagnostics or {}
 
-    # 5. REGRAS DE ENTRADA
-    L.append(f"\n---\n\n## 5. Regras de Entrada\n")
-    for strat_name, strat_rules in STRATEGY_RULES.items():
-        if "type" not in strat_rules:
-            continue
-        if "DESATIVADO" in str(strat_rules.get("type", "")):
-            continue
-        L.append(f"### {strat_name}\n")
-        L.append(f"**Tipo:** {strat_rules['type']}\n")
-        if "long_conditions" in strat_rules:
-            L.append(f"**LONG (todas verdadeiras):")
-            for c in strat_rules["long_conditions"]:
-                L.append(f"{c}")
-        if "short_conditions" in strat_rules:
-            L.append(f"**SHORT (todas verdadeiras):")
-            for c in strat_rules["short_conditions"]:
-                L.append(f"{c}")
-        if "sl" in strat_rules:
-            L.append(f"SL: {strat_rules['sl']} | TP: {strat_rules['tp']} | R:R: {strat_rules.get('rr_ratio', 'N/A')}")
-        L.append("")
+        # 4. DESCRICAO DA ESTRATEGIA
+        L.append(f"\n---\n\n## 4. Descricao Completa da Estrategia\n")
+        L.append(f"**Sistema:** Liga Crypto — Analise Hierarquica Multi-Timeframe\n")
+        L.append(f"**Motor:** `sim_liga_crypto.py` | `strategy_liga_crypto.py`\n")
+        L.append(f"**Timeframes:** 1W (contexto macro) -> 1D (filtro MA200) -> 4H (setup) -> 1H (pre-execucao) -> 15M (timing)\n")
+        L.append(f"**Re-analise:** A cada 4 barras (4h) para otimizacao de performance\n")
+        L.append(f"")
+        L.append(f"### Indicadores por Timeframe\n")
+        L.append(f"| TF | Indicadores |\n")
+        L.append(f"|----|-------------|\n")
+        L.append(f"| 1W | EMA9, EMA20, SMA50, EMA200, SMA200, RSI(14), BB(20,2), BBWP, ATR(14), Fib |\n")
+        L.append(f"| 1D | Mesmos + Stochastic(14,3,3), ADX(14)+DI, RSI Divergences |\n")
+        L.append(f"| 4H | Mesmos + MACD(12,26,9), Golden/Death Cross, Zones |\n")
+        L.append(f"| 1H | Mesmos + Triple Exhaustion, Trigger Detection |\n")
+        L.append(f"| 15M | Stochastic(14,3,3), Hidden Divergences (opcional) |\n")
 
-    # 6. REGRAS DE SAIDA
-    L.append(f"\n---\n\n## 6. Regras de Saida\n")
-    L.append(f"| Mecanismo | Regra | Prioridade |")
-    L.append(f"|-----------|------|------------|")
-    for mech, info in EXIT_MECHANISMS.items():
-        L.append(f"| {mech} | {info.get('rule', '')} | {info.get('priority', '')} |")
+        # 5. REGRAS DE ENTRADA
+        L.append(f"\n---\n\n## 5. Regras de Entrada\n")
+        L.append(f"### LONG (6 pre-condicoes obrigatorias + R:R >= 2:1)\n")
+        L.append(f"1. Semanal: tendencia ALTA, preco acima da SMA200\n")
+        L.append(f"2. Diario: preco acima da SMA200 (regra de ferro)\n")
+        L.append(f"3. 4H: zona de demanda ativa, Stochastic saindo de sobrevenda\n")
+        L.append(f"4. 1H: estrutura local de alta, gatilho de compra confirmado\n")
+        L.append(f"5. 15M (opcional): confirmacao de timing de entrada\n")
+        L.append(f"6. R:R minimo 2:1 (TP1/SL)\n")
+        L.append(f"\n### SHORT (6 pre-condicoes obrigatorias + R:R >= 2:1)\n")
+        L.append(f"1. Semanal: tendencia BAIXA, preco abaixo da SMA200\n")
+        L.append(f"2. Diario: preco abaixo da SMA200 (regra de ferro)\n")
+        L.append(f"3. 4H: zona de oferta ativa, Stochastic saindo de sobrecompra\n")
+        L.append(f"4. 1H: estrutura local de baixa, gatilho de venda confirmado\n")
+        L.append(f"5. 15M (opcional): confirmacao de timing de entrada\n")
+        L.append(f"6. R:R minimo 2:1 (TP1/SL)\n")
 
-    # 7. GESTAO DE RISCO
-    L.append(f"\n---\n\n## 7. Gestao de Risco\n")
-    L.append(f"| Componente | Regra | Valor |")
-    L.append(f"|------------|------|-------|")
-    L.append(f"| Max posicoes | Limite duro | {CONCURRENT_PARAMS['max_concurrent']} |")
-    L.append(f"| Cooldown | {CONCURRENT_PARAMS['cooldown_trigger']} SLs / {CONCURRENT_PARAMS['cooldown_bars']} bars | {CONCURRENT_PARAMS['cooldown_trigger']} SL / {CONCURRENT_PARAMS['cooldown_bars']} bars |")
-    L.append(f"| Trailing (pos-TP1) | {CONCURRENT_PARAMS['trailing_atr_mult_post_tp']}x ATR HWM | {CONCURRENT_PARAMS['trailing_atr_mult_post_tp']}x |")
-    L.append(f"| Partial TP | Primeiro TP | {CONCURRENT_PARAMS['partial_tp_pct'] * 100:.0f}% |")
-    L.append(f"| Pos-TP1 SL buffer | {CONCURRENT_PARAMS['post_tp1_sl_buffer_atr']}x ATR | {CONCURRENT_PARAMS['post_tp1_sl_buffer_atr']}x |")
-    L.append(f"| Break-Even | {CONCURRENT_PARAMS['be_trigger']} | DESATIVADO |")
-    L.append(f"| Anti-martingale | {CONCURRENT_PARAMS['anti_martingale']} | DESATIVADO |")
-    L.append(f"| Correlation Guard | {CONCURRENT_PARAMS['correlation_guard']} | DESATIVADO |")
+        # 6. REGRAS DE SAIDA
+        L.append(f"\n---\n\n## 6. Regras de Saida\n")
+        L.append(f"| Mecanismo | Regra | Prioridade |\n")
+        L.append(f"|-----------|------|------------|\n")
+        L.append(f"| Stop Loss | 1.8x ATR (4H) | 1 (mais alta) |\n")
+        L.append(f"| TP1 (50%) | Projecao Fibonacci / 3x ATR | 2 |\n")
+        L.append(f"| TP2 (30%) | Projecao Fibonacci / 5x ATR | 3 |\n")
+        L.append(f"| TP3 (20%) | Projecao Fibonacci / 8x ATR | 4 |\n")
+        L.append(f"| Trailing Stop | 1.0x ATR apos TP1 (HWM) | 2a (pos-TP1) |\n")
+        L.append(f"| Timeout | 168 bars (7 dias) | 5 (mais baixa) |\n")
 
-    # 8. GESTAO DE CAPITAL
-    L.append(f"\n---\n\n## 8. Gestao de Capital\n")
-    L.append(f"| Estrategia | Risco/trade | Justificativa |")
-    L.append(f"|------------|-------------|---------------|")
-    for name, info in ENTRY_RISK_ALLOCATION.items():
-        L.append(f"| {name} | {info['risk_pct']}% | {info['status']} |")
+        # 7. GESTAO DE RISCO
+        L.append(f"\n---\n\n## 7. Gestao de Risco\n")
+        L.append(f"| Componente | Regra | Valor |\n")
+        L.append(f"|------------|------|-------|\n")
+        L.append(f"| Max posicoes | Single position | 1 |\n")
+        L.append(f"| Risco/trade | Percentual fixo | 2.0% |\n")
+        L.append(f"| Cooldown | 2 SLs / 6 bars | 2 SL / 6h |\n")
+        L.append(f"| Trailing (pos-TP1) | 1.0x ATR HWM | 1.0x |\n")
+        L.append(f"| Partial TP | 50% em TP1 | 50% |\n")
+        L.append(f"| Pos-TP1 SL buffer | 1.5x ATR abaixo/acima TP1 | 1.5x |\n")
+        L.append(f"| Max bars held | 168 (7 dias) | 168 |\n")
+        L.append(f"| Weekend filter | Saturday/Sunday UTC | BLOQUEIA |\n")
+        L.append(f"| Seasonal filter | Score <= -2 | BLOQUEIA |\n")
+        L.append(f"| Macro filter | FOMC/CPI/NFP windows | BLOQUEIA |\n")
 
-    # 9. TRATAMENTO DE POSICOES SIMULTANEAS
-    L.append(f"\n---\n\n## 9. Tratamento de Posicoes Simultaneas\n")
-    L.append(f"| Parametro | Valor |")
-    L.append(f"|-----------|-------|")
-    L.append(f"| Max posicoes | {CONCURRENT_PARAMS['max_concurrent']} |")
-    L.append(f"| Estrategias ativas | {len(active)} |")
-    L.append(f"| Correlation Guard | DESATIVADO |")
+        # 8. GESTAO DE CAPITAL
+        L.append(f"\n---\n\n## 8. Gestao de Capital\n")
+        L.append(f"| Parametro | Valor |\n")
+        L.append(f"|-----------|-------|\n")
+        L.append(f"| Balance inicial | ${INITIAL_BALANCE:,.2f} |\n")
+        L.append(f"| Risco por trade | 2.0% |\n")
+        L.append(f"| Position sizing | risk_usd / (sl_distance_pct * entry_price) |\n")
+        L.append(f"| Reinvestment | Nao (balanco fixo) |\n")
+
+        # 9. POSICOES SIMULTANEAS
+        L.append(f"\n---\n\n## 9. Tratamento de Posicoes Simultaneas\n")
+        L.append(f"**Modo:** Single-position (Liga Crypto = sinalizacao seletiva)\n")
+        L.append(f"Apenas uma posicao aberta por vez. Novos sinais sao ignorados\n")
+        L.append(f"ate que a posicao atual seja fechada por SL, TP ou timeout.\n")
+
+        # 9b. DIAGNOSTICOS DE FILTRO
+        if _diag_data:
+            L.append(f"\n---\n\n## 9b. Diagnostico de Filtros de Sinal\n")
+            L.append(f"Quantidade de barras 1H filtradas por cada mecanismo:\n\n")
+            L.append(f"| Filtro | Barras Filtradas | % do Total |\n")
+            L.append(f"|--------|-----------------|------------|\n")
+            _total_filtered = sum(v for k, v in _diag_data.items() if k != 'strategy')
+            _total_bars = _total_filtered + total_trades
+            _filter_labels = {
+                'no_signal': 'Sem sinal (Aguardar)',
+                'blocked': 'Bloqueado (condicoes)',
+                'rr_rejected': 'R:R insuficiente (< 2:1)',
+                'weekend_filtered': 'Fim de semana (Sat/Sun)',
+                'seasonal_filtered': 'Sazonalidade (score <= -2)',
+                'macro_filtered': 'Evento macro (FOMC/CPI/NFP)',
+                'cooldown_skip': 'Cooldown (SLs consecutivos)',
+            }
+            for key, label in _filter_labels.items():
+                val = _diag_data.get(key, 0)
+                pct = val / max(_total_bars, 1) * 100
+                L.append(f"| {label} | {val:,} | {pct:.1f}% |\n")
+            L.append(f"| **Total filtrado** | **{_total_filtered:,}** | **{_total_filtered / max(_total_bars, 1) * 100:.1f}%** |\n")
+            L.append(f"| **Trades executados** | **{total_trades}** | **{total_trades / max(_total_bars, 1) * 100:.2f}%** |\n")
+    else:
+        # ── V13-ROBUSTA original sections ──
+        active = [(k, v) for k, v in ENTRY_RISK_ALLOCATION.items() if v['risk_pct'] > 0]
+        L.append(f"\n---\n\n## 4. Descricao Completa da Estrategia\n")
+        L.append(f"**Sistema:** CTEV Multi-Strategy V13-ROBUSTA — Concurrent Position Simulator\n")
+        L.append(f"O sistema utiliza **{len(active)} estrategias ativas** (maximo {CONCURRENT_PARAMS['max_concurrent']} posicoes):\n")
+        L.append(f"| # | Estrategia | Risco/trade | Status |\n")
+        L.append(f"|---|------------|-------------|--------|\n")
+        for i, (name, info) in enumerate(active, 1):
+            L.append(f"| {i} | {name} | {info['risk_pct']}% | {info['status']} |\n")
+
+        L.append(f"\n---\n\n## 5. Regras de Entrada\n")
+        for strat_name, strat_rules in STRATEGY_RULES.items():
+            if 'type' not in strat_rules:
+                continue
+            if 'DESATIVADO' in str(strat_rules.get('type', '')):
+                continue
+            L.append(f"### {strat_name}\n")
+            L.append(f"**Tipo:** {strat_rules['type']}\n")
+            if 'long_conditions' in strat_rules:
+                L.append(f"**LONG (todas verdadeiras):\n")
+                for c in strat_rules['long_conditions']:
+                    L.append(f"{c}\n")
+            if 'short_conditions' in strat_rules:
+                L.append(f"**SHORT (todas verdadeiras):\n")
+                for c in strat_rules['short_conditions']:
+                    L.append(f"{c}\n")
+            if 'sl' in strat_rules:
+                L.append(f"SL: {strat_rules['sl']} | TP: {strat_rules['tp']} | R:R: {strat_rules.get('rr_ratio', 'N/A')}\n")
+            L.append(f"\n")
+
+        L.append(f"\n---\n\n## 6. Regras de Saida\n")
+        L.append(f"| Mecanismo | Regra | Prioridade |\n")
+        L.append(f"|-----------|------|------------|\n")
+        for mech, info in EXIT_MECHANISMS.items():
+            L.append(f"| {mech} | {info.get('rule', '')} | {info.get('priority', '')} |\n")
+
+        L.append(f"\n---\n\n## 7. Gestao de Risco\n")
+        L.append(f"| Componente | Regra | Valor |\n")
+        L.append(f"|------------|------|-------|\n")
+        L.append(f"| Max posicoes | Limite duro | {CONCURRENT_PARAMS['max_concurrent']} |\n")
+        L.append(f"| Cooldown | {CONCURRENT_PARAMS['cooldown_trigger']} SLs / {CONCURRENT_PARAMS['cooldown_bars']} bars | {CONCURRENT_PARAMS['cooldown_trigger']} SL / {CONCURRENT_PARAMS['cooldown_bars']} bars |\n")
+        L.append(f"| Trailing (pos-TP1) | {CONCURRENT_PARAMS['trailing_atr_mult_post_tp']}x ATR HWM | {CONCURRENT_PARAMS['trailing_atr_mult_post_tp']}x |\n")
+        L.append(f"| Partial TP | Primeiro TP | {CONCURRENT_PARAMS['partial_tp_pct'] * 100:.0f}% |\n")
+        L.append(f"| Pos-TP1 SL buffer | {CONCURRENT_PARAMS['post_tp1_sl_buffer_atr']}x ATR | {CONCURRENT_PARAMS['post_tp1_sl_buffer_atr']}x |\n")
+        L.append(f"| Break-Even | {CONCURRENT_PARAMS['be_trigger']} | DESATIVADO |\n")
+        L.append(f"| Anti-martingale | {CONCURRENT_PARAMS['anti_martingale']} | DESATIVADO |\n")
+        L.append(f"| Correlation Guard | {CONCURRENT_PARAMS['correlation_guard']} | DESATIVADO |\n")
+
+        L.append(f"\n---\n\n## 8. Gestao de Capital\n")
+        L.append(f"| Estrategia | Risco/trade | Justificativa |\n")
+        L.append(f"|------------|-------------|---------------|\n")
+        for name, info in ENTRY_RISK_ALLOCATION.items():
+            L.append(f"| {name} | {info['risk_pct']}% | {info['status']} |\n")
+
+        L.append(f"\n---\n\n## 9. Tratamento de Posicoes Simultaneas\n")
+        L.append(f"| Parametro | Valor |\n")
+        L.append(f"|-----------|-------|\n")
+        L.append(f"| Max posicoes | {CONCURRENT_PARAMS['max_concurrent']} |\n")
+        L.append(f"| Estrategias ativas | {len(active)} |\n")
+        L.append(f"| Correlation Guard | DESATIVADO |")
 
     # 10. METODOLOGIA DO BACKTEST
     L.append(f"\n---\n\n## 10. Metodologia do Backtest\n")
-    L.append(f"**Motor:** sim_concurrent.py V13-ROBUSTA\n")
-    L.append(f"**Fluxo:** Download OHLCV -> Indicadores -> Simulacao bar-a-bar -> Metricas\n")
-    L.append(f"**Ordem saida:** RSI Exhaustion > SL > TP > Timeout > EOD\n")
+    if is_liga_crypto:
+        L.append(f"**Motor:** sim_liga_crypto.py — Liga Crypto Multi-TF\n")
+        L.append(f"**Fluxo:** Download 5 TFs (1W/1D/4H/1H/15M) -> Indicadores por TF -> Slice por timestamp -> analyze_liga_crypto() -> Trade\n")
+        L.append(f"**Ordem saida:** SL > TP1 (partial 50%) > Trailing > TP2/TP3 > Timeout (168 bars)\n")
+        L.append(f"**Re-analise:** A cada 4 barras 1H (4h) para otimizar performance\n")
+    else:
+        L.append(f"**Motor:** sim_concurrent.py V13-ROBUSTA\n")
+        L.append(f"**Fluxo:** Download OHLCV -> Indicadores -> Simulacao bar-a-bar -> Metricas\n")
+        L.append(f"**Ordem saida:** RSI Exhaustion > SL > TP > Timeout > EOD\n")
 
     # 11. CUSTOS E EXECUCAO
     L.append(f"\n---\n\n## 11. Custos e Execucao\n")

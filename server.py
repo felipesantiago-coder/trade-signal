@@ -271,7 +271,13 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
 
     # Resolve timeframe: usa o parametro ou fallback para config do bot
     effective_tf = timeframe or get_settings().binance.timeframe
-    _backtest_meta = {"timeframe": effective_tf, "days": days}
+
+    # Detecta se deve usar Liga Crypto (1h com flag ou meta override)
+    _liga_crypto_mode = False
+    if effective_tf == "1h":
+        _liga_crypto_mode = True  # 1h usa Liga Crypto por padrao
+
+    _backtest_meta = {"timeframe": effective_tf, "days": days, "liga_crypto": _liga_crypto_mode}
 
     async def _run_backtest():
         global _backtest_result, _backtest_running
@@ -279,11 +285,19 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
             from backtest import run_backtest
             loop = asyncio.get_event_loop()
             metrics, trades = await loop.run_in_executor(
-                None, lambda: run_backtest(days=days, timeframe=effective_tf, advanced=False, regime_switching=False)
+                None, lambda: run_backtest(
+                    days=days, timeframe=effective_tf,
+                    advanced=False, regime_switching=False,
+                    liga_crypto=_liga_crypto_mode,
+                )
             )
+            # Extrai diagnostics do filtro de sinal (se disponivel)
+            _diag = getattr(metrics, '_filter_diag', None) or {}
             _backtest_result = {
                 "ok": True,
+                "strategy": "liga_crypto" if _liga_crypto_mode else "v13_robusta",
                 "metrics": metrics.to_dict(),
+                "diagnostics": _diag,
                 "trades": [
                     {
                         "entry_ts": str(t.entry_ts),
@@ -440,16 +454,22 @@ async def api_backtest_export() -> Response:
     m["_spread_bps"] = _backtest_meta.get("spread_bps", 2.0)
     m["_slippage_bps"] = _backtest_meta.get("slippage_bps", 5.0)
 
+    # Detecta estrategia e diagnostico
+    _is_liga = _backtest_result.get("strategy") == "liga_crypto"
+    _diag = _backtest_result.get("diagnostics", {})
     trades = _backtest_result.get("trades", [])
     tf = _backtest_meta.get("timeframe", "1h")
     days = _backtest_meta.get("days", 730)
+    version_label = "LIGA_CRYPTO" if _is_liga else "V13-ROBUSTA"
 
     md_content = generate_audit_report_v2(
         metrics=m,
         trades=trades,
         timeframe=tf,
         days=days,
-        version_label=f"V1-BASELINE",
+        version_label=version_label,
+        diagnostics=_diag,
+        is_liga_crypto=_is_liga,
     )
 
     filename = f"audit_{tf}_{days}d_{_dt.now(timezone.utc).strftime('%Y%m%d_%H%M')}.md"
