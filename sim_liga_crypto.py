@@ -111,20 +111,28 @@ def _fetch_with_fallback(
         )
         return df
     except Exception as exc:
-        _err = str(exc)
-        if ("granularity" in _err.lower() or "not a valid value" in _err.lower()
-                or "not supported" in _err.lower()) and resample_from_df is not None:
-            logger.info(
-                "Liga Crypto backtest: %s nao suportado pela exchange (%s), "
-                "resampleando de dados existentes",
-                tf_key, ccxt_tf,
-            )
-            df = _resample_ohlcv(resample_from_df, resample_rule)
-            logger.info(
-                "Liga Crypto backtest: %s = %d candles (%s a %s) [resample]",
-                tf_key, len(df), df.index[0], df.index[-1],
-            )
-            return df
+        # fetch_historical_ohlcv pode engolir o erro original da exchange
+        # (ccxt.BadRequest) e re-lancar como RuntimeError generico.
+        # Checamos tanto a mensagem direta quanto a causa original (__cause__).
+        if resample_from_df is not None:
+            _err = str(exc).lower()
+            _cause = str(exc.__cause__).lower() if exc.__cause__ else ""
+            _combined = _err + " " + _cause
+            if ("granularity" in _combined
+                    or "not a valid value" in _combined
+                    or "not supported" in _combined
+                    or "nenhum dado" in _combined):
+                logger.info(
+                    "Liga Crypto backtest: %s nao disponivel direto (%s), "
+                    "resampleando de dados existentes",
+                    tf_key, ccxt_tf,
+                )
+                df = _resample_ohlcv(resample_from_df, resample_rule)
+                logger.info(
+                    "Liga Crypto backtest: %s = %d candles (%s a %s) [resample]",
+                    tf_key, len(df), df.index[0], df.index[-1],
+                )
+                return df
         raise
 
 
