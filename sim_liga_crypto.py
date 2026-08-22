@@ -72,6 +72,30 @@ LIGA_TF_MAP = {
 # DATA FETCHING — Multi-Timeframe
 # ═══════════════════════════════════════════════════════════════════
 
+def _resample_1d_to_1w(df: pd.DataFrame) -> pd.DataFrame:
+    """Resample DataFrame 1D para 1W (semanal, domingo->sabado).
+
+    OHLCV padrao: open=primeira abertura, high=maximo, low=minimo,
+    close=ultimo fechamento, volume=soma dos volumes.
+    """
+    if df.empty:
+        return df
+    rule = "W-FRI"  # semana termina na sexta (padrao financeiro)
+    agg = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+    }
+    # Filtra apenas colunas OHLCV (pode haver colunas de indicadores)
+    ohlcv_cols = [c for c in agg if c in df.columns]
+    agg_filtered = {c: agg[c] for c in ohlcv_cols}
+    df_w = df[ohlcv_cols].resample(rule, label="left", closed="left").agg(agg_filtered)
+    df_w.dropna(subset=["close"], inplace=True)
+    return df_w
+
+
 def fetch_liga_crypto_data(
     symbol: str = "BTC/USDT",
     days: int = 730,
@@ -82,22 +106,47 @@ def fetch_liga_crypto_data(
     Para 1H, busca o periodo completo. Para os demais TFs,
     busca com margem para cobrir o periodo do backtest.
 
+    Nota: 1W nao e suportado por nenhuma exchange (Coinbase, Binance, Bybit),
+    entao os dados 1W sao gerados por resample dos dados 1D.
+
     Returns:
         Dict["1W"|"1D"|"4H"|"1H"|"15M", DataFrame] com OHLCV.
     """
     dfs = {}
-    limit_days = {
-        "1W": 5 * 365,     # 5 anos
-        "1D": 3 * 365,     # 3 anos
-        "4H": days + 60,   # backtest + 60 dias margem
-        "1H": days,
-        "15M": 90,          # 3 meses (execucao)
-    }
-    ccxt_tf_map = {"1W": "1w", "1D": "1d", "4H": "4h", "1H": "1h", "15M": "15m"}
 
-    for tf_key, ccxt_tf in ccxt_tf_map.items():
+    # 1W: resample de 1D (exchange nao suporta granularidade semanal)
+    limit_days_1d = 5 * 365  # 5 anos para ter weeklys suficientes
+    try:
+        _update_progress(
+            phase="Baixando dados MTF", phase_num=1, pct=5,
+            message="Baixando 1D (para 1W + 1D)...",
+        )
+        df_1d = fetch_historical_ohlcv(symbol, "1d", limit_days_1d)
+        df_1w = _resample_1d_to_1w(df_1d)
+        dfs["1W"] = df_1w
+        dfs["1D"] = df_1d
+        logger.info(
+            "Liga Crypto backtest: 1W = %d candles (%s a %s) [resample de 1D]",
+            len(df_1w), df_1w.index[0], df_1w.index[-1],
+        )
+        logger.info(
+            "Liga Crypto backtest: 1D = %d candles (%s a %s)",
+            len(df_1d), df_1d.index[0], df_1d.index[-1],
+        )
+    except Exception as exc:
+        logger.error("Liga Crypto backtest: falha ao buscar 1D: %s", exc)
+        raise RuntimeError(f"Falha ao buscar dados 1D: {exc}") from exc
+
+    # Timeframes restantes: 4H, 1H, 15M
+    remaining_tfs = {
+        "4H": ("4h", days + 60),
+        "1H": ("1h", days),
+        "15M": ("15m", 90),
+    }
+
+    for tf_key, (ccxt_tf, tf_days) in remaining_tfs.items():
         try:
-            df = fetch_historical_ohlcv(symbol, ccxt_tf, limit_days[tf_key])
+            df = fetch_historical_ohlcv(symbol, ccxt_tf, tf_days)
             dfs[tf_key] = df
             logger.info(
                 "Liga Crypto backtest: %s = %d candles (%s a %s)",
