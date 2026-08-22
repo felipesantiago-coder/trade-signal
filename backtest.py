@@ -453,12 +453,16 @@ def fetch_historical_ohlcv(
                 len(all_ohlcv),
             )
 
-        except ccxt.BadRequest as exc:
+        except (ccxt.BadRequest, ccxt.NetworkError, ccxt.ExchangeError,
+                ccxt.RateLimitExceeded) as exc:
             # Coinbase retorna 400 quando "start" está no futuro (fim dos dados)
             if "start must not be in the future" in str(exc):
                 logger.debug("Coinbase: fim dos dados historicos (batch %d)", iteration)
                 break
             logger.error("Erro ao baixar dados (batch %d): %s", iteration, exc)
+            break
+        except Exception as exc:
+            logger.error("Erro inesperado ao baixar dados (batch %d): %s", iteration, exc)
             break
 
     exchange.close()
@@ -512,13 +516,15 @@ _TIMEFRAME_MS_MAP = {
     "8h": 8 * 60 * 60 * 1000,
     "12h": 12 * 60 * 60 * 1000,
     "1d": 24 * 60 * 60 * 1000,
+    "1w": 7 * 24 * 60 * 60 * 1000,
 }
 
 
 def _timeframe_to_ms(timeframe: str) -> int:
     """Converte string de timeframe (ex: '15m', '1h', '4h') para milissegundos."""
-    if timeframe in _TIMEFRAME_MS_MAP:
-        return _TIMEFRAME_MS_MAP[timeframe]
+    tf = timeframe.lower()
+    if tf in _TIMEFRAME_MS_MAP:
+        return _TIMEFRAME_MS_MAP[tf]
     raise ValueError(
         f"Timeframe '{timeframe}' nao suportado. "
         f"Opcoes: {list(_TIMEFRAME_MS_MAP.keys())}"

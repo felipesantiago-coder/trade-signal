@@ -334,6 +334,12 @@ async def api_backtest(days: int = 730, timeframe: str = None) -> dict:
             )
         except Exception as exc:
             logger.exception("Backtest falhou: %s", exc)
+            try:
+                from backtest import _update_progress
+                _update_progress(phase="Erro", pct=0, running=False,
+                                message=f"Falha: {exc}")
+            except Exception:
+                pass
             _backtest_result = {"ok": False, "error": str(exc)}
             insert_log("ERROR", f"Backtest falhou: {exc}", "backtest")
         finally:

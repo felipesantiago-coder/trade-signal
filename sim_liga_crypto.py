@@ -93,7 +93,7 @@ def fetch_liga_crypto_data(
         "1H": days,
         "15M": 90,          # 3 meses (execucao)
     }
-    ccxt_tf_map = {"1W": "1W", "1D": "1d", "4H": "4h", "1H": "1h", "15M": "15m"}
+    ccxt_tf_map = {"1W": "1w", "1D": "1d", "4H": "4h", "1H": "1h", "15M": "15m"}
 
     for tf_key, ccxt_tf in ccxt_tf_map.items():
         try:
