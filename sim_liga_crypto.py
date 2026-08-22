@@ -72,15 +72,14 @@ LIGA_TF_MAP = {
 # DATA FETCHING — Multi-Timeframe
 # ═══════════════════════════════════════════════════════════════════
 
-def _resample_1d_to_1w(df: pd.DataFrame) -> pd.DataFrame:
-    """Resample DataFrame 1D para 1W (semanal, domingo->sabado).
+def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    """Resample DataFrame OHLCV para um timeframe maior.
 
     OHLCV padrao: open=primeira abertura, high=maximo, low=minimo,
     close=ultimo fechamento, volume=soma dos volumes.
     """
     if df.empty:
         return df
-    rule = "W-FRI"  # semana termina na sexta (padrao financeiro)
     agg = {
         "open": "first",
         "high": "max",
@@ -88,12 +87,45 @@ def _resample_1d_to_1w(df: pd.DataFrame) -> pd.DataFrame:
         "close": "last",
         "volume": "sum",
     }
-    # Filtra apenas colunas OHLCV (pode haver colunas de indicadores)
     ohlcv_cols = [c for c in agg if c in df.columns]
     agg_filtered = {c: agg[c] for c in ohlcv_cols}
-    df_w = df[ohlcv_cols].resample(rule, label="left", closed="left").agg(agg_filtered)
-    df_w.dropna(subset=["close"], inplace=True)
-    return df_w
+    df_out = df[ohlcv_cols].resample(rule, label="left", closed="left").agg(agg_filtered)
+    df_out.dropna(subset=["close"], inplace=True)
+    return df_out
+
+
+def _fetch_with_fallback(
+    symbol: str, tf_key: str, ccxt_tf: str, days: int,
+    resample_from_df: pd.DataFrame = None, resample_rule: str = None,
+) -> pd.DataFrame:
+    """Tenta buscar TF diretamente; se a exchange nao suportar, resample.
+
+    Se resample_from_df e resample_rule forem fornecidos, usa resample
+    como fallback automatico quando a exchange rejeitar o timeframe.
+    """
+    try:
+        df = fetch_historical_ohlcv(symbol, ccxt_tf, days)
+        logger.info(
+            "Liga Crypto backtest: %s = %d candles (%s a %s) [direto]",
+            tf_key, len(df), df.index[0], df.index[-1],
+        )
+        return df
+    except Exception as exc:
+        _err = str(exc)
+        if ("granularity" in _err.lower() or "not a valid value" in _err.lower()
+                or "not supported" in _err.lower()) and resample_from_df is not None:
+            logger.info(
+                "Liga Crypto backtest: %s nao suportado pela exchange (%s), "
+                "resampleando de dados existentes",
+                tf_key, ccxt_tf,
+            )
+            df = _resample_ohlcv(resample_from_df, resample_rule)
+            logger.info(
+                "Liga Crypto backtest: %s = %d candles (%s a %s) [resample]",
+                tf_key, len(df), df.index[0], df.index[-1],
+            )
+            return df
+        raise
 
 
 def fetch_liga_crypto_data(
@@ -106,28 +138,27 @@ def fetch_liga_crypto_data(
     Para 1H, busca o periodo completo. Para os demais TFs,
     busca com margem para cobrir o periodo do backtest.
 
-    Nota: 1W nao e suportado por nenhuma exchange (Coinbase, Binance, Bybit),
-    entao os dados 1W sao gerados por resample dos dados 1D.
+    Timeframes nao suportados pela exchange (ex: 1W, 4H na Coinbase)
+    sao gerados por resample de TFs menores (1D, 1H).
 
     Returns:
         Dict["1W"|"1D"|"4H"|"1H"|"15M", DataFrame] com OHLCV.
     """
     dfs = {}
 
-    # 1W: resample de 1D (exchange nao suporta granularidade semanal)
-    limit_days_1d = 5 * 365  # 5 anos para ter weeklys suficientes
+    # ── 1D + 1W (1W sempre via resample de 1D) ──
+    limit_days_1d = 5 * 365
     try:
         _update_progress(
             phase="Baixando dados MTF", phase_num=1, pct=5,
             message="Baixando 1D (para 1W + 1D)...",
         )
         df_1d = fetch_historical_ohlcv(symbol, "1d", limit_days_1d)
-        df_1w = _resample_1d_to_1w(df_1d)
-        dfs["1W"] = df_1w
         dfs["1D"] = df_1d
+        dfs["1W"] = _resample_ohlcv(df_1d, "W-FRI")
         logger.info(
             "Liga Crypto backtest: 1W = %d candles (%s a %s) [resample de 1D]",
-            len(df_1w), df_1w.index[0], df_1w.index[-1],
+            len(dfs["1W"]), dfs["1W"].index[0], dfs["1W"].index[-1],
         )
         logger.info(
             "Liga Crypto backtest: 1D = %d candles (%s a %s)",
@@ -137,24 +168,51 @@ def fetch_liga_crypto_data(
         logger.error("Liga Crypto backtest: falha ao buscar 1D: %s", exc)
         raise RuntimeError(f"Falha ao buscar dados 1D: {exc}") from exc
 
-    # Timeframes restantes: 4H, 1H, 15M
-    remaining_tfs = {
-        "4H": ("4h", days + 60),
-        "1H": ("1h", days),
-        "15M": ("15m", 90),
-    }
+    # ── 1H (usado direto E como source para 4H) ──
+    # Busca com margem suficiente para cobrir 4H (days + 60)
+    _1h_days = max(days, days + 60)
+    try:
+        _update_progress(
+            phase="Baixando dados MTF", phase_num=2, pct=10,
+            message="Baixando 1H (para 1H + 4H)...",
+        )
+        df_1h = fetch_historical_ohlcv(symbol, "1h", _1h_days)
+        dfs["1H"] = df_1h
+        logger.info(
+            "Liga Crypto backtest: 1H = %d candles (%s a %s)",
+            len(df_1h), df_1h.index[0], df_1h.index[-1],
+        )
+    except Exception as exc:
+        logger.error("Liga Crypto backtest: falha ao buscar 1H: %s", exc)
+        raise RuntimeError(f"Falha ao buscar dados 1H: {exc}") from exc
 
-    for tf_key, (ccxt_tf, tf_days) in remaining_tfs.items():
-        try:
-            df = fetch_historical_ohlcv(symbol, ccxt_tf, tf_days)
-            dfs[tf_key] = df
-            logger.info(
-                "Liga Crypto backtest: %s = %d candles (%s a %s)",
-                tf_key, len(df), df.index[0], df.index[-1],
-            )
-        except Exception as exc:
-            logger.error("Liga Crypto backtest: falha ao buscar %s: %s", tf_key, exc)
-            raise RuntimeError(f"Falha ao buscar dados {tf_key}: {exc}") from exc
+    # ── 4H: tenta direto, fallback resample de 1H ──
+    try:
+        _update_progress(
+            phase="Baixando dados MTF", phase_num=3, pct=14,
+            message="Baixando 4H...",
+        )
+        dfs["4H"] = _fetch_with_fallback(
+            symbol, "4H", "4h", days + 60,
+            resample_from_df=df_1h, resample_rule="4h",
+        )
+    except Exception as exc:
+        logger.error("Liga Crypto backtest: falha ao buscar 4H: %s", exc)
+        raise RuntimeError(f"Falha ao buscar dados 4H: {exc}") from exc
+
+    # ── 15M: tenta direto (suportado pela maioria das exchanges) ──
+    try:
+        _update_progress(
+            phase="Baixando dados MTF", phase_num=4, pct=16,
+            message="Baixando 15M...",
+        )
+        dfs["15M"] = _fetch_with_fallback(
+            symbol, "15M", "15m", 90,
+            resample_from_df=df_1h, resample_rule="15min",
+        )
+    except Exception as exc:
+        logger.error("Liga Crypto backtest: falha ao buscar 15M: %s", exc)
+        raise RuntimeError(f"Falha ao buscar dados 15M: {exc}") from exc
 
     return dfs
 
